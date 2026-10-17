@@ -6,9 +6,11 @@ import { useState } from "react"
 import { type Option, Picker, type PickerProps } from "@/components/picker"
 import { type CreatedTag, NewTagDialog } from "@/components/tag-fields"
 import { graphql } from "@/gql"
-import type { FileType, ListKind, TagType } from "@/gql/graphql"
+import type { FileType } from "@/bindings"
+import type { ListKind, TagType } from "@/gql/graphql"
 import { useDebounced } from "@/hooks/use-debounced"
 import { matchedName } from "@/lib/names"
+import { useCommand } from "@/lib/query"
 import { tagValueKey } from "@/lib/tags"
 
 // Pickers return the first 20 matches (slunk's design §7.3)
@@ -245,29 +247,11 @@ export function ReleasePicker(props: PickerProps) {
   )
 }
 
-const FileOptions = graphql(`
-  query FileOptions(
-    $q: String
-    $perPage: Int!
-    $type: FileType
-    $withoutTrack: Boolean
-  ) {
-    files(
-      q: $q
-      perPage: $perPage
-      type: $type
-      withoutTrack: $withoutTrack
-      sort: "path"
-    ) {
-      items {
-        id
-        name: path
-      }
-    }
-  }
-`)
-
-/** A registered file, searched by path. Files can't be created here. */
+/**
+ * A registered file, searched by path. Files can't be created here. Its
+ * options' ids are strings, like the other pickers', for the forms that
+ * still send GraphQL.
+ */
 export function FilePicker({
   type,
   withoutTrack,
@@ -275,9 +259,17 @@ export function FilePicker({
 }: PickerProps & { type?: FileType; withoutTrack?: boolean }) {
   const [query, setQuery] = useState("")
   const q = useDebounced(query)
-  const { data } = useQuery(FileOptions, {
-    variables: { q, perPage: LIMIT, type, withoutTrack },
+  const { data } = useCommand("files", {
+    q,
+    perPage: LIMIT,
+    type,
+    withoutTrack,
+    sort: "path",
   })
+  const options = (data?.items ?? []).map((file) => ({
+    id: String(file.id),
+    name: file.path,
+  }))
   return (
     <Picker
       {...props}
@@ -286,7 +278,7 @@ export function FilePicker({
       }
       query={query}
       onQuery={setQuery}
-      options={data?.files.items ?? []}
+      options={options}
     />
   )
 }

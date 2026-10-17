@@ -47,11 +47,7 @@ fn respond(libraries: &Libraries, request: &Request<Vec<u8>>) -> Response<Vec<u8
         return status(StatusCode::NOT_FOUND);
     };
     // Only the lookup holds the connection; the file is read after
-    let path = {
-        let conn = library.conn();
-        slunk::media::file_path(&conn, &library.folder, id)
-    };
-    match path {
+    match library.media.file_path(id) {
         Ok(Some(path)) => serve(&path, request.headers().get(header::RANGE)),
         Ok(None) => status(StatusCode::NOT_FOUND),
         Err(error) => {

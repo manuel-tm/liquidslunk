@@ -1,6 +1,6 @@
 import { FileIcon, FileMusicIcon, ImageIcon } from "lucide-react"
 
-import type { FileType } from "@/gql/graphql"
+import type { FileType } from "@/bindings"
 
 export const FILE_TYPE_LABELS: Record<FileType, string> = {
   music: "Music",

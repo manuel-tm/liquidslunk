@@ -373,6 +373,8 @@ Commands that need a library return `noLibrary` when none is open, and the front
 - **`--library <path>`**, in debug builds only, opens a library without touching the settings, for scripts and screenshots.
 - **Tests** open temporary databases. They never read `dev-library/`, which a fresh clone doesn't have. Audio tests use tiny fixtures committed with the tests: a second of silence in each format, with tags set.
 
+  > Changed during implementation, see [Appendix D](#appendix-d-no-dsf-reader-and-audio-checks-on-the-formats-this-mac-makes).
+
 ## 7. Frontend
 
 ### 7.1 Running in Tauri
@@ -588,6 +590,8 @@ Each phase is a vertical slice, as in slunk: it ports a context with its command
 - Phase 1 counts the extensions of the real library's music files. If those formats are there, it adds a small reader for DSF's header and ID3 chunk, and decides what to do about WMA.
 - lofty's tag keys are checked against music-metadata's for album artist, the disc's title (`DISCSUBTITLE`, `TSST`) and dates, on samples of every format.
 
+> Changed during implementation, see [Appendix D](#appendix-d-no-dsf-reader-and-audio-checks-on-the-formats-this-mac-makes).
+
 **Media over the custom protocol.** WebKit asks for audio in ranges. Phase 0 checks seeking in FLAC, MP3 and M4A. `dev-library/music/` only has FLAC, so phase 0 adds an MP3 and an M4A there. If it doesn't work, the fallback is the asset protocol, with its scope widened at runtime to each registered file's folder.
 
 **tauri-specta** is still a 2.0 release candidate. Pin its exact version. If it gets in the way, ts-rs for the types and a thin hand-written `invoke` wrapper per command do the same job.
@@ -662,3 +666,14 @@ Still open:
 - **Was:** still open: WebDriver inside debug builds, or `mockIPC` fixtures. Phase 0 decides, trying WebDriver first.
 - **Now:** WebDriver. tauri-plugin-wdio-webdriver embeds a W3C WebDriver server on `127.0.0.1:4445` in builds with the `webdriver` cargo feature, which is off by default: `npm run tauri dev -- --features webdriver`, then `npm run screenshot`. `mockIPC` isn't needed.
 - **Why:** it works on macOS's WKWebView, with real input, which Base UI's menus need. It's an opt-in feature rather than part of every debug build, since it opens an automation server on localhost. That also lets a release build be checked the same way, as phase 0's check of reloading a deep route needed.
+
+## Appendix D: No DSF reader, and audio checks on the formats this Mac makes
+
+- **Date:** 2026-10-17
+- **Affects:** §10 Audio, §6.5 Tests
+- **Was:** phase 1 counts the extensions of the real library's music files, and adds a reader for DSF's header and ID3 chunk if DSF is there, and decides what to do about WMA. Audio tests have a second of silence in each format, and lofty's tag keys are checked against music-metadata's on samples of every format.
+- **Now:**
+  - There's no count and no DSF reader. DSF, DFF and WMA files register like any other, with no duration and no tags, as §10 says a file lofty can't read does.
+  - The audio fixtures are in the formats this Mac makes without ffmpeg: FLAC, M4A (AAC and Apple Lossless), AAC in ADTS, WAV, AIFF and MP3. Durations and tags are checked against music-metadata's on those.
+  - Ogg Vorbis, Opus, APE, WavPack and Musepack are read with the same mappings, but aren't checked against music-metadata until ffmpeg is installed to make their fixtures.
+- **Why:** the user decided that liquidslunk doesn't need DSF and WMA for now, and to leave installing ffmpeg for later.

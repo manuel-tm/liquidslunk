@@ -24,10 +24,6 @@ import { useCommand } from "@/lib/query"
 
 const DashboardQuery = graphql(`
   query Dashboard {
-    fileCounts {
-      total
-      unused
-    }
     catalogTotals {
       releases
       artists
@@ -61,13 +57,14 @@ const DashboardQuery = graphql(`
 
 /**
  * `/` (slunk's design §7.5): the library's status, numbers that are cheap to
- * compute, and the latest additions. The status comes from `library_status`,
- * the rest from slunk's backend until phase 4.
+ * compute, and the latest additions. The status and the file counts come
+ * from commands, the rest from slunk's backend until phase 4.
  */
 export function Dashboard() {
   const { data, error } = useQuery(DashboardQuery)
   const status = useCommand("libraryStatus")
   const library = status.data?.library
+  const fileCounts = useCommand("fileCounts").data
 
   return (
     <>
@@ -148,11 +145,11 @@ export function Dashboard() {
                 to="/labels"
                 value={data.catalogTotals.labels}
               />
-              <Total title="Files" to="/files" value={data.fileCounts.total} />
+              <Total title="Files" to="/files" value={fileCounts?.total} />
               <Total
                 title="Unused files"
                 to="/files?unused=1"
-                value={data.fileCounts.unused}
+                value={fileCounts?.unused}
               >
                 Registered files nothing uses yet
               </Total>
@@ -221,7 +218,8 @@ function Total({
 }: {
   title: string
   to: string
-  value: number
+  /** Undefined while it loads */
+  value: number | undefined
   children?: ReactNode
 }) {
   return (
@@ -230,7 +228,11 @@ function Total({
         <CardHeader>
           <CardDescription>{title}</CardDescription>
           <CardTitle className="text-2xl tabular-nums">
-            {value.toLocaleString()}
+            {value === undefined ? (
+              <Skeleton className="h-8 w-12" />
+            ) : (
+              value.toLocaleString()
+            )}
           </CardTitle>
         </CardHeader>
         {children && (

@@ -54,6 +54,7 @@ impl From<slunk::Error> for CommandError {
     fn from(error: slunk::Error) -> Self {
         match error {
             slunk::Error::Invalid(message) => Self::invalid(message),
+            slunk::Error::NotFound(message) => Self::not_found(message),
             slunk::Error::NewerLibrary(_) => {
                 Self::invalid("This library was upgraded by a newer version of liquidslunk.")
             }

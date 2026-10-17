@@ -9,6 +9,10 @@ pub enum Error {
     #[error("{0}")]
     Invalid(String),
 
+    /// What was asked for isn't there ("There's no file 12").
+    #[error("{0}")]
+    NotFound(String),
+
     /// The library has applied migrations this version doesn't know
     /// (design §5.6).
     #[error(

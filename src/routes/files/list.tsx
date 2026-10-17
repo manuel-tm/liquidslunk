@@ -1,4 +1,3 @@
-import { useQuery } from "@apollo/client/react"
 import { FilePlusIcon } from "lucide-react"
 import { Link } from "react-router"
 
@@ -33,48 +32,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { graphql } from "@/gql"
-import type { FileType } from "@/gql/graphql"
+import type { FileType } from "@/bindings"
 import { useListParams } from "@/hooks/use-list-params"
 import { formatDateTime, formatSize } from "@/lib/format"
+import { useCommand } from "@/lib/query"
 
 const PER_PAGE = 50
-
-const FilesQuery = graphql(`
-  query Files(
-    $page: Int!
-    $perPage: Int!
-    $sort: String
-    $q: String
-    $type: FileType
-    $unused: Boolean
-  ) {
-    files(
-      page: $page
-      perPage: $perPage
-      sort: $sort
-      q: $q
-      type: $type
-      unused: $unused
-    ) {
-      total
-      items {
-        id
-        path
-        type
-        sizeBytes
-        mtime
-        sha256
-        insertedAt
-        updatedAt
-        track {
-          id
-          title
-        }
-      }
-    }
-  }
-`)
 
 const TYPE_ITEMS = { all: "All types", ...FILE_TYPE_LABELS }
 
@@ -84,8 +47,13 @@ export function FileList() {
   const type = (params.get("type") as FileType | null) ?? null
   const unused = params.get("unused") === "1"
 
-  const { data, error } = useQuery(FilesQuery, {
-    variables: { page, perPage: PER_PAGE, sort, q, type, unused },
+  const { data, error } = useCommand("files", {
+    page,
+    perPage: PER_PAGE,
+    sort,
+    q,
+    type,
+    unused,
   })
 
   return (
@@ -133,7 +101,7 @@ export function FileList() {
               <Pager
                 page={page}
                 perPage={PER_PAGE}
-                total={data.files.total}
+                total={data.total}
                 onPage={(page) => update({ page })}
               />
             )}
@@ -144,7 +112,7 @@ export function FileList() {
           <QueryError error={error} title="Can't load the files" />
         ) : !data ? (
           <Skeleton className="h-64 w-full" />
-        ) : data.files.total === 0 ? (
+        ) : data.total === 0 ? (
           <Empty>
             <EmptyHeader>
               <EmptyTitle>No files</EmptyTitle>
@@ -177,7 +145,7 @@ export function FileList() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.files.items.map((file) => (
+              {data.items.map((file) => (
                 <TableRow key={file.id}>
                   <TableCell className="tabular-nums">{file.id}</TableCell>
                   <TableCell className="min-w-64 whitespace-normal">

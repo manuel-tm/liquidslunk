@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 import { useNavigate, useParams } from "react-router"
 
@@ -22,46 +22,22 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { graphql } from "@/gql"
-import type { FileType, FileUpdateQuery } from "@/gql/graphql"
+import type { FileDetails, FileType } from "@/bindings"
+import { call, idParam, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
-
-const FileUpdateQueryDocument = graphql(`
-  query FileUpdate($id: ID!) {
-    file(id: $id) {
-      id
-      name
-      path
-      type
-    }
-  }
-`)
-
-const UpdateFileMutation = graphql(`
-  mutation UpdateFile($id: ID!, $input: UpdateFileInput!) {
-    updateFile(id: $id, input: $input) {
-      id
-      path
-      name
-      type
-      sizeBytes
-      mtime
-      sha256
-      updatedAt
-      onDisk
-    }
-  }
-`)
 
 /** `/files/:id/update`: relinks a file that moved, or changes its type. */
 export function FileUpdate() {
   const { id = "" } = useParams()
-  const { data, error } = useQuery(FileUpdateQueryDocument, {
-    variables: { id },
-  })
+  const fileId = idParam(id)
+  // A form starts from fresh data (design §7.2)
+  const { data: file, error } = useCommand(
+    "file",
+    { id: fileId ?? 0 },
+    { fresh: true, enabled: fileId !== null }
+  )
 
-  if (data && !data.file) return <NotFound />
-  const file = data?.file
+  if (fileId === null || file === null) return <NotFound />
 
   return (
     <>
@@ -88,20 +64,21 @@ export function FileUpdate() {
   )
 }
 
-function FileForm({ file }: { file: NonNullable<FileUpdateQuery["file"]> }) {
+function FileForm({ file }: { file: FileDetails }) {
   const navigate = useNavigate()
   const [path, setPath] = useState(file.path)
   const [type, setType] = useState<FileType>(file.type)
-  const [updateFile, { loading, error }] = useMutation(UpdateFileMutation)
+  const updateFile = useMutation({
+    mutationFn: () => call("updateFile", { id: file.id, path, type }),
+  })
+  const { error } = updateFile
 
   return (
     <form
       onSubmit={async (event) => {
         event.preventDefault()
         try {
-          await updateFile({
-            variables: { id: file.id, input: { path, type } },
-          })
+          await updateFile.mutateAsync()
         } catch {
           return // The form shows the error
         }
@@ -149,7 +126,7 @@ function FileForm({ file }: { file: NonNullable<FileUpdateQuery["file"]> }) {
           </FieldDescription>
         </Field>
         <div className="flex gap-2">
-          <Button type="submit" disabled={loading}>
+          <Button type="submit" disabled={updateFile.isPending}>
             Save
           </Button>
           <ButtonLink variant="outline" to={`/files/${file.id}`}>

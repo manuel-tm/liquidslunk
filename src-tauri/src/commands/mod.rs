@@ -9,10 +9,11 @@
 //! - A query command takes its arguments as one struct, `args`, so the
 //!   frontend calls `useCommand("releasePage", { id })`.
 
-use tauri::Wry;
+use tauri::{AppHandle, Manager, Wry};
 use tauri_specta::{Builder, collect_commands};
 
 use crate::error::CommandError;
+use crate::library::{Libraries, Library};
 
 pub mod library;
 pub mod media;
@@ -27,6 +28,14 @@ pub fn builder() -> Builder<Wry> {
             library::close_library,
             library::recent_libraries,
             library::reveal_library,
+            media::files,
+            media::file,
+            media::file_counts,
+            media::folder,
+            media::folder_files,
+            media::register_files,
+            media::update_file,
+            media::delete_file,
             media::open_file,
             media::reveal_file,
         ])
@@ -41,4 +50,37 @@ pub(crate) async fn blocking<T: Send + 'static>(
     tauri::async_runtime::spawn_blocking(work)
         .await
         .map_err(|error| CommandError::internal(error.to_string()))?
+}
+
+/// Runs work on the open library, on Tokio's blocking pool. Without one, it's
+/// a `noLibrary` error.
+pub(crate) async fn on_library<T: Send + 'static>(
+    app: AppHandle,
+    work: impl FnOnce(&Library) -> Result<T, CommandError> + Send + 'static,
+) -> Result<T, CommandError> {
+    blocking(move || {
+        let library = app.state::<Libraries>().library()?;
+        work(&library)
+    })
+    .await
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_bindings_export() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bindings.ts");
+        super::builder()
+            .export(specta_typescript::Typescript::default(), &path)
+            .unwrap();
+        let bindings = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            bindings.contains("registerFiles: (args: RegisterFilesArgs)"),
+            "{bindings}"
+        );
+        if let Ok(copy) = std::env::var("LIQUIDSLUNK_BINDINGS_COPY") {
+            std::fs::write(copy, bindings).unwrap();
+        }
+    }
 }

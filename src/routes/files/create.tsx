@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 import { toast } from "sonner"
@@ -21,37 +21,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { graphql } from "@/gql"
-import type { FolderFilesQuery } from "@/gql/graphql"
+import type { FolderFile as DiskFile } from "@/bindings"
 import { formatSize } from "@/lib/format"
+import { call, queryClient, useCommand } from "@/lib/query"
 
-const FolderFilesQueryDocument = graphql(`
-  query FolderFiles($path: String!) {
-    folderFiles(path: $path) {
-      path
-      type
-      sizeBytes
-      file {
-        id
-      }
-    }
-  }
-`)
-
-const RegisterFilesMutation = graphql(`
-  mutation RegisterFiles($paths: [String!]!) {
-    registerFiles(paths: $paths) {
-      id
-      path
-    }
-  }
-`)
-
-// Each request registers a few files, so the progress bar moves along
+// Each call registers a few files, so the progress bar moves along
 const CHUNK_FILES = 10
 const CHUNK_BYTES = 100_000_000
-
-type DiskFile = FolderFilesQuery["folderFiles"][number]
 
 const createUrl = (params: Record<string, string>) =>
   `/files/create?${new URLSearchParams(params)}`
@@ -97,13 +73,11 @@ export function RegisterFiles() {
 }
 
 function FolderFiles({ folder }: { folder: string }) {
-  const { data, error } = useQuery(FolderFilesQueryDocument, {
-    variables: { path: folder },
-  })
+  const { data, error } = useCommand("folderFiles", { path: folder })
 
   if (error) return <QueryError error={error} title="Can't list the folder" />
   if (!data) return <Skeleton className="h-64 w-full" />
-  return <FilePicker folder={folder} files={data.folderFiles} />
+  return <FilePicker folder={folder} files={data} />
 }
 
 /** Checkboxes for the folder's unregistered files, and the Register button. */
@@ -111,7 +85,21 @@ function FilePicker({ folder, files }: { folder: string; files: DiskFile[] }) {
   const navigate = useNavigate()
   const [unchecked, setUnchecked] = useState(() => new Set<string>())
   const [progress, setProgress] = useState<number | null>(null)
-  const [registerFiles, { error }] = useMutation(RegisterFilesMutation)
+  // One mutation for every chunk, so the caches are invalidated once, at the
+  // end, and the list doesn't change under the progress bar
+  const registerFiles = useMutation({
+    mutationFn: async (files: DiskFile[]) => {
+      let done = 0
+      for (const chunk of chunks(files)) {
+        await call("registerFiles", { paths: chunk.map((file) => file.path) })
+        done += sum(chunk)
+        setProgress(done)
+      }
+    },
+    // The chunks before a failure are registered, so the list shows them
+    onError: () => void queryClient.invalidateQueries(),
+  })
+  const { error } = registerFiles
 
   const candidates = files.filter((file) => !file.file)
   const checked = candidates.filter((file) => !unchecked.has(file.path))
@@ -130,19 +118,12 @@ function FilePicker({ folder, files }: { folder: string; files: DiskFile[] }) {
   }
 
   async function register() {
-    let done = 0
     setProgress(0)
-    for (const chunk of chunks(checked)) {
-      try {
-        await registerFiles({
-          variables: { paths: chunk.map((file) => file.path) },
-        })
-      } catch {
-        setProgress(null)
-        return // The page shows the error
-      }
-      done += sum(chunk)
-      setProgress(done)
+    try {
+      await registerFiles.mutateAsync(checked)
+    } catch {
+      setProgress(null)
+      return // The page shows the error
     }
     toast.success(
       `Registered ${checked.length} ${checked.length === 1 ? "file" : "files"}`

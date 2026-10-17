@@ -2,10 +2,7 @@ import { DiscIcon, ImagePlusIcon } from "lucide-react"
 import { useState } from "react"
 
 import { Cover } from "@/components/cover"
-import {
-  type FolderEntryFile,
-  FolderBrowser,
-} from "@/components/folder-browser"
+import { FolderBrowser } from "@/components/folder-browser"
 import { QueryError } from "@/components/query-error"
 import {
   Dialog,
@@ -20,6 +17,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import type { FolderFile } from "@/bindings"
 import type { FileRefInput } from "@/gql/graphql"
 import { fileUrl, useCommand } from "@/lib/query"
 import { cn } from "@/lib/utils"
@@ -160,7 +158,7 @@ export function ChooseImageDialog({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<Error | null>(null)
 
-  async function choose(file: FolderEntryFile) {
+  async function choose(file: FolderFile) {
     setSaving(true)
     setError(null)
     try {

@@ -3,11 +3,15 @@
 //! directly.
 //!
 //! - `repo`: the repository layer: the connection, the migration runner, its
-//!   backups, and the migrations.
-//! - `media`: the media context, so far only where a registered file is.
+//!   backups, the migrations, and the repositories.
+//! - `media`: the media context: registered files, and the library on disk.
+//! - `paging`: a list's page, sort and search.
+//! - `text`: text as it's saved.
 
 pub mod error;
 pub mod media;
+pub mod paging;
 pub mod repo;
+pub mod text;
 
 pub use error::{Error, Result};

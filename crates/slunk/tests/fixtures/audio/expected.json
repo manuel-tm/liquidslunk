@@ -1,0 +1,193 @@
+{
+  "flac.flac": {
+    "durationMs": 1001,
+    "tags": {
+      "title": "Early Summer",
+      "artists": [
+        "Ryo Fukui",
+        "Satoshi Denpo"
+      ],
+      "album": "Scenery",
+      "albumArtists": [
+        "Ryo Fukui Trio"
+      ],
+      "trackNumber": 3,
+      "discNumber": 1,
+      "discTitle": "Live at Slowboat",
+      "date": "1976-03-01"
+    }
+  },
+  "flac-variants.flac": {
+    "durationMs": 1000,
+    "tags": {
+      "title": "Lowercase Keys",
+      "artists": [
+        "Alika",
+        "Nublu"
+      ],
+      "album": null,
+      "albumArtists": [
+        "Alika"
+      ],
+      "trackNumber": 3,
+      "discNumber": 2,
+      "discTitle": null,
+      "date": "2006"
+    }
+  },
+  "untagged.flac": {
+    "durationMs": 1000,
+    "tags": {
+      "title": null,
+      "artists": [],
+      "album": null,
+      "albumArtists": [],
+      "trackNumber": null,
+      "discNumber": null,
+      "discTitle": null,
+      "date": null
+    }
+  },
+  "aac.m4a": {
+    "durationMs": 1280,
+    "tags": {
+      "title": "Early Summer",
+      "artists": [
+        "Ryo Fukui"
+      ],
+      "album": "Scenery",
+      "albumArtists": [
+        "Ryo Fukui Trio"
+      ],
+      "trackNumber": 3,
+      "discNumber": 1,
+      "discTitle": "Live at Slowboat",
+      "date": "1976-03-01"
+    }
+  },
+  "alac.m4a": {
+    "durationMs": 1000,
+    "tags": {
+      "title": "virmalised",
+      "artists": [
+        "Alika",
+        "Nublu"
+      ],
+      "album": null,
+      "albumArtists": [],
+      "trackNumber": 12,
+      "discNumber": null,
+      "discTitle": null,
+      "date": "2006"
+    }
+  },
+  "id3v24.mp3": {
+    "durationMs": 1045,
+    "tags": {
+      "title": "Early Summer",
+      "artists": [
+        "Ryo Fukui",
+        "Satoshi Denpo"
+      ],
+      "album": "Scenery",
+      "albumArtists": [
+        "Ryo Fukui Trio"
+      ],
+      "trackNumber": 3,
+      "discNumber": 1,
+      "discTitle": "Live at Slowboat",
+      "date": "1976-03-01"
+    }
+  },
+  "id3v23.mp3": {
+    "durationMs": 1045,
+    "tags": {
+      "title": "Highway to Hell",
+      "artists": [
+        "AC",
+        "DC"
+      ],
+      "album": "Highway to Hell",
+      "albumArtists": [
+        "AC/DC"
+      ],
+      "trackNumber": 7,
+      "discNumber": 1,
+      "discTitle": "Side A",
+      "date": "1979"
+    }
+  },
+  "cbr.mp3": {
+    "durationMs": 1019,
+    "tags": {
+      "title": "Constant",
+      "artists": [],
+      "album": null,
+      "albumArtists": [],
+      "trackNumber": null,
+      "discNumber": null,
+      "discTitle": null,
+      "date": null
+    }
+  },
+  "vbr.mp3": {
+    "durationMs": 1045,
+    "tags": {
+      "title": "Variable",
+      "artists": [],
+      "album": null,
+      "albumArtists": [],
+      "trackNumber": null,
+      "discNumber": null,
+      "discTitle": null,
+      "date": null
+    }
+  },
+  "adts.aac": {
+    "durationMs": 743,
+    "tags": {
+      "title": "Raw AAC",
+      "artists": [],
+      "album": null,
+      "albumArtists": [],
+      "trackNumber": null,
+      "discNumber": null,
+      "discTitle": null,
+      "date": null
+    }
+  },
+  "wav.wav": {
+    "durationMs": 1000,
+    "tags": {
+      "title": "From ID3v2",
+      "artists": [
+        "Ryo Fukui"
+      ],
+      "album": "Scenery",
+      "albumArtists": [
+        "Ryo Fukui Trio"
+      ],
+      "trackNumber": 3,
+      "discNumber": null,
+      "discTitle": "Live at Slowboat",
+      "date": "1976"
+    }
+  },
+  "aiff.aiff": {
+    "durationMs": 1001,
+    "tags": {
+      "title": "Early Summer",
+      "artists": [
+        "Ryo Fukui"
+      ],
+      "album": "Scenery",
+      "albumArtists": [
+        "Ryo Fukui Trio"
+      ],
+      "trackNumber": 3,
+      "discNumber": 1,
+      "discTitle": "Live at Slowboat",
+      "date": "1976-03"
+    }
+  }
+}

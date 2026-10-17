@@ -12,6 +12,7 @@
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc -b",
     "screenshot": "node scripts/screenshot.ts",
+    "parity:writes": "node scripts/write-parity/index.ts",
     "db:migrate": "cargo run --quiet -p slunk-cli -- migrate",
     "db:rollback": "cargo run --quiet -p slunk-cli -- rollback",
     "db:status": "cargo run --quiet -p slunk-cli -- status",

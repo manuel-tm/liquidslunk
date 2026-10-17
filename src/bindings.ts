@@ -22,6 +22,42 @@ export const commands = {
 	recentLibraries: () => typedError<RecentLibrary[], CommandError>(__TAURI_INVOKE("recent_libraries")),
 	/**  Shows the open library's database in Finder. */
 	revealLibrary: () => typedError<null, CommandError>(__TAURI_INVOKE("reveal_library")),
+	/**  A page of registered files. */
+	files: (args: FilesArgs) => typedError<FilePage, CommandError>(__TAURI_INVOKE("files", { args })),
+	/**  A registered file, or null for an unknown id. */
+	file: (args: FileArgs) => typedError<({
+	/**  Whether there's still a file at the path */
+	onDisk: boolean,
+	/**
+	 *  Everything that uses the file. While anything does, it can't be
+	 *  deleted.
+	 */
+	uses: FileUse[],
+}) & (File) | null, CommandError>(__TAURI_INVOKE("file", { args })),
+	/**  How many files are registered, and how many nothing uses. */
+	fileCounts: () => typedError<FileCounts, CommandError>(__TAURI_INVOKE("file_counts")),
+	/**
+	 *  A folder's subfolders and the files directly in it, for browsing. Hidden
+	 *  files are left out.
+	 */
+	folder: (args: FolderArgs) => typedError<Folder, CommandError>(__TAURI_INVOKE("folder", { args })),
+	/**  Every file in a folder and its subfolders, by path. */
+	folderFiles: (args: FolderFilesArgs) => typedError<FolderFile[], CommandError>(__TAURI_INVOKE("folder_files", { args })),
+	/**
+	 *  Registers files on disk: reads their size, mtime and hash, and types them
+	 *  by extension. Paths already registered are returned as they are.
+	 */
+	registerFiles: (args: RegisterFilesArgs) => typedError<File[], CommandError>(__TAURI_INVOKE("register_files", { args })),
+	/**
+	 *  Changes a file's type, or its path to relink a file that moved, in which
+	 *  case its size, mtime and hash are read again.
+	 */
+	updateFile: (args: UpdateFileArgs) => typedError<File, CommandError>(__TAURI_INVOKE("update_file", { args })),
+	/**
+	 *  Deletes a file's record, and returns its id. The file on disk isn't
+	 *  touched. It fails while anything uses the file.
+	 */
+	deleteFile: (args: FileArgs) => typedError<number, CommandError>(__TAURI_INVOKE("delete_file", { args })),
 	/**  Opens a registered file in its default app. */
 	openFile: (args: FileArgs) => typedError<null, CommandError>(__TAURI_INVOKE("open_file", { args })),
 	/**  Shows a registered file in Finder. */
@@ -46,8 +82,141 @@ export type ErrorKind =
 /**  A message for the user, which a form shows as it is. */
 "invalid" | "internal";
 
+/**  A file the user registered. liquidslunk only reads it. */
+export type File = {
+	id: number,
+	/**  Relative to the database's folder */
+	path: string,
+	/**  The last part of the path */
+	name: string,
+	type: FileType,
+	sizeBytes: number,
+	/**
+	 *  When the file was last modified, in epoch seconds, as read when it was
+	 *  registered or relinked
+	 */
+	mtime: number,
+	sha256: string,
+	/**  Epoch seconds */
+	insertedAt: number,
+	/**  Epoch seconds */
+	updatedAt: number,
+};
+
 export type FileArgs = {
 	id: number,
+};
+
+export type FileCounts = {
+	total: number,
+	/**  Files nothing uses yet */
+	unused: number,
+};
+
+/**  A file, with whether it's there and what uses it. */
+export type FileDetails = {
+	/**  Whether there's still a file at the path */
+	onDisk: boolean,
+	/**
+	 *  Everything that uses the file. While anything does, it can't be
+	 *  deleted.
+	 */
+	uses: FileUse[],
+} & File;
+
+/**  A file in a list, with the track it's the audio of. */
+export type FileListItem = {
+	id: number,
+	path: string,
+	type: FileType,
+	sizeBytes: number,
+	mtime: number,
+	sha256: string,
+	insertedAt: number,
+	updatedAt: number,
+	track: FileTrack | null,
+};
+
+export type FilePage = {
+	items: FileListItem[],
+	total: number,
+};
+
+export type FileRef = {
+	id: number,
+};
+
+export type FileTrack = {
+	id: number,
+	title: string,
+};
+
+export type FileType = "music" | "image" | "other";
+
+/**  Something that uses a file. */
+export type FileUse = {
+	kind: FileUseKind,
+	/**  The id of the track, release, artist or label that uses the file */
+	entityId: number,
+	/**  Its title or name */
+	name: string,
+	/**  A file link's note */
+	note: string | null,
+};
+
+export type FileUseKind = "track_audio" | "release_cover" | "artist_picture" | "label_picture" | "release_link" | "artist_link" | "track_link";
+
+export type FilesArgs = {
+	/**  From 1. Default 1. */
+	page?: number | null,
+	/**  Default 50, at most 200 */
+	perPage?: number | null,
+	/**
+	 *  A column, `id` or `path`, with `-` in front for descending. Default
+	 *  `-id`, newest first.
+	 */
+	sort?: string | null,
+	/**  Part of the path, ignoring case */
+	q?: string | null,
+	type?: FileType | null,
+	/**  Only files nothing uses yet */
+	unused?: boolean | null,
+	/**  Only files that aren't a track's audio yet, to create tracks from */
+	withoutTrack?: boolean | null,
+};
+
+/**  A folder, for browsing. */
+export type Folder = {
+	/**
+	 *  Relative to the database's folder: `""` is that folder, and `..` goes
+	 *  up.
+	 */
+	path: string,
+	absolutePath: string,
+	/**  The folder above, or null at the top of the disk */
+	parent: string | null,
+	folders: Subfolder[],
+	files: FolderFile[],
+};
+
+export type FolderArgs = {
+	/**  Relative to the database's folder. Default `""`, that folder. */
+	path?: string | null,
+};
+
+/**  A file on disk, registered or not. */
+export type FolderFile = {
+	name: string,
+	path: string,
+	/**  From the extension */
+	type: FileType,
+	sizeBytes: number,
+	/**  The file's registration, if it's registered */
+	file: FileRef | null,
+};
+
+export type FolderFilesArgs = {
+	path: string,
 };
 
 /**  A library, as the frontend shows it. */
@@ -102,6 +271,10 @@ export type RecentLibrary = {
 	found: boolean,
 };
 
+export type RegisterFilesArgs = {
+	paths: string[],
+};
+
 export type SavedLibrary = {
 	path: string,
 	/**
@@ -109,6 +282,23 @@ export type SavedLibrary = {
 	 *  isn't.
 	 */
 	found: boolean,
+};
+
+export type Subfolder = {
+	name: string,
+	path: string,
+	/**  Whether it, or a folder inside it, holds registered files */
+	hasRegisteredFiles: boolean,
+};
+
+export type UpdateFileArgs = {
+	id: number,
+	/**
+	 *  A new path relinks a file that moved: its size, mtime and hash are
+	 *  read again
+	 */
+	path?: string | null,
+	type?: FileType | null,
 };
 
 /* Tauri Specta runtime */

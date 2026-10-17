@@ -1,16 +1,18 @@
 //! Opening, creating, switching and closing libraries (design §6). A library
 //! is a folder holding a `slunk.db`. The open one is kept in Tauri's state,
-//! with the app's one connection to it.
+//! with the app's one connection to it and the contexts wired to it.
 
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use rusqlite::{Connection, ErrorCode};
+use rusqlite::ErrorCode;
 use serde::Serialize;
+use slunk::media::Media;
 use slunk::repo::connection::{self, DATABASE_FILE};
 use slunk::repo::migrator;
+use slunk::repo::store::Store;
 use specta::Type;
 
 use crate::error::CommandError;
@@ -24,20 +26,26 @@ pub struct Library {
     pub db: PathBuf,
     /// The database's folder, which file paths are relative to.
     pub folder: PathBuf,
-    conn: Mutex<Connection>,
+    /// The app's one connection (design §5.4), which the contexts share.
+    pub store: Arc<Store>,
+    pub media: Media,
 }
 
 impl Library {
-    /// The app's one connection (design §5.4). Read files before taking it,
-    /// never while holding it.
-    pub fn conn(&self) -> MutexGuard<'_, Connection> {
-        self.conn
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    /// The library at `db`, an absolute path, over the app's connection to
+    /// it, with its contexts wired as slunk's `server.ts` wired them.
+    pub fn new(db: &Path, conn: rusqlite::Connection) -> Library {
+        let store = Arc::new(Store::new(conn));
+        Library {
+            db: db.to_path_buf(),
+            folder: folder_of(db),
+            media: Media::new(store.clone(), slunk::media::Library::new(db)),
+            store,
+        }
     }
 
     fn info(&self) -> Result<LibraryInfo, CommandError> {
-        let migration = migrator::latest_migration(&self.conn())?;
+        let migration = migrator::latest_migration(&self.store.conn())?;
         Ok(LibraryInfo {
             path: shown(&self.db),
             folder: shown(&self.folder),
@@ -263,11 +271,7 @@ impl Libraries {
         // Open the app's connection, in place of the open library's
         self.close_open();
         let conn = connection::open(db).map_err(opening_error)?;
-        let library = Arc::new(Library {
-            db: db.to_path_buf(),
-            folder: folder_of(db),
-            conn: Mutex::new(conn),
-        });
+        let library = Arc::new(Library::new(db, conn));
         *lock(&self.open) = Some(library.clone());
 
         // Save the choice, now that it opened
@@ -460,7 +464,7 @@ mod tests {
         );
 
         let other = dir.path().join("other.db");
-        Connection::open(&other)
+        rusqlite::Connection::open(&other)
             .unwrap()
             .execute_batch("create table things (id integer primary key)")
             .unwrap();

@@ -7,7 +7,7 @@
 - macOS, with Xcode's command-line tools (`xcode-select --install`), which Tauri builds with.
 - [mise](https://mise.jdx.dev/), which installs the pinned versions of Node and Rust: Node 26.10.0 and Rust 1.99.1, pinned in `mise.toml`.
 - npm, which comes with Node.
-- The `sqlite3` command-line tool, which macOS has, to make the migrations' parity fixtures again. Nothing else needs it.
+- The `sqlite3` command-line tool, which macOS has, to make the migrations' parity fixtures again, and `afconvert`, which macOS has too, to make the audio fixtures again. Nothing else needs them.
 
 ## Setup
 
@@ -58,6 +58,7 @@ Run from the repository's root:
 | `npm run format` | Formats `.ts`/`.tsx` files with Prettier |
 | `npm run codegen` | Regenerates the GraphQL types in `src/gql/` from slunk's backend's schema and the app's queries |
 | `npm run screenshot -- [route] [file.png]` | Takes a screenshot of the running app: see [frontend.md](frontend.md#screenshots) |
+| `npm run parity:writes` | Runs the same steps through slunk's GraphQL and through the commands, and compares what they return and write: see [backend.md](backend.md#write-parity) |
 | `npm run db:migrate -- --db <path>` | Backs up a library's database, then applies pending migrations |
 | `npm run db:rollback -- --db <path> [n]` | Backs up the database, then reverts the last *n* migrations |
 | `npm run db:status -- --db <path>` | Lists migrations as applied, pending, or `MISSING` |
@@ -71,7 +72,7 @@ For Rust, run from the repository's root:
 
 | Command | What it does |
 |---|---|
-| `cargo test --workspace` | Runs the Rust tests, including the migrations' parity with slunk |
+| `cargo test --workspace` | Runs the Rust tests, including the migrations' parity with slunk, and audio files read as slunk read them |
 | `cargo clippy --workspace --all-targets` | Lints the Rust code |
 | `cargo fmt` | Formats the Rust code |
 

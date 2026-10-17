@@ -29,10 +29,10 @@ docs/            documentation (this folder)
   reference/     the database schema
 src/             the frontend: React, in the app's webview
 src-tauri/       the app: Tauri, its commands, the library, the file protocol
-crates/slunk/    the domain and its database: migrations, with no Tauri
-                 dependency
+crates/slunk/    the domain and its database: contexts, repositories,
+                 migrations, with no Tauri dependency
 crates/slunk-cli/  the database commands (npm run db:*)
-scripts/         scripts for working on the app, like screenshots
+scripts/         scripts for working on the app: screenshots, write parity
 legacy/          slunk as of its last commit, read-only, until phase 6
 dev-library/     scratch libraries for development, never committed
 temp/            local assets for prompting, never committed

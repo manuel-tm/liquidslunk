@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { CircleAlertIcon, ExternalLinkIcon, FolderOpenIcon } from "lucide-react"
 import { useNavigate, useParams } from "react-router"
 import { toast } from "sonner"
@@ -23,51 +23,23 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { graphql } from "@/gql"
-import type { FileQuery } from "@/gql/graphql"
+import type { FileDetails as File } from "@/bindings"
 import { openFile, revealFile } from "@/lib/files"
 import { formatDateTime, formatSize } from "@/lib/format"
-import { fileUrl } from "@/lib/query"
+import { call, fileUrl, idParam, queryClient, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
-
-const FileQueryDocument = graphql(`
-  query File($id: ID!) {
-    file(id: $id) {
-      id
-      path
-      name
-      type
-      sizeBytes
-      mtime
-      sha256
-      insertedAt
-      updatedAt
-      onDisk
-      uses {
-        kind
-        entityId
-        name
-        note
-      }
-    }
-  }
-`)
-
-const DeleteFileMutation = graphql(`
-  mutation DeleteFile($id: ID!) {
-    deleteFile(id: $id)
-  }
-`)
-
-type File = NonNullable<FileQuery["file"]>
 
 /** `/files/:id` (slunk's design §7.8) */
 export function FileRead() {
   const { id = "" } = useParams()
-  const { data, error } = useQuery(FileQueryDocument, { variables: { id } })
+  const fileId = idParam(id)
+  const { data: file, error } = useCommand(
+    "file",
+    { id: fileId ?? 0 },
+    { enabled: fileId !== null }
+  )
 
-  if (data && !data.file) return <NotFound />
-  const file = data?.file
+  if (fileId === null || file === null) return <NotFound />
 
   return (
     <>
@@ -219,12 +191,8 @@ function Uses({ file }: { file: File }) {
  */
 function DeleteFile({ file }: { file: File }) {
   const navigate = useNavigate()
-  const [deleteFile, { loading, error }] = useMutation(DeleteFileMutation, {
-    variables: { id: file.id },
-    update: (cache) => {
-      cache.evict({ id: cache.identify({ __typename: "File", id: file.id }) })
-      cache.gc()
-    },
+  const deleteFile = useMutation({
+    mutationFn: () => call("deleteFile", { id: file.id }),
   })
   const used = file.uses.length > 0
 
@@ -249,21 +217,26 @@ function DeleteFile({ file }: { file: File }) {
             <FileUses uses={file.uses} />
           </div>
         )}
-        {error && <QueryError error={error} title="Can't delete it" />}
+        {deleteFile.error && (
+          <QueryError error={deleteFile.error} title="Can't delete it" />
+        )}
         <AlertDialogFooter>
           <AlertDialogCancel>{used ? "Close" : "Cancel"}</AlertDialogCancel>
           {!used && (
             <AlertDialogAction
               variant="destructive"
-              disabled={loading}
+              disabled={deleteFile.isPending}
               onClick={async () => {
                 try {
-                  await deleteFile()
+                  await deleteFile.mutateAsync()
                 } catch {
                   return // The dialog shows the error
                 }
                 toast.success(`Deleted the record of ${file.name}`)
                 navigate("/files")
+                queryClient.removeQueries({
+                  queryKey: ["file", { id: file.id }],
+                })
               }}
             >
               Delete

@@ -16,7 +16,7 @@ The frontend is slunk's, moved into the app in phase 0, in `src/`. It does every
 - the import: a release built from a folder, step by step, with titles split at " = " and artists matched by any of their names;
 - the library check: files missing, moved or changed on disk, unregistered files, and gaps in the catalog.
 
-Its data comes from two places while the port runs ([design §8](../design/1_introduction.md#8-the-transition)): Welcome, the library menu, the dashboard's status and opening files call Tauri commands, through TanStack Query. Every other route still sends GraphQL, through Apollo, to slunk's backend, which runs as the app's sidecar ([Data](#data)).
+Its data comes from two places while the port runs ([design §8](../design/1_introduction.md#8-the-transition)). Tauri commands, through TanStack Query, serve Welcome, the library menu, the files pages, the folder browser, the file picker, the dashboard's status and file counts, and opening files. Every other route still sends GraphQL, through Apollo, to slunk's backend, which runs as the app's sidecar ([Data](#data)).
 
 ## Stack
 
@@ -135,7 +135,8 @@ src/
     use-debounced.ts       a value once it stops changing, for searches
     use-mobile.ts          useIsMobile(), used by the sidebar
   lib/
-    query.ts               the QueryClient, useCommand(), call(), fileUrl()
+    query.ts               the QueryClient, useCommand(), call(), idParam(),
+                           fileUrl()
     library.ts             opening, creating and closing libraries, and the
                            launch
     files.ts               opening a file, or showing it in Finder
@@ -168,7 +169,7 @@ src/
 - **The sidebar** lists each section that's built, in `sections` in `app-sidebar.tsx`, and the lists the user manages in their own group, `lists`. A section's link stays active on its pages below it (`/artists/12` keeps Artists active).
 - **Tabs** that are routes, like an artist's or a release's edit tabs, use `TabLinks` (slunk's design §7.2: each tab is a route).
 - **Wide tables** scroll inside the page: `SidebarInset` has `min-w-0`, so a table can't widen the page past the window.
-- **Unknown ids:** a read or update page whose query returns null renders `NotFound` (slunk's design §7.2).
+- **Unknown ids:** a read or update page whose query returns null renders `NotFound` (slunk's design §7.2). A page on commands reads its id with `idParam()` from `@/lib/query`, which parses it with `Number()`, and renders `NotFound` without asking when it isn't an id (`/files/abc`).
 - **Names** of artists and labels, wherever they're listed, go through `Names`, which joins them with commas: "U2, Green Day". An "&" is only ever part of a name, as in "Simon & Garfunkel".
 - **Artists as credited** (slunk's 3_alternate_names.md §7.1): a release's and a track's artists, features and performers, and a credit line's artists, are `CreditedArtist`s, asked for as `artists { artist { id name nameLanguage } creditedAs { name language } }`. `Names` takes them as they come, and shows the name printed, linking to the artist, with the main name in its tooltip: "ALIKA" links to Alika. There's no "*". So an artist page's Releases tab reads "ALIKA – virmalised", and its Appearances and Credits tabs add "as A. Ronnell" after a row's title (`CreditedAsNote`), since they don't show the name otherwise.
 - **Titles** (slunk's 3_alternate_names.md §7) go through `Title`, which sets `lang` to the title's language: a release's `titleLanguage`, and a track's or disc's own, or else the release's. Queries that show a title ask for `titleLanguage`.
@@ -191,7 +192,11 @@ Data comes from two places while the port runs ([design §8](../design/1_introdu
 
 - **The commands** are in `src/bindings.ts`, which tauri-specta generates from the Rust commands whenever a debug build starts ([backend.md](backend.md#commands)). It's committed, and lint and Prettier skip it. Each command returns `{ status: "ok", data } | { status: "error", error }`, and the error is `{ kind, message }`.
 - **Reading:** `useCommand(name, args, options)` from `@/lib/query` is the one way to read. It calls `commands[name](args)` through TanStack Query, with `[name, args]` as its key, and returns the data or throws a `BackendError`, whose `message` `QueryError` shows. A command with no arguments leaves them out: `useCommand("libraryStatus")`. `{ fresh: true }` keeps no cached copy, so a form never starts from out-of-date data.
-- **Writing:** mutations use `useMutation`, with a `mutationFn` that calls `call(name, …args)`, which unwraps a result the same way `useCommand()` does. After every mutation that goes through `useMutation`, the `MutationCache` invalidates every query, and Apollo fetches its active queries again. `call()` on its own invalidates nothing: it's for commands that change no data, like opening a file, or that reset the caches themselves, like opening a library (`lib/library.ts`).
+- **Writing:** mutations use `useMutation`, with a `mutationFn` that calls `call(name, …args)`, which unwraps a result the same way `useCommand()` does. Callers `await mutateAsync()` inside `try`, and show the mutation's `error` with `QueryError`. After every mutation that goes through `useMutation`, the `MutationCache` invalidates every query, and Apollo fetches its active queries again. `call()` on its own invalidates nothing: it's for commands that change no data, like opening a file, or that reset the caches themselves, like opening a library (`lib/library.ts`).
+  - **Work in steps** is one mutation whose `mutationFn` makes the calls, so the caches are invalidated once, at the end: registering files calls `registerFiles` for a few files at a time, for its progress bar, and the list doesn't change under it. Since the steps before a failure are saved, it invalidates on error too.
+  - **Deletes** go to the list, then `queryClient.removeQueries()` for the deleted row's keys, like `["file", { id }]`.
+- **Forms** read with `{ fresh: true }`, so they start from what's saved.
+- **Ids** are numbers in commands and strings in GraphQL. A component both use takes either, like `FileUses`. A picker on commands still gives its options string ids, like the other pickers, for the forms that send GraphQL: `FilePicker` maps each file to `{ id: String(file.id), name: file.path }`. A GraphQL input takes a command's number as it is (`fileId`).
 - **Defaults:** `staleTime: 0`, so a page shows what's cached and fetches again; `retry: false`, since a local call that fails will fail the same way again; and `refetchOnWindowFocus: false`.
 - **No library:** a command that needs a library says `noLibrary` when none is open, and the app goes to `/library`.
 
@@ -212,6 +217,7 @@ Data comes from two places while the port runs ([design §8](../design/1_introdu
 
 - **A file's bytes** come from the app's file protocol: `fileUrl(id)` from `@/lib/query` is `slunk://localhost/files/:id`, for `<img>` and `<audio>`. Audio can seek.
 - **"Open the file"** opens it in its default app, and "Show in Finder" shows it, with `openFile(id)` and `revealFile(id)` from `@/lib/files`, which call commands. A failure shows a toast.
+- **The files pages** (`routes/files/`) and the folder browser call the media commands: `files`, `file`, `folder`, `folderFiles`, `registerFiles`, `updateFile` and `deleteFile` ([backend.md](backend.md#the-media-context)). Their types come from `@/bindings`: `FileType`, `FileUseKind`, `FolderFile`, `FileDetails`.
 
 ### Lists
 
@@ -233,7 +239,7 @@ Lists follow slunk's design §7.2:
 - **One form** serves both create and update, built from shadcn `field`s. It loads first, then renders a form component that keeps the values in state, starting from what loaded.
 - **Labels:** every control has one. A `Select` gets an `id` on its `SelectTrigger`, which the `FieldLabel`'s `htmlFor` points at.
 - **Saving** goes to the read page. When a save fails, the form stays and shows the backend's reason, which is often the database's own message (a CHECK or a trigger).
-- **Pickers** (slunk's design §7.2): artists, labels, formats, media, releases, files and tags are chosen with the pickers in `pickers.tsx`, each a `Picker` that searches the backend as the user types and offers the first 20 matches. Except for files and releases, a picker also offers to create what was typed ("Create artist 'Robbie Nevil'"). Each picker owns its query, so its results stay typed.
+- **Pickers** (slunk's design §7.2): artists, labels, formats, media, releases, files and tags are chosen with the pickers in `pickers.tsx`, each a `Picker` that searches the backend as the user types and offers the first 20 matches. `FilePicker` searches with the `files` command, by path, and the others with GraphQL. Except for files and releases, a picker also offers to create what was typed ("Create artist 'Robbie Nevil'"). Each picker owns its query, so its results stay typed.
   - `Picker` is generic over its option type, so an option can carry more than an id and a name. A `TagOption` also has the tag's type, its id within the type, and whether it's multiple. Its `id` is `type:id`, since ids repeat across types.
   - An option with an `image` shows it before its name, or a placeholder when it's null. The artist and release pickers ask for one, aliasing the field as they alias the name: `image: picture { id }`, `image: cover { id }`.
   - An option's `lang` is its name's language, and its `detail` shows after the name, muted: the label picker sets it to the alternate name the search matched. Typing an alternate name exactly counts as an exact match, so the picker doesn't offer to create a second artist with it.
@@ -399,5 +405,6 @@ npm run screenshot -- /releases releases.png
 - `THEME=dark` or `THEME=light` takes it in that theme. Otherwise the theme follows the system.
 - It waits 1.5 seconds for the page to settle, or `WAIT=<ms>`.
 - The picture is the window's webview at its pixel density: 2560×1600 for the 1280×800 window on a Retina display.
-- To click or type first, any W3C WebDriver client works against `127.0.0.1:4445`. `scripts/screenshot.ts` shows the protocol with `fetch`: a session, `execute/async`, `screenshot`. The element click endpoint sends real input, which Base UI's menus need. Native dialogs, like choosing a library, are outside the webview, so WebDriver can't use them.
+- To click or type first, any W3C WebDriver client works against `127.0.0.1:4445`. `scripts/screenshot.ts` shows the protocol with `fetch`: a session, `execute/async`, `screenshot`. The element click endpoint sends real input, which Base UI's menus need. Element Send Keys types at the end of what a field holds, so clear it first with Element Clear. Native dialogs, like choosing a library, are outside the webview, so WebDriver can't use them.
+- Open menus, popups and dialogs don't show in the picture, though WebDriver finds and clicks what's in them. Check what they say through the DOM, with `execute/async`.
 - A release build can be driven the same way: `npm run tauri build -- --no-bundle --features webdriver`, then run `target/release/liquidslunk`.

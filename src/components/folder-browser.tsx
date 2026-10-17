@@ -1,4 +1,3 @@
-import { useQuery } from "@apollo/client/react"
 import { FolderIcon, FolderUpIcon } from "lucide-react"
 import type { ReactNode } from "react"
 import { Link } from "react-router"
@@ -15,36 +14,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { graphql } from "@/gql"
-import type { FolderQuery } from "@/gql/graphql"
+import type { FolderFile } from "@/bindings"
 import { formatSize } from "@/lib/format"
+import { useCommand } from "@/lib/query"
 import { cn } from "@/lib/utils"
-
-const FolderQuery = graphql(`
-  query Folder($path: String!) {
-    folder(path: $path) {
-      path
-      absolutePath
-      parent
-      folders {
-        name
-        path
-        hasRegisteredFiles
-      }
-      files {
-        name
-        path
-        type
-        sizeBytes
-        file {
-          id
-        }
-      }
-    }
-  }
-`)
-
-export type FolderEntryFile = FolderQuery["folder"]["files"][number]
 
 /**
  * How the browser opens a folder: a link, when the folder is in the URL, or
@@ -71,11 +44,11 @@ export function FolderBrowser({
   /** Buttons for the folder, like "Choose this folder" */
   actions?: ReactNode
   /** Which files can be picked, with `onPick` */
-  pickable?: (file: FolderEntryFile) => boolean
+  pickable?: (file: FolderFile) => boolean
   /** Picks a file, which only files `pickable` accepts offer */
-  onPick?: (file: FolderEntryFile) => void
+  onPick?: (file: FolderFile) => void
 }) {
-  const { data, error } = useQuery(FolderQuery, { variables: { path } })
+  const { data: folder, error } = useCommand("folder", { path })
 
   if (error) {
     return (
@@ -89,8 +62,7 @@ export function FolderBrowser({
       </div>
     )
   }
-  if (!data) return <Skeleton className="h-48 w-full" />
-  const { folder } = data
+  if (!folder) return <Skeleton className="h-48 w-full" />
 
   return (
     <div className="flex flex-col gap-3">

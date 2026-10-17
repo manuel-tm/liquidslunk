@@ -1,6 +1,6 @@
 import { Link } from "react-router"
 
-import type { FileUseKind } from "@/gql/graphql"
+import type { FileUseKind } from "@/bindings"
 
 const USE_LABELS: Record<FileUseKind, string> = {
   track_audio: "Audio of track",
@@ -22,9 +22,10 @@ const USE_URLS: Record<FileUseKind, string> = {
   track_link: "/tracks",
 }
 
+/** A command's `FileUse`, or a GraphQL page's, whose ids are strings. */
 export type FileUse = {
   kind: FileUseKind
-  entityId: string
+  entityId: number | string
   name: string
   note?: string | null
 }

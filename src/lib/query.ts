@@ -121,6 +121,15 @@ export const queryClient: QueryClient = new QueryClient({
   }),
 })
 
+/**
+ * An id from the URL, parsed with `Number()` (design §5.4), or null when it
+ * isn't one, so the page shows `NotFound`.
+ */
+export function idParam(id: string | undefined): number | null {
+  const number = Number(id)
+  return id && Number.isSafeInteger(number) && number > 0 ? number : null
+}
+
 const WINDOWS = navigator.userAgent.includes("Windows")
 
 /** A registered file's bytes, from the app's file protocol (design §5.5). */
