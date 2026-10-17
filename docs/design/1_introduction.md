@@ -15,7 +15,10 @@ This document is the base design. It covers:
 
 **Design docs.** liquidslunk's design lives in `docs/design/`, one numbered document per topic (`N_topic.md`), numbered in the order they're written. This one comes first, and later documents build on it. Design docs are plans while they're designed and built, and an archive once they're complete. What's actually built is documented in the rest of `docs/` ([docs/README.md](../README.md)). Every design doc and its status is listed in [README.md](README.md).
 
-**Backend file names.** Backend files named here by their file name, like `catalog.ts` or `migrator.ts`, are slunk's backend, which phase 0 copies into `legacy/slunk-be/` (§8). Frontend paths, like `src/lib/apollo.ts`, are this repository's, from phase 0 on.
+**Legacy file names.**
+- Backend files named here by their file name, like `catalog.ts` or `migrator.ts`, are slunk's backend, which phase 0 copies into `legacy/slunk-be/` (§8).
+- "slunk's docs" are the ones phase 0 copies into `legacy/docs/`.
+- Frontend paths, like `src/lib/apollo.ts`, are this repository's, from phase 0 on.
 
 ## 1. Summary
 
@@ -64,11 +67,16 @@ slunk as of its last commit is the reference for:
 - **the backend's behavior:** every rule of its contexts, and its error messages;
 - **the routes,** and what each one shows.
 
-**Its code comes along in phase 0:**
-- the frontend goes into `src/`;
-- the backend goes into `legacy/slunk-be/`. It runs as the sidecar, and it's the reference for the port until phase 6 deletes it (§8).
+**Its code and docs come along in phase 0,** all at once (§8):
+- the frontend goes into `src/`, and becomes liquidslunk's;
+- the backend goes into `legacy/slunk-be/`. It runs as the sidecar, and it's the reference for the port;
+- the docs go into `legacy/docs/`, each marked as slunk's.
 
-**Its history and its docs don't come along.** This repository starts with a fresh history. Its docs describe what's built here, as it's built, so each phase documents what it ports.
+Everything in `legacy/` is read-only, and phase 6 deletes it.
+
+**Its history doesn't come along.** This repository starts with a fresh history.
+
+**Docs move with the code.** liquidslunk's own docs, in `docs/`, describe only what's built here. When a phase ports something, it carries the legacy docs' sections about it into `docs/`, rewritten for the new code and checked against it. So a rule is in `docs/` only once liquidslunk does it.
 
 ## 3. Why
 
@@ -161,7 +169,10 @@ liquidslunk/
     src/repo/                connection, repositories, migrator, rebuild_table
     src/repo/migrations/     one module per migration
   crates/slunk-cli/          the db:* commands (§5.6)
-  legacy/slunk-be/           slunk's backend, until phase 6 (§8)
+  legacy/                    slunk as of its last commit, read-only, until phase 6 (§8)
+    README.md                what this folder is
+    docs/                    slunk's docs, each marked as legacy
+    slunk-be/                slunk's backend
   dev-library/               a scratch library for development
   temp/                      local assets for prompting, never committed
 ```
@@ -311,7 +322,7 @@ Saving the choice is what makes it last. The next launch opens the same library 
 
 ### 6.2 The settings file
 
-- **Where:** `settings.json` in the app's config folder (`app_config_dir()`; on macOS, `~/Library/Application Support/<identifier>/`).
+- **Where:** `settings.json` in the app's config folder (`app_config_dir()`; on macOS, `~/Library/Application Support/com.liquidslunk.desktop/`).
 - **Who reads it:** Rust owns it. The webview never reads it, only calls commands: `library_status`, `open_library`, `create_library`, `close_library` and `recent_libraries`. So it needs no capability or store plugin.
 - **When it's written:** atomically (a temporary file, then a rename), and only once a library has opened, so a library that fails to open never becomes the saved one.
 
@@ -407,7 +418,15 @@ A converted route has no `graphql()` documents left, and its DTOs are the port's
 ## 8. The transition
 
 The backend moves one context at a time. To keep every route working in the meantime, slunk's backend runs beside the app, in development only.
-- **`legacy/slunk-be`** is slunk's backend as of its last commit, with one change: `SLUNK_SKIP_MIGRATE=1` skips the migration on start, since Rust owns migrations from phase 0.
+- **`legacy/`** is slunk as of its last commit, laid out as slunk was, so the docs' links to each other still work.
+  - **`legacy/README.md`** is the one new file. It says what the folder is, that it's read-only, and that liquidslunk's rules are the root `AGENTS.md`'s.
+  - **`legacy/docs/`** is slunk's docs, copied whole. Each file starts with one added line, and nothing else in it changes:
+
+    > **Legacy:** this is slunk's documentation, copied for the port. It describes `legacy/slunk-be/` and slunk's frontend before the port, not liquidslunk. Its citations ("design §4.3") mean slunk's design docs, in `legacy/docs/design/`. It's read-only, and phase 6 deletes it.
+
+  - **`legacy/slunk-be/`** is slunk's backend, with one change: `SLUNK_SKIP_MIGRATE=1` skips the migration on start, since Rust owns migrations from phase 0.
+  - **slunk's `AGENTS.md` and `CLAUDE.md` aren't copied.** Agents load instruction files from the folders they work in, and slunk's instructions aren't liquidslunk's.
+  - **slunk's frontend isn't in `legacy/`.** It's in `src/`, where it becomes liquidslunk's. The legacy docs' paths into `slunk-fe/` mean what's now in `src/`, as it was before the port.
 - **The sidecar.**
   - When a library opens in a debug build, `src-tauri/src/sidecar.rs` starts `node legacy/slunk-be/src/server.ts` on port 4000, with `SLUNK_DB` and `SLUNK_SKIP_MIGRATE=1`.
   - Vite proxies `/graphql` to it, as the frontend expects already, so Apollo needs no change and there's no CORS.
@@ -421,14 +440,16 @@ The backend moves one context at a time. To keep every route working in the mean
 
 ## 9. Phases
 
-Each phase is a vertical slice, as in slunk: it ports a context with its commands, converts the routes that use it, documents what it built, and ends with something usable. A phase's routes make no GraphQL requests at its end.
+Each phase is a vertical slice, as in slunk: it ports a context with its commands, converts the routes that use it, documents what it built, and ends with something usable. Its docs are the legacy docs' sections for what it ported, rewritten for the new code and checked against it (§2.1). At the end of a phase, its routes make no GraphQL requests, and every code check in AGENTS.md's "Before you finish" passes. Phase 0 adds the checks, and phase 6 leaves their final list.
 
 **Phase 0: Shell and library**
 - The repository:
-  - slunk's frontend at the root, and its backend in `legacy/slunk-be/`;
-  - a fresh history: slunk's code is copied in, not its commits;
+  - all of slunk copied at once, from its last commit: its frontend at the root, and its backend and docs in `legacy/` (§8);
+  - only the files git tracks, with `git archive`, so nothing local comes along: no `node_modules/`, builds, `.env`, databases, or `temp/` files;
+  - a fresh history: slunk's files are copied in, not its commits;
   - `dev-library/`, git-ignored except its `.gitkeep`.
-- The Tauri 2 scaffold, the Cargo workspace, `crates/slunk` and `crates/slunk-cli`, with Node and Rust pinned in `mise.toml`.
+- The Tauri 2 scaffold, named liquidslunk, with the identifier `com.liquidslunk.desktop` (§12).
+- The Cargo workspace, `crates/slunk` and `crates/slunk-cli`, with Node and Rust pinned in `mise.toml`.
 - Rust:
   - the connection;
   - the migrator, `rebuild_table`, the eight migrations and their parity tests (§5.6);
@@ -452,14 +473,20 @@ Each phase is a vertical slice, as in slunk: it ports a context with its command
 - Choose how to take screenshots (§10).
 - Docs, as `docs/README.md` lays them out:
   - `docs/development/getting-started.md`: setting up Node, Rust and Tauri, and running the app;
-  - `docs/development/frontend.md`: the frontend as it's moved in, with its conventions;
-  - `docs/development/backend.md`: the Rust backend so far, and the legacy backend while it runs;
-  - `docs/reference/database.md`: the schema the migrations build, and the rules it enforces.
+  - `docs/development/frontend.md`: the frontend as it's moved in, with its conventions, carried over from the legacy frontend doc;
+  - `docs/development/backend.md`: the Rust backend so far, and the sidecar while it runs;
+  - `docs/reference/database.md`: the schema the ported migrations build, and the rules it enforces, carried over from the legacy reference and checked against the parity tests.
 - AGENTS.md:
-  - "Where things are" lists the code's folders;
-  - "Before you finish" gets the code checks: `npm run typecheck`, `npm run lint` and `npm run format` for the frontend; `cargo fmt --check`, `cargo clippy` and `cargo test` for Rust; the bindings regenerated; migrations apply and roll back cleanly through the CLI; the new way to take screenshots.
+  - "Where things are" lists the code's folders, and `legacy/`: it's read-only, its docs are slunk's, and their rules don't apply;
+  - "Before you finish" gets the code checks:
+    - `npm run typecheck`, `npm run lint` and `npm run format` for the frontend;
+    - `cargo fmt --check`, `cargo clippy` and `cargo test` for Rust;
+    - the bindings regenerated;
+    - migrations apply and roll back cleanly through the CLI;
+    - `npm run codegen` after changing a GraphQL document, until phase 6;
+    - a screenshot of any change that shows in the UI, taken the way phase 0 settles on.
 - *Exit:*
-  - The first launch asks for a library. Choosing `dev-library/slunk.db` backs it up, migrates it and shows the whole app working, through the sidecar.
+  - The first launch asks for a library. Opening a slunk library in `dev-library/` that needs migrating backs it up, migrates it and shows the whole app working, through the sidecar. Creating a new library there works too.
   - A restart opens it without asking, and switching libraries works.
   - The migration parity tests pass.
   - Audio plays and seeks on the release page.
@@ -521,20 +548,23 @@ Each phase is a vertical slice, as in slunk: it ports a context with its command
 - Port `library_check.ts`, `relinkFiles` and `rehashFiles`, then convert `/library-check`.
 - Port `seeds.ts` to `slunk-cli seed`.
 - Delete:
-  - `legacy/`, the sidecar, the `/graphql` proxy and `SLUNK_SKIP_MIGRATE`;
+  - `legacy/` (slunk's backend and docs), the sidecar, the `/graphql` proxy and `SLUNK_SKIP_MIGRATE`;
   - Apollo, `graphql`, graphql-codegen and `src/gql/`.
 - Docs:
   - `backend.md` describes only the Rust backend;
   - the Data section of `frontend.md` describes commands and TanStack Query;
-  - AGENTS.md drops GraphQL and the legacy backend.
-- A release build: icons, the app's name and identifier, and the `.app` and `.dmg`.
+  - AGENTS.md drops GraphQL and `legacy/`. Its "Before you finish" then holds the final code checks, for the frontend and the Rust backend, with `npm run codegen` gone.
+- A release build: icons, and the `.app` and `.dmg`, signed ad hoc (§12).
 - Mark this design complete.
-- *Exit:* the installed app opens the real library and does everything slunk did. `grep -rl 'graphql(' src` finds nothing, and nothing listens on a port.
+- *Exit:*
+  - The installed app opens the real library and does everything slunk did.
+  - `grep -rl 'graphql(' src` finds nothing, and nothing listens on a port.
+  - Every code check in AGENTS.md's "Before you finish" passes on a fresh clone.
 
 ## 10. Parity and risks
 
 **Checking behavior.**
-- Each phase documents its context in `docs/development/backend.md` as it ports it, rule by rule, read from the legacy code. Each rule gets a Rust test, so the docs and the tests are the checklist.
+- slunk's backend doc, `legacy/docs/development/backend.md`, describes the backend rule by rule. Each phase carries its context's rules into `docs/development/backend.md` as it ports them, and each rule gets a Rust test. So the legacy doc is the checklist, and a rule moves only once the code and a test do it.
 - For writes, a script runs the same mutations on two copies of a seeded library, one through GraphQL and one through commands, then compares their `.dump`s, leaving out `inserted_at`, `updated_at` and `applied_at`. It's written in phase 1 and reused after that.
 
 **Details that have to match exactly.** If one is off, the first library check after the switch flags every file, or an import orders its tracks differently.
@@ -585,13 +615,19 @@ Each phase is a vertical slice, as in slunk: it ports a context with its command
 - **tauri-plugin-store for the settings.** It works, but only Rust reads the settings, before any page loads. A file and serde do the job without a plugin or a capability.
 - **TanStack Router.** React Router 8 is already in use, in data mode, and does what's needed.
 
-## 12. Open questions
+## 12. Settled questions
 
-Each has a proposed answer, which the phases above assume.
+1. **Platforms:** macOS only for now. Nothing in this design is macOS-only, and Windows and Linux get checked when they're wanted.
+2. **Repositories are plain functions,** not traits.
+   - slunk's design asked for repositories that let the database be swapped later, which in Rust means traits and generics throughout.
+   - Here, repositories are functions over a `&Connection`, in the same modules: contexts call only repositories, and commands call only contexts.
+   - That keeps the boundaries without the traits. They can come back if a second database ever does.
+3. **Names:**
+   - The app is called liquidslunk, and its bundle identifier is `com.liquidslunk.desktop`. The identifier names the config folder that holds the settings (§6.2), so it doesn't change.
+   - The database keeps slunk's names, `slunk.db` and `slunk-backups/`, so existing libraries open as they are, and the backup naming and retention rules stay.
+4. **No release builds before the cut-over.** If one is ever needed sooner, the sidecar gets packaged as a Node single executable with better-sqlite3's addon as a bundled resource, which is a phase of its own.
+5. **Signing:** ad hoc, which is enough for one machine. Distributing the app needs a Developer ID and notarization, revisited when the app is shared.
 
-1. **Platforms.** macOS only for now? *Proposed: yes.* Nothing in this design is macOS-only, and Windows and Linux get checked when they're wanted.
-2. **Repository traits.** slunk's design asked for repositories that let the database be swapped later. In Rust, that means traits and generics throughout. *Proposed: plain functions over a `&Connection`, in the same modules, with contexts calling only repositories and commands calling only contexts.* That keeps the boundaries without the traits, and they can come back if a second database ever does. It changes a decision slunk was built on, so it needs a yes.
-3. **Names.** The app's display name and bundle identifier. *Proposed:* the database keeps the names `slunk.db` and `slunk-backups/`, so existing libraries open as they are, and the backup naming and retention rules stay.
-4. **Release builds before the cut-over.** Are they needed? *Proposed: no.* If they are, the sidecar gets packaged as a Node single executable with better-sqlite3's addon as a bundled resource, which is a phase of its own.
-5. **Signing and notarization.** For your machine only, an ad-hoc signature is enough. Distributing the app needs a Developer ID. *Proposed: ad hoc, and revisit when the app is shared.*
-6. **Screenshot tooling.** WebDriver in debug builds, or `mockIPC` fixtures (§10). *Proposed: decide in phase 0, after trying WebDriver first.*
+Still open:
+
+6. **Screenshot tooling:** WebDriver in debug builds, or `mockIPC` fixtures (§10). Phase 0 decides, trying WebDriver first.

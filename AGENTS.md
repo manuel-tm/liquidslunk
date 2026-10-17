@@ -47,7 +47,7 @@ The full process is in [docs/README.md](docs/README.md#how-we-work).
 
 liquidslunk ports slunk's schema, behavior and routes ([design §2.1](docs/design/1_introduction.md#21-what-the-port-keeps)). slunk's own repository will be deleted once the port is done, so this one has to stand on its own:
 - Read slunk's source for how something worked, when it's available to you. Never point to it: no local path, relative path or link to slunk's repository in docs, design docs, code, comments, commit messages or PR descriptions. For anyone else, and later for everyone, it would point to nothing.
-- Never import, symlink or copy from it at build or run time. What liquidslunk needs from slunk is copied into this repository, as phase 0 copies its frontend and backend, or written into the docs.
+- Never import, symlink or copy from it at build or run time. What liquidslunk needs from slunk is copied into this repository, as phase 0 copies its code and docs ([design §8](docs/design/1_introduction.md#8-the-transition)), or written into the docs.
 - Naming slunk is fine ("a port of slunk's import"). Pointing at its files isn't.
 
 ### Never write to the user's music files
@@ -76,7 +76,11 @@ Don't implement export or sync, and don't add tables for it. It needs its own de
 
 ## Before you finish
 
-- **Code:** there's none yet. Phase 0 of `1_introduction.md` adds the checks for the frontend and the backend here.
+- **Code:** there's no code yet, so there's nothing to run. Phase 0 of `1_introduction.md` brings the code in, and with it the checks to run here before finishing:
+  - typecheck, lint and format for the frontend;
+  - `cargo fmt`, `cargo clippy` and `cargo test` for Rust;
+  - migrations applying and rolling back cleanly;
+  - a screenshot of any change that shows in the UI.
 - **Docs:** everything in `docs/` outside `docs/design/` matches the code after your change. A design change made while building that design's phases is recorded as an appendix, and no other design doc was touched.
 - **References:** nothing you wrote points to a file in slunk's repository or in `temp/`.
 - **Report:** say what you verified and what you didn't.

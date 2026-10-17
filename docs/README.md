@@ -2,7 +2,9 @@
 
 This folder documents liquidslunk as it's actually built, and it's kept up to date with the code (see [Keeping docs up to date](#keeping-docs-up-to-date)). Plans live separately, in [`design/`](design/).
 
-liquidslunk is a port of slunk, an earlier version of the same app. slunk's docs aren't carried over: these docs describe what's built here, as it's built, and stand on their own.
+liquidslunk is a port of slunk, an earlier version of the same app. slunk's own docs aren't these docs:
+- Phase 0 of the base design copies them into `legacy/docs/`, each marked as slunk's, for reference while the port runs.
+- These docs describe only what's built here, as it's built. Each phase carries over what it ports, rewritten for the new code.
 
 ## Contents
 
