@@ -1,0 +1,3 @@
+# Local prompting assets: the folder is committed, its contents never are (see AGENTS.md)
+/temp/*
+!/temp/.gitkeep
