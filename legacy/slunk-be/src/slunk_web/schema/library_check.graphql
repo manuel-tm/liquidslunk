@@ -1,0 +1,53 @@
+extend type Query {
+  "Runs the library check: reads every registered file's size and mtime, and lists the folders they're in. When files are missing, it also scans the library and hashes files of the same size, to find where they moved. Nothing is written."
+  libraryCheck: LibraryCheck!
+}
+
+extend type Mutation {
+  "Points files that moved at their new paths, reading each one again."
+  relinkFiles(moves: [FileMoveInput!]!): [File!]!
+  "Reads changed files again: their size, mtime and hash, and the duration of the track each one is the audio of."
+  rehashFiles(ids: [ID!]!): [File!]!
+}
+
+"The library check's results, by kind of problem."
+type LibraryCheck {
+  "How many registered files were checked."
+  fileCount: Int!
+  "Registered files that aren't on disk anymore."
+  missingFiles: [MissingFile!]!
+  "Registered files whose size or mtime changed since they were read."
+  changedFiles: [ChangedFile!]!
+  "Files that aren't registered, in folders that hold registered files."
+  unregisteredFolders: [UnregisteredFolder!]!
+  "Releases with no artist."
+  releasesWithoutArtists: [Release!]!
+  "Tracks on various-artists releases with no non-featured artist of their own, so nobody performs them."
+  tracksWithoutPerformers: [Track!]!
+}
+
+type MissingFile {
+  file: File!
+  "Unregistered files with the same content (size and hash), where it may have moved. Those with the same name come first."
+  movedTo: [String!]!
+  "Where it most likely moved: the only candidate, or the only one with the same name. Null when that's unclear, or nothing matched."
+  likelyMove: String
+}
+
+type ChangedFile {
+  file: File!
+  "The size on disk now. The file's own `sizeBytes` is what was read."
+  sizeBytes: Float!
+  "The mtime on disk now, in epoch seconds."
+  mtime: Float!
+}
+
+type UnregisteredFolder {
+  path: String!
+  files: [FolderFile!]!
+}
+
+input FileMoveInput {
+  fileId: ID!
+  path: String!
+}

@@ -1,0 +1,8 @@
+node_modules/
+
+# Local settings, see .env.example
+.env
+
+# Scratch library for development: only its placeholder is committed
+/dev-library/*
+!/dev-library/.gitkeep

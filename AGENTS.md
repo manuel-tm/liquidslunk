@@ -12,14 +12,17 @@ It's a port of slunk, an earlier version of the same app, with a Node backend an
 
 - **[`docs/design/`](docs/design/): design docs.** These are the plans, used for planning and prompting, and an archive once they're built. [`docs/design/README.md`](docs/design/README.md) lists them with their status. [`1_introduction.md`](docs/design/1_introduction.md) is the base design: the port to Tauri 2, its architecture and its phases. Read its relevant sections before changing the backend's structure, the commands, how the library is chosen, the migrations, or anything that touches files.
 - **The rest of [`docs/`](docs/README.md): what's actually built,** kept up to date with the code. Start at `docs/README.md`.
+- **`src/`: the frontend,** React in the app's webview. How it's built: [`docs/development/frontend.md`](docs/development/frontend.md).
+- **`src-tauri/`: the app,** Tauri, with its commands, the library and the file protocol. **`crates/slunk/`: the domain and its database,** with no Tauri dependency: the migrations and their parity tests. **`crates/slunk-cli/`: the database commands.** How they're built: [`docs/development/backend.md`](docs/development/backend.md). The schema as built: [`docs/reference/database.md`](docs/reference/database.md).
+- **`legacy/`: slunk as of its last commit, read-only, until phase 6.** `legacy/slunk-be/` is slunk's backend, which the app runs as its sidecar for the routes not ported yet, and the reference for porting the backend. `legacy/docs/` is slunk's docs. Never edit anything in `legacy/`. Its docs describe slunk, not liquidslunk, and their rules don't apply here: this file's do.
 - **`temp/`: local assets for prompting, never committed.** See [Never reference files in `temp/`](#never-reference-files-in-temp).
 - **`dev-library/`: scratch libraries for development, never committed.** See [Never commit or depend on `dev-library/`](#never-commit-or-depend-on-dev-library).
 
-There's no code yet. Phase 0 of `1_introduction.md` brings it in, and adds its folders here.
+How to set up and run the app: [`docs/development/getting-started.md`](docs/development/getting-started.md).
 
 Work happens in phases. Each design doc plans its own, numbered from 0, so a phase is named with its doc. Stay within the current phase unless asked otherwise.
 
-When citing a design doc in code comments or docs, "design §5.4" and "phase 2" with no document named mean `1_introduction.md`. Name any later design doc: "2_topic.md §3", "phase 0 of 2_topic.md".
+When citing a design doc in code comments or docs, "design §5.4" and "phase 2" with no document named mean `1_introduction.md`. Name any later design doc: "2_topic.md §3", "phase 0 of 2_topic.md". slunk's design docs, in `legacy/docs/design/`, are cited with slunk's name: "slunk's design §7.4", "slunk's 3_alternate_names.md §7.1".
 
 ## Workflow: design → code → docs
 
@@ -84,11 +87,13 @@ Don't implement export or sync, and don't add tables for it. It needs its own de
 
 ## Before you finish
 
-- **Code:** there's no code yet, so there's nothing to run. Phase 0 of `1_introduction.md` brings the code in, and with it the checks to run here before finishing:
-  - typecheck, lint and format for the frontend;
-  - `cargo fmt`, `cargo clippy` and `cargo test` for Rust;
-  - migrations applying and rolling back cleanly;
-  - a screenshot of any change that shows in the UI.
+- **Code:** these pass, from the repository's root:
+  - **Frontend:** `npm run typecheck` and `npm run lint` pass, and `npm run format` has been run.
+  - **Rust:** `cargo fmt --check`, `cargo clippy --workspace --all-targets` with no warnings, and `cargo test --workspace`.
+  - **Bindings:** after changing a command or its types, a debug build has been started (`npm run tauri dev`), so `src/bindings.ts` is regenerated, and the change is in it.
+  - **Migrations** apply and roll back cleanly through the CLI, on a scratch database: `npm run db:migrate`, `npm run db:rollback` and `npm run db:migrate` again, with `--db`.
+  - **GraphQL,** until phase 6: after changing a GraphQL document, `npm run format`, then `npm run codegen`.
+  - **Screenshots:** a change that shows in the UI has been looked at in a screenshot of the running app, taken through WebDriver: see [Screenshots](docs/development/frontend.md#screenshots).
 - **Docs:** everything in `docs/` outside `docs/design/` matches the code after your change. A design change made while building that design's phases is recorded as an appendix, and no other design doc was touched.
 - **References:** nothing you wrote points to a file in slunk's repository or in `temp/`.
 - **Report:** say what you verified and what you didn't.

@@ -1,0 +1,14 @@
+node_modules/
+coverage/
+.pnpm-store/
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+target/
+
+# slunk, as of its last commit: read-only
+legacy/
+
+# Generated
+src/gql/
+src/bindings.ts

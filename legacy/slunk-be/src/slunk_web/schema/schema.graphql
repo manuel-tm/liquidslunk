@@ -1,0 +1,12 @@
+type Query {
+  "Whether the backend is up, and which database it serves."
+  health: Health!
+}
+
+"The backend's state, shown on the dashboard."
+type Health {
+  "The database file in use (SLUNK_DB), as an absolute path."
+  database: String!
+  "The latest applied migration, or null before the first one."
+  migration: String
+}

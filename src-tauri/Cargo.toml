@@ -1,0 +1,44 @@
+[package]
+name = "liquidslunk"
+description = "A local music library manager"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "liquidslunk_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# An embedded WebDriver server on 127.0.0.1:4445, for screenshots and checks:
+# `npm run tauri dev -- --features webdriver`. Never ship a build with it.
+webdriver = ["dep:tauri-plugin-wdio-webdriver"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.3", features = [] }
+
+[dependencies]
+slunk.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+mime_guess = "2.0.5"
+regex = "1.13.1"
+tauri = { version = "2.12.4", features = ["specta"] }
+tauri-plugin-dialog = "2.8.3"
+tauri-plugin-opener = "2.7.2"
+tauri-plugin-single-instance = "2.5.4"
+# Still release candidates, so pinned exactly (design §10)
+specta = { version = "=2.0.0-rc.25", features = ["derive"] }
+specta-typescript = "=0.0.12"
+tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
+tauri-plugin-wdio-webdriver = { version = "=1.5.0", optional = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile.workspace = true

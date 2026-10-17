@@ -1,0 +1,812 @@
+[
+  {
+    "type": "table",
+    "name": "migrations",
+    "tbl_name": "migrations",
+    "sql": "CREATE TABLE \"migrations\" (\"id\" integer not null primary key, \"name\" text not null unique, \"applied_at\" integer default (unixepoch()) not null) strict"
+  },
+  {
+    "type": "index",
+    "name": "sqlite_autoindex_migrations_1",
+    "tbl_name": "migrations",
+    "sql": null
+  },
+  {
+    "type": "table",
+    "name": "files",
+    "tbl_name": "files",
+    "sql": "CREATE TABLE \"files\" (\"id\" integer not null primary key autoincrement, \"path\" text not null check (path <> '' AND substr(path, 1, 1) <> '/'), \"type\" text not null check (type IN ('music', 'image', 'other')), \"size_bytes\" integer not null check (size_bytes >= 0), \"mtime\" integer not null, \"sha256\" text not null check (length(sha256) = 64 AND sha256 NOT GLOB '*[^0-9a-f]*'), \"inserted_at\" integer default (unixepoch()) not null, \"updated_at\" integer default (unixepoch()) not null) strict"
+  },
+  {
+    "type": "table",
+    "name": "sqlite_sequence",
+    "tbl_name": "sqlite_sequence",
+    "sql": "CREATE TABLE sqlite_sequence(name,seq)"
+  },
+  {
+    "type": "index",
+    "name": "files_path_index",
+    "tbl_name": "files",
+    "sql": "CREATE UNIQUE INDEX \"files_path_index\" on \"files\" (\"path\")"
+  },
+  {
+    "type": "index",
+    "name": "files_sha256_index",
+    "tbl_name": "files",
+    "sql": "CREATE INDEX \"files_sha256_index\" on \"files\" (\"sha256\")"
+  },
+  {
+    "type": "table",
+    "name": "artists",
+    "tbl_name": "artists",
+    "sql": "CREATE TABLE \"artists\" (\"id\" integer not null primary key autoincrement, \"name\" text not null check (\"name\" <> '' AND \"name\" = trim(\"name\")), \"picture\" integer references \"files\" (\"id\") on delete restrict, \"inserted_at\" integer default (unixepoch()) not null, \"updated_at\" integer default (unixepoch()) not null, \"name_language\" text check ((\"name_language\" GLOB '[a-z][a-z]' OR \"name_language\" GLOB '[a-z][a-z][a-z]'\n    OR \"name_language\" GLOB '[a-z][a-z]-?*' OR \"name_language\" GLOB '[a-z][a-z][a-z]-?*')\n    AND \"name_language\" NOT GLOB '*[^A-Za-z0-9-]*'\n    AND \"name_language\" NOT GLOB '*--*' AND \"name_language\" NOT GLOB '*-'\n    AND \"name_language\" <> 'und' AND \"name_language\" NOT GLOB 'und-*')) strict"
+  },
+  {
+    "type": "index",
+    "name": "artists_name_index",
+    "tbl_name": "artists",
+    "sql": "CREATE INDEX \"artists_name_index\" on \"artists\" (\"name\" COLLATE NOCASE)"
+  },
+  {
+    "type": "index",
+    "name": "artists_picture_index",
+    "tbl_name": "artists",
+    "sql": "CREATE INDEX \"artists_picture_index\" on \"artists\" (\"picture\")"
+  },
+  {
+    "type": "table",
+    "name": "labels",
+    "tbl_name": "labels",
+    "sql": "CREATE TABLE \"labels\" (\"id\" integer not null primary key autoincrement, \"name\" text not null check (\"name\" <> '' AND \"name\" = trim(\"name\")), \"picture\" integer references \"files\" (\"id\") on delete restrict, \"inserted_at\" integer default (unixepoch()) not null, \"updated_at\" integer default (unixepoch()) not null, \"name_language\" text check ((\"name_language\" GLOB '[a-z][a-z]' OR \"name_language\" GLOB '[a-z][a-z][a-z]'\n    OR \"name_language\" GLOB '[a-z][a-z]-?*' OR \"name_language\" GLOB '[a-z][a-z][a-z]-?*')\n    AND \"name_language\" NOT GLOB '*[^A-Za-z0-9-]*'\n    AND \"name_language\" NOT GLOB '*--*' AND \"name_language\" NOT GLOB '*-'\n    AND \"name_language\" <> 'und' AND \"name_language\" NOT GLOB 'und-*')) strict"
+  },
+  {
+    "type": "index",
+    "name": "labels_name_index",
+    "tbl_name": "labels",
+    "sql": "CREATE INDEX \"labels_name_index\" on \"labels\" (\"name\" COLLATE NOCASE)"
+  },
+  {
+    "type": "index",
+    "name": "labels_picture_index",
+    "tbl_name": "labels",
+    "sql": "CREATE INDEX \"labels_picture_index\" on \"labels\" (\"picture\")"
+  },
+  {
+    "type": "table",
+    "name": "releases",
+    "tbl_name": "releases",
+    "sql": "CREATE TABLE \"releases\" (\"id\" integer not null primary key autoincrement, \"title\" text not null check (\"title\" <> '' AND \"title\" = trim(\"title\")), \"release_date\" integer, \"release_date_precision\" text check (release_date_precision IN ('year', 'month', 'day')), \"catalog_number\" text check (\"catalog_number\" <> '' AND \"catalog_number\" = trim(\"catalog_number\")) COLLATE NOCASE, \"cover_picture\" integer references \"files\" (\"id\") on delete restrict, \"various_artists\" integer default 0 not null check (various_artists IN (0, 1)), \"inserted_at\" integer default (unixepoch()) not null, \"updated_at\" integer default (unixepoch()) not null, \"title_language\" text check ((\"title_language\" GLOB '[a-z][a-z]' OR \"title_language\" GLOB '[a-z][a-z][a-z]'\n    OR \"title_language\" GLOB '[a-z][a-z]-?*' OR \"title_language\" GLOB '[a-z][a-z][a-z]-?*')\n    AND \"title_language\" NOT GLOB '*[^A-Za-z0-9-]*'\n    AND \"title_language\" NOT GLOB '*--*' AND \"title_language\" NOT GLOB '*-'\n    AND \"title_language\" <> 'und' AND \"title_language\" NOT GLOB 'und-*'), constraint \"releases_release_date_precision_set\" check ((release_date IS NULL) = (release_date_precision IS NULL)), constraint \"releases_release_date_matches_precision\" check (release_date IS NULL OR (\n        release_date % 86400 = 0\n        AND (release_date_precision <> 'month'\n             OR strftime('%d', release_date, 'unixepoch') = '01')\n        AND (release_date_precision <> 'year'\n             OR strftime('%m-%d', release_date, 'unixepoch') = '01-01')\n      ))) strict"
+  },
+  {
+    "type": "index",
+    "name": "releases_title_index",
+    "tbl_name": "releases",
+    "sql": "CREATE INDEX \"releases_title_index\" on \"releases\" (\"title\" COLLATE NOCASE)"
+  },
+  {
+    "type": "index",
+    "name": "releases_release_date_index",
+    "tbl_name": "releases",
+    "sql": "CREATE INDEX \"releases_release_date_index\" on \"releases\" (\"release_date\")"
+  },
+  {
+    "type": "index",
+    "name": "releases_catalog_number_index",
+    "tbl_name": "releases",
+    "sql": "CREATE INDEX \"releases_catalog_number_index\" on \"releases\" (\"catalog_number\")"
+  },
+  {
+    "type": "index",
+    "name": "releases_cover_picture_index",
+    "tbl_name": "releases",
+    "sql": "CREATE INDEX \"releases_cover_picture_index\" on \"releases\" (\"cover_picture\")"
+  },
+  {
+    "type": "table",
+    "name": "tracks",
+    "tbl_name": "tracks",
+    "sql": "CREATE TABLE \"tracks\" (\"id\" integer not null primary key autoincrement, \"title\" text not null check (\"title\" <> '' AND \"title\" = trim(\"title\")), \"duration_ms\" integer check (duration_ms >= 0), \"track_number\" integer not null check (track_number > 0), \"cd_number\" integer default 1 not null check (cd_number > 0), \"release_id\" integer not null references \"releases\" (\"id\") on delete restrict, \"file_id\" integer not null references \"files\" (\"id\") on delete restrict, \"inserted_at\" integer default (unixepoch()) not null, \"updated_at\" integer default (unixepoch()) not null, \"title_language\" text check ((\"title_language\" GLOB '[a-z][a-z]' OR \"title_language\" GLOB '[a-z][a-z][a-z]'\n    OR \"title_language\" GLOB '[a-z][a-z]-?*' OR \"title_language\" GLOB '[a-z][a-z][a-z]-?*')\n    AND \"title_language\" NOT GLOB '*[^A-Za-z0-9-]*'\n    AND \"title_language\" NOT GLOB '*--*' AND \"title_language\" NOT GLOB '*-'\n    AND \"title_language\" <> 'und' AND \"title_language\" NOT GLOB 'und-*')) strict"
+  },
+  {
+    "type": "index",
+    "name": "tracks_release_id_cd_number_track_number_index",
+    "tbl_name": "tracks",
+    "sql": "CREATE UNIQUE INDEX \"tracks_release_id_cd_number_track_number_index\" on \"tracks\" (\"release_id\", \"cd_number\", \"track_number\")"
+  },
+  {
+    "type": "index",
+    "name": "tracks_file_id_index",
+    "tbl_name": "tracks",
+    "sql": "CREATE UNIQUE INDEX \"tracks_file_id_index\" on \"tracks\" (\"file_id\")"
+  },
+  {
+    "type": "table",
+    "name": "labels_releases",
+    "tbl_name": "labels_releases",
+    "sql": "CREATE TABLE \"labels_releases\" (\"id\" integer not null primary key, \"label_id\" integer not null references \"labels\" (\"id\") on delete restrict, \"release_id\" integer not null references \"releases\" (\"id\") on delete cascade, \"position\" integer not null check (position >= 0)) strict"
+  },
+  {
+    "type": "index",
+    "name": "labels_releases_release_id_label_id_index",
+    "tbl_name": "labels_releases",
+    "sql": "CREATE UNIQUE INDEX \"labels_releases_release_id_label_id_index\" on \"labels_releases\" (\"release_id\", \"label_id\")"
+  },
+  {
+    "type": "index",
+    "name": "labels_releases_label_id_index",
+    "tbl_name": "labels_releases",
+    "sql": "CREATE INDEX \"labels_releases_label_id_index\" on \"labels_releases\" (\"label_id\")"
+  },
+  {
+    "type": "table",
+    "name": "release_formats",
+    "tbl_name": "release_formats",
+    "sql": "CREATE TABLE \"release_formats\" (\"id\" integer not null primary key, \"name\" text not null check (\"name\" <> '' AND \"name\" = trim(\"name\")) COLLATE NOCASE) strict"
+  },
+  {
+    "type": "index",
+    "name": "release_formats_name_index",
+    "tbl_name": "release_formats",
+    "sql": "CREATE UNIQUE INDEX \"release_formats_name_index\" on \"release_formats\" (\"name\")"
+  },
+  {
+    "type": "table",
+    "name": "release_formats_releases",
+    "tbl_name": "release_formats_releases",
+    "sql": "CREATE TABLE \"release_formats_releases\" (\"id\" integer not null primary key, \"format_id\" integer not null references \"release_formats\" (\"id\") on delete restrict, \"release_id\" integer not null references \"releases\" (\"id\") on delete cascade) strict"
+  },
+  {
+    "type": "index",
+    "name": "release_formats_releases_release_id_format_id_index",
+    "tbl_name": "release_formats_releases",
+    "sql": "CREATE UNIQUE INDEX \"release_formats_releases_release_id_format_id_index\" on \"release_formats_releases\" (\"release_id\", \"format_id\")"
+  },
+  {
+    "type": "index",
+    "name": "release_formats_releases_format_id_index",
+    "tbl_name": "release_formats_releases",
+    "sql": "CREATE INDEX \"release_formats_releases_format_id_index\" on \"release_formats_releases\" (\"format_id\")"
+  },
+  {
+    "type": "table",
+    "name": "release_media",
+    "tbl_name": "release_media",
+    "sql": "CREATE TABLE \"release_media\" (\"id\" integer not null primary key, \"name\" text not null check (\"name\" <> '' AND \"name\" = trim(\"name\")) COLLATE NOCASE) strict"
+  },
+  {
+    "type": "index",
+    "name": "release_media_name_index",
+    "tbl_name": "release_media",
+    "sql": "CREATE UNIQUE INDEX \"release_media_name_index\" on \"release_media\" (\"name\")"
+  },
+  {
+    "type": "table",
+    "name": "release_media_releases",
+    "tbl_name": "release_media_releases",
+    "sql": "CREATE TABLE \"release_media_releases\" (\"id\" integer not null primary key, \"medium_id\" integer not null references \"release_media\" (\"id\") on delete restrict, \"release_id\" integer not null references \"releases\" (\"id\") on delete cascade) strict"
+  },
+  {
+    "type": "index",
+    "name": "release_media_releases_release_id_medium_id_index",
+    "tbl_name": "release_media_releases",
+    "sql": "CREATE UNIQUE INDEX \"release_media_releases_release_id_medium_id_index\" on \"release_media_releases\" (\"release_id\", \"medium_id\")"
+  },
+  {
+    "type": "index",
+    "name": "release_media_releases_medium_id_index",
+    "tbl_name": "release_media_releases",
+    "sql": "CREATE INDEX \"release_media_releases_medium_id_index\" on \"release_media_releases\" (\"medium_id\")"
+  },
+  {
+    "type": "table",
+    "name": "files_releases",
+    "tbl_name": "files_releases",
+    "sql": "CREATE TABLE \"files_releases\" (\"id\" integer not null primary key, \"release_id\" integer not null references \"releases\" (\"id\") on delete cascade, \"file_id\" integer not null references \"files\" (\"id\") on delete restrict, \"note\" text check (\"note\" <> '' AND \"note\" = trim(\"note\"))) strict"
+  },
+  {
+    "type": "index",
+    "name": "files_releases_release_id_file_id_index",
+    "tbl_name": "files_releases",
+    "sql": "CREATE UNIQUE INDEX \"files_releases_release_id_file_id_index\" on \"files_releases\" (\"release_id\", \"file_id\")"
+  },
+  {
+    "type": "index",
+    "name": "files_releases_file_id_index",
+    "tbl_name": "files_releases",
+    "sql": "CREATE INDEX \"files_releases_file_id_index\" on \"files_releases\" (\"file_id\")"
+  },
+  {
+    "type": "table",
+    "name": "artists_files",
+    "tbl_name": "artists_files",
+    "sql": "CREATE TABLE \"artists_files\" (\"id\" integer not null primary key, \"artist_id\" integer not null references \"artists\" (\"id\") on delete cascade, \"file_id\" integer not null references \"files\" (\"id\") on delete restrict, \"note\" text check (\"note\" <> '' AND \"note\" = trim(\"note\"))) strict"
+  },
+  {
+    "type": "index",
+    "name": "artists_files_artist_id_file_id_index",
+    "tbl_name": "artists_files",
+    "sql": "CREATE UNIQUE INDEX \"artists_files_artist_id_file_id_index\" on \"artists_files\" (\"artist_id\", \"file_id\")"
+  },
+  {
+    "type": "index",
+    "name": "artists_files_file_id_index",
+    "tbl_name": "artists_files",
+    "sql": "CREATE INDEX \"artists_files_file_id_index\" on \"artists_files\" (\"file_id\")"
+  },
+  {
+    "type": "table",
+    "name": "files_tracks",
+    "tbl_name": "files_tracks",
+    "sql": "CREATE TABLE \"files_tracks\" (\"id\" integer not null primary key, \"track_id\" integer not null references \"tracks\" (\"id\") on delete cascade, \"file_id\" integer not null references \"files\" (\"id\") on delete restrict, \"note\" text check (\"note\" <> '' AND \"note\" = trim(\"note\"))) strict"
+  },
+  {
+    "type": "index",
+    "name": "files_tracks_track_id_file_id_index",
+    "tbl_name": "files_tracks",
+    "sql": "CREATE UNIQUE INDEX \"files_tracks_track_id_file_id_index\" on \"files_tracks\" (\"track_id\", \"file_id\")"
+  },
+  {
+    "type": "index",
+    "name": "files_tracks_file_id_index",
+    "tbl_name": "files_tracks",
+    "sql": "CREATE INDEX \"files_tracks_file_id_index\" on \"files_tracks\" (\"file_id\")"
+  },
+  {
+    "type": "table",
+    "name": "text_tags",
+    "tbl_name": "text_tags",
+    "sql": "CREATE TABLE \"text_tags\" (\"id\" integer not null primary key, \"name\" text not null check (\"name\" <> '' AND \"name\" = trim(\"name\")) COLLATE NOCASE, \"multiple\" integer default 0 not null check (multiple IN (0, 1))) strict"
+  },
+  {
+    "type": "index",
+    "name": "text_tags_name_index",
+    "tbl_name": "text_tags",
+    "sql": "CREATE UNIQUE INDEX \"text_tags_name_index\" on \"text_tags\" (\"name\")"
+  },
+  {
+    "type": "table",
+    "name": "release_text_tags",
+    "tbl_name": "release_text_tags",
+    "sql": "CREATE TABLE \"release_text_tags\" (\"id\" integer not null primary key, \"release_id\" integer not null references \"releases\" (\"id\") on delete cascade, \"tag_id\" integer not null references \"text_tags\" (\"id\") on delete restrict, \"value\" text not null check (\"value\" <> '' AND \"value\" = trim(\"value\")) COLLATE NOCASE) strict"
+  },
+  {
+    "type": "index",
+    "name": "release_text_tags_release_id_tag_id_value_index",
+    "tbl_name": "release_text_tags",
+    "sql": "CREATE UNIQUE INDEX \"release_text_tags_release_id_tag_id_value_index\" on \"release_text_tags\" (\"release_id\", \"tag_id\", \"value\")"
+  },
+  {
+    "type": "index",
+    "name": "release_text_tags_tag_id_value_index",
+    "tbl_name": "release_text_tags",
+    "sql": "CREATE INDEX \"release_text_tags_tag_id_value_index\" on \"release_text_tags\" (\"tag_id\", \"value\")"
+  },
+  {
+    "type": "trigger",
+    "name": "release_text_tags_single_value_insert",
+    "tbl_name": "release_text_tags",
+    "sql": "CREATE TRIGGER release_text_tags_single_value_insert\n        BEFORE INSERT ON release_text_tags\n        WHEN (SELECT multiple FROM text_tags WHERE id = NEW.tag_id) = 0\n          AND EXISTS (SELECT 1 FROM release_text_tags\n                      WHERE release_id = NEW.release_id AND tag_id = NEW.tag_id)\n        BEGIN\n          SELECT RAISE(ABORT, 'single-value tag already set on this release');\n        END"
+  },
+  {
+    "type": "trigger",
+    "name": "release_text_tags_single_value_update",
+    "tbl_name": "release_text_tags",
+    "sql": "CREATE TRIGGER release_text_tags_single_value_update\n        BEFORE UPDATE OF release_id, tag_id ON release_text_tags\n        WHEN (SELECT multiple FROM text_tags WHERE id = NEW.tag_id) = 0\n          AND EXISTS (SELECT 1 FROM release_text_tags\n                      WHERE release_id = NEW.release_id AND tag_id = NEW.tag_id\n                        AND id <> NEW.id)\n        BEGIN\n          SELECT RAISE(ABORT, 'single-value tag already set on this release');\n        END"
+  },
+  {
+    "type": "table",
+    "name": "real_number_tags",
+    "tbl_name": "real_number_tags",
+    "sql": "CREATE TABLE \"real_number_tags\" (\"id\" integer not null primary key, \"name\" text not null check (\"name\" <> '' AND \"name\" = trim(\"name\")) COLLATE NOCASE, \"multiple\" integer default 0 not null check (multiple IN (0, 1))) strict"
+  },
+  {
+    "type": "index",
+    "name": "real_number_tags_name_index",
+    "tbl_name": "real_number_tags",
+    "sql": "CREATE UNIQUE INDEX \"real_number_tags_name_index\" on \"real_number_tags\" (\"name\")"
+  },
+  {
+    "type": "table",
+    "name": "release_real_number_tags",
+    "tbl_name": "release_real_number_tags",
+    "sql": "CREATE TABLE \"release_real_number_tags\" (\"id\" integer not null primary key, \"release_id\" integer not null references \"releases\" (\"id\") on delete cascade, \"tag_id\" integer not null references \"real_number_tags\" (\"id\") on delete restrict, \"value\" real not null) strict"
+  },
+  {
+    "type": "index",
+    "name": "release_real_number_tags_release_id_tag_id_value_index",
+    "tbl_name": "release_real_number_tags",
+    "sql": "CREATE UNIQUE INDEX \"release_real_number_tags_release_id_tag_id_value_index\" on \"release_real_number_tags\" (\"release_id\", \"tag_id\", \"value\")"
+  },
+  {
+    "type": "index",
+    "name": "release_real_number_tags_tag_id_value_index",
+    "tbl_name": "release_real_number_tags",
+    "sql": "CREATE INDEX \"release_real_number_tags_tag_id_value_index\" on \"release_real_number_tags\" (\"tag_id\", \"value\")"
+  },
+  {
+    "type": "trigger",
+    "name": "release_real_number_tags_single_value_insert",
+    "tbl_name": "release_real_number_tags",
+    "sql": "CREATE TRIGGER release_real_number_tags_single_value_insert\n        BEFORE INSERT ON release_real_number_tags\n        WHEN (SELECT multiple FROM real_number_tags WHERE id = NEW.tag_id) = 0\n          AND EXISTS (SELECT 1 FROM release_real_number_tags\n                      WHERE release_id = NEW.release_id AND tag_id = NEW.tag_id)\n        BEGIN\n          SELECT RAISE(ABORT, 'single-value tag already set on this release');\n        END"
+  },
+  {
+    "type": "trigger",
+    "name": "release_real_number_tags_single_value_update",
+    "tbl_name": "release_real_number_tags",
+    "sql": "CREATE TRIGGER release_real_number_tags_single_value_update\n        BEFORE UPDATE OF release_id, tag_id ON release_real_number_tags\n        WHEN (SELECT multiple FROM real_number_tags WHERE id = NEW.tag_id) = 0\n          AND EXISTS (SELECT 1 FROM release_real_number_tags\n                      WHERE release_id = NEW.release_id AND tag_id = NEW.tag_id\n                        AND id <> NEW.id)\n        BEGIN\n          SELECT RAISE(ABORT, 'single-value tag already set on this release');\n        END"
+  },
+  {
+    "type": "table",
+    "name": "date_tags",
+    "tbl_name": "date_tags",
+    "sql": "CREATE TABLE \"date_tags\" (\"id\" integer not null primary key, \"name\" text not null check (\"name\" <> '' AND \"name\" = trim(\"name\")) COLLATE NOCASE, \"multiple\" integer default 0 not null check (multiple IN (0, 1))) strict"
+  },
+  {
+    "type": "index",
+    "name": "date_tags_name_index",
+    "tbl_name": "date_tags",
+    "sql": "CREATE UNIQUE INDEX \"date_tags_name_index\" on \"date_tags\" (\"name\")"
+  },
+  {
+    "type": "table",
+    "name": "release_date_tags",
+    "tbl_name": "release_date_tags",
+    "sql": "CREATE TABLE \"release_date_tags\" (\"id\" integer not null primary key, \"release_id\" integer not null references \"releases\" (\"id\") on delete cascade, \"tag_id\" integer not null references \"date_tags\" (\"id\") on delete restrict, \"value\" integer not null) strict"
+  },
+  {
+    "type": "index",
+    "name": "release_date_tags_release_id_tag_id_value_index",
+    "tbl_name": "release_date_tags",
+    "sql": "CREATE UNIQUE INDEX \"release_date_tags_release_id_tag_id_value_index\" on \"release_date_tags\" (\"release_id\", \"tag_id\", \"value\")"
+  },
+  {
+    "type": "index",
+    "name": "release_date_tags_tag_id_value_index",
+    "tbl_name": "release_date_tags",
+    "sql": "CREATE INDEX \"release_date_tags_tag_id_value_index\" on \"release_date_tags\" (\"tag_id\", \"value\")"
+  },
+  {
+    "type": "trigger",
+    "name": "release_date_tags_single_value_insert",
+    "tbl_name": "release_date_tags",
+    "sql": "CREATE TRIGGER release_date_tags_single_value_insert\n        BEFORE INSERT ON release_date_tags\n        WHEN (SELECT multiple FROM date_tags WHERE id = NEW.tag_id) = 0\n          AND EXISTS (SELECT 1 FROM release_date_tags\n                      WHERE release_id = NEW.release_id AND tag_id = NEW.tag_id)\n        BEGIN\n          SELECT RAISE(ABORT, 'single-value tag already set on this release');\n        END"
+  },
+  {
+    "type": "trigger",
+    "name": "release_date_tags_single_value_update",
+    "tbl_name": "release_date_tags",
+    "sql": "CREATE TRIGGER release_date_tags_single_value_update\n        BEFORE UPDATE OF release_id, tag_id ON release_date_tags\n        WHEN (SELECT multiple FROM date_tags WHERE id = NEW.tag_id) = 0\n          AND EXISTS (SELECT 1 FROM release_date_tags\n                      WHERE release_id = NEW.release_id AND tag_id = NEW.tag_id\n                        AND id <> NEW.id)\n        BEGIN\n          SELECT RAISE(ABORT, 'single-value tag already set on this release');\n        END"
+  },
+  {
+    "type": "trigger",
+    "name": "tracks_file_is_music_insert",
+    "tbl_name": "tracks",
+    "sql": "CREATE TRIGGER tracks_file_is_music_insert\n    BEFORE INSERT ON tracks\n    WHEN (SELECT type FROM files WHERE id = NEW.file_id) <> 'music'\n    BEGIN\n      SELECT RAISE(ABORT, 'a track''s file must be music');\n    END"
+  },
+  {
+    "type": "trigger",
+    "name": "tracks_file_is_music_update",
+    "tbl_name": "tracks",
+    "sql": "CREATE TRIGGER tracks_file_is_music_update\n    BEFORE UPDATE OF file_id ON tracks\n    WHEN (SELECT type FROM files WHERE id = NEW.file_id) <> 'music'\n    BEGIN\n      SELECT RAISE(ABORT, 'a track''s file must be music');\n    END"
+  },
+  {
+    "type": "trigger",
+    "name": "files_type_stays_music",
+    "tbl_name": "files",
+    "sql": "CREATE TRIGGER files_type_stays_music\n    BEFORE UPDATE OF type ON files\n    WHEN NEW.type <> 'music'\n      AND EXISTS (SELECT 1 FROM tracks WHERE file_id = NEW.id)\n    BEGIN\n      SELECT RAISE(ABORT, 'a track''s file must stay music');\n    END"
+  },
+  {
+    "type": "trigger",
+    "name": "releases_cover_picture_is_image_insert",
+    "tbl_name": "releases",
+    "sql": "CREATE TRIGGER releases_cover_picture_is_image_insert\n          BEFORE INSERT ON releases\n          WHEN (SELECT type FROM files WHERE id = NEW.cover_picture) <> 'image'\n          BEGIN\n            SELECT RAISE(ABORT, 'a release cover must be an image');\n          END"
+  },
+  {
+    "type": "trigger",
+    "name": "releases_cover_picture_is_image_update",
+    "tbl_name": "releases",
+    "sql": "CREATE TRIGGER releases_cover_picture_is_image_update\n          BEFORE UPDATE OF cover_picture ON releases\n          WHEN (SELECT type FROM files WHERE id = NEW.cover_picture) <> 'image'\n          BEGIN\n            SELECT RAISE(ABORT, 'a release cover must be an image');\n          END"
+  },
+  {
+    "type": "trigger",
+    "name": "artists_picture_is_image_insert",
+    "tbl_name": "artists",
+    "sql": "CREATE TRIGGER artists_picture_is_image_insert\n          BEFORE INSERT ON artists\n          WHEN (SELECT type FROM files WHERE id = NEW.picture) <> 'image'\n          BEGIN\n            SELECT RAISE(ABORT, 'an artist picture must be an image');\n          END"
+  },
+  {
+    "type": "trigger",
+    "name": "artists_picture_is_image_update",
+    "tbl_name": "artists",
+    "sql": "CREATE TRIGGER artists_picture_is_image_update\n          BEFORE UPDATE OF picture ON artists\n          WHEN (SELECT type FROM files WHERE id = NEW.picture) <> 'image'\n          BEGIN\n            SELECT RAISE(ABORT, 'an artist picture must be an image');\n          END"
+  },
+  {
+    "type": "trigger",
+    "name": "labels_picture_is_image_insert",
+    "tbl_name": "labels",
+    "sql": "CREATE TRIGGER labels_picture_is_image_insert\n          BEFORE INSERT ON labels\n          WHEN (SELECT type FROM files WHERE id = NEW.picture) <> 'image'\n          BEGIN\n            SELECT RAISE(ABORT, 'a label picture must be an image');\n          END"
+  },
+  {
+    "type": "trigger",
+    "name": "labels_picture_is_image_update",
+    "tbl_name": "labels",
+    "sql": "CREATE TRIGGER labels_picture_is_image_update\n          BEFORE UPDATE OF picture ON labels\n          WHEN (SELECT type FROM files WHERE id = NEW.picture) <> 'image'\n          BEGIN\n            SELECT RAISE(ABORT, 'a label picture must be an image');\n          END"
+  },
+  {
+    "type": "trigger",
+    "name": "files_type_stays_image",
+    "tbl_name": "files",
+    "sql": "CREATE TRIGGER files_type_stays_image\n    BEFORE UPDATE OF type ON files\n    WHEN NEW.type <> 'image'\n      AND (EXISTS (SELECT 1 FROM releases WHERE cover_picture = NEW.id)\n           OR EXISTS (SELECT 1 FROM artists WHERE picture = NEW.id)\n           OR EXISTS (SELECT 1 FROM labels WHERE picture = NEW.id))\n    BEGIN\n      SELECT RAISE(ABORT, 'a cover or picture must stay an image');\n    END"
+  },
+  {
+    "type": "trigger",
+    "name": "release_date_tags_value_is_day_insert",
+    "tbl_name": "release_date_tags",
+    "sql": "CREATE TRIGGER release_date_tags_value_is_day_insert\n          BEFORE INSERT ON release_date_tags\n          WHEN NEW.value % 86400 <> 0\n          BEGIN\n            SELECT RAISE(ABORT, 'a date tag''s value must be a day, at midnight UTC');\n          END"
+  },
+  {
+    "type": "trigger",
+    "name": "release_date_tags_value_is_day_update",
+    "tbl_name": "release_date_tags",
+    "sql": "CREATE TRIGGER release_date_tags_value_is_day_update\n          BEFORE UPDATE OF value ON release_date_tags\n          WHEN NEW.value % 86400 <> 0\n          BEGIN\n            SELECT RAISE(ABORT, 'a date tag''s value must be a day, at midnight UTC');\n          END"
+  },
+  {
+    "type": "trigger",
+    "name": "release_real_number_tags_value_is_finite_insert",
+    "tbl_name": "release_real_number_tags",
+    "sql": "CREATE TRIGGER release_real_number_tags_value_is_finite_insert\n          BEFORE INSERT ON release_real_number_tags\n          WHEN abs(NEW.value) = 9e999\n          BEGIN\n            SELECT RAISE(ABORT, 'a number tag''s value must be finite');\n          END"
+  },
+  {
+    "type": "trigger",
+    "name": "release_real_number_tags_value_is_finite_update",
+    "tbl_name": "release_real_number_tags",
+    "sql": "CREATE TRIGGER release_real_number_tags_value_is_finite_update\n          BEFORE UPDATE OF value ON release_real_number_tags\n          WHEN abs(NEW.value) = 9e999\n          BEGIN\n            SELECT RAISE(ABORT, 'a number tag''s value must be finite');\n          END"
+  },
+  {
+    "type": "table",
+    "name": "track_text_tags",
+    "tbl_name": "track_text_tags",
+    "sql": "CREATE TABLE \"track_text_tags\" (\"id\" integer not null primary key, \"track_id\" integer not null references \"tracks\" (\"id\") on delete cascade, \"tag_id\" integer not null references \"text_tags\" (\"id\") on delete restrict, \"value\" text not null check (value <> '' AND value = trim(value)) COLLATE NOCASE) strict"
+  },
+  {
+    "type": "index",
+    "name": "track_text_tags_track_id_tag_id_value_index",
+    "tbl_name": "track_text_tags",
+    "sql": "CREATE UNIQUE INDEX \"track_text_tags_track_id_tag_id_value_index\" on \"track_text_tags\" (\"track_id\", \"tag_id\", \"value\")"
+  },
+  {
+    "type": "index",
+    "name": "track_text_tags_tag_id_value_index",
+    "tbl_name": "track_text_tags",
+    "sql": "CREATE INDEX \"track_text_tags_tag_id_value_index\" on \"track_text_tags\" (\"tag_id\", \"value\")"
+  },
+  {
+    "type": "trigger",
+    "name": "track_text_tags_single_value_insert",
+    "tbl_name": "track_text_tags",
+    "sql": "CREATE TRIGGER track_text_tags_single_value_insert\n        BEFORE INSERT ON track_text_tags\n        WHEN (SELECT multiple FROM text_tags WHERE id = NEW.tag_id) = 0\n          AND EXISTS (SELECT 1 FROM track_text_tags\n                      WHERE track_id = NEW.track_id AND tag_id = NEW.tag_id)\n        BEGIN\n          SELECT RAISE(ABORT, 'single-value tag already set on this track');\n        END"
+  },
+  {
+    "type": "trigger",
+    "name": "track_text_tags_single_value_update",
+    "tbl_name": "track_text_tags",
+    "sql": "CREATE TRIGGER track_text_tags_single_value_update\n        BEFORE UPDATE OF track_id, tag_id ON track_text_tags\n        WHEN (SELECT multiple FROM text_tags WHERE id = NEW.tag_id) = 0\n          AND EXISTS (SELECT 1 FROM track_text_tags\n                      WHERE track_id = NEW.track_id AND tag_id = NEW.tag_id\n                        AND id <> NEW.id)\n        BEGIN\n          SELECT RAISE(ABORT, 'single-value tag already set on this track');\n        END"
+  },
+  {
+    "type": "trigger",
+    "name": "text_tags_multiple_off",
+    "tbl_name": "text_tags",
+    "sql": "CREATE TRIGGER text_tags_multiple_off\n    BEFORE UPDATE OF multiple ON text_tags\n    WHEN OLD.multiple = 1 AND NEW.multiple = 0\n      AND (EXISTS (SELECT 1 FROM release_text_tags WHERE tag_id = NEW.id\n                    GROUP BY release_id\n                    HAVING count(*) > 1)\n          OR EXISTS (SELECT 1 FROM track_text_tags WHERE tag_id = NEW.id\n                    GROUP BY track_id\n                    HAVING count(*) > 1))\n    BEGIN\n      SELECT RAISE(ABORT, 'some releases or tracks have several values for this tag');\n    END"
+  },
+  {
+    "type": "table",
+    "name": "track_real_number_tags",
+    "tbl_name": "track_real_number_tags",
+    "sql": "CREATE TABLE \"track_real_number_tags\" (\"id\" integer not null primary key, \"track_id\" integer not null references \"tracks\" (\"id\") on delete cascade, \"tag_id\" integer not null references \"real_number_tags\" (\"id\") on delete restrict, \"value\" real not null) strict"
+  },
+  {
+    "type": "index",
+    "name": "track_real_number_tags_track_id_tag_id_value_index",
+    "tbl_name": "track_real_number_tags",
+    "sql": "CREATE UNIQUE INDEX \"track_real_number_tags_track_id_tag_id_value_index\" on \"track_real_number_tags\" (\"track_id\", \"tag_id\", \"value\")"
+  },
+  {
+    "type": "index",
+    "name": "track_real_number_tags_tag_id_value_index",
+    "tbl_name": "track_real_number_tags",
+    "sql": "CREATE INDEX \"track_real_number_tags_tag_id_value_index\" on \"track_real_number_tags\" (\"tag_id\", \"value\")"
+  },
+  {
+    "type": "trigger",
+    "name": "track_real_number_tags_single_value_insert",
+    "tbl_name": "track_real_number_tags",
+    "sql": "CREATE TRIGGER track_real_number_tags_single_value_insert\n        BEFORE INSERT ON track_real_number_tags\n        WHEN (SELECT multiple FROM real_number_tags WHERE id = NEW.tag_id) = 0\n          AND EXISTS (SELECT 1 FROM track_real_number_tags\n                      WHERE track_id = NEW.track_id AND tag_id = NEW.tag_id)\n        BEGIN\n          SELECT RAISE(ABORT, 'single-value tag already set on this track');\n        END"
+  },
+  {
+    "type": "trigger",
+    "name": "track_real_number_tags_single_value_update",
+    "tbl_name": "track_real_number_tags",
+    "sql": "CREATE TRIGGER track_real_number_tags_single_value_update\n        BEFORE UPDATE OF track_id, tag_id ON track_real_number_tags\n        WHEN (SELECT multiple FROM real_number_tags WHERE id = NEW.tag_id) = 0\n          AND EXISTS (SELECT 1 FROM track_real_number_tags\n                      WHERE track_id = NEW.track_id AND tag_id = NEW.tag_id\n                        AND id <> NEW.id)\n        BEGIN\n          SELECT RAISE(ABORT, 'single-value tag already set on this track');\n        END"
+  },
+  {
+    "type": "trigger",
+    "name": "track_real_number_tags_value_is_finite_insert",
+    "tbl_name": "track_real_number_tags",
+    "sql": "CREATE TRIGGER track_real_number_tags_value_is_finite_insert\n            BEFORE INSERT ON track_real_number_tags\n            WHEN abs(NEW.value) = 9e999\n            BEGIN\n              SELECT RAISE(ABORT, 'a number tag''s value must be finite');\n            END"
+  },
+  {
+    "type": "trigger",
+    "name": "track_real_number_tags_value_is_finite_update",
+    "tbl_name": "track_real_number_tags",
+    "sql": "CREATE TRIGGER track_real_number_tags_value_is_finite_update\n            BEFORE UPDATE OF value ON track_real_number_tags\n            WHEN abs(NEW.value) = 9e999\n            BEGIN\n              SELECT RAISE(ABORT, 'a number tag''s value must be finite');\n            END"
+  },
+  {
+    "type": "trigger",
+    "name": "real_number_tags_multiple_off",
+    "tbl_name": "real_number_tags",
+    "sql": "CREATE TRIGGER real_number_tags_multiple_off\n    BEFORE UPDATE OF multiple ON real_number_tags\n    WHEN OLD.multiple = 1 AND NEW.multiple = 0\n      AND (EXISTS (SELECT 1 FROM release_real_number_tags WHERE tag_id = NEW.id\n                    GROUP BY release_id\n                    HAVING count(*) > 1)\n          OR EXISTS (SELECT 1 FROM track_real_number_tags WHERE tag_id = NEW.id\n                    GROUP BY track_id\n                    HAVING count(*) > 1))\n    BEGIN\n      SELECT RAISE(ABORT, 'some releases or tracks have several values for this tag');\n    END"
+  },
+  {
+    "type": "table",
+    "name": "track_date_tags",
+    "tbl_name": "track_date_tags",
+    "sql": "CREATE TABLE \"track_date_tags\" (\"id\" integer not null primary key, \"track_id\" integer not null references \"tracks\" (\"id\") on delete cascade, \"tag_id\" integer not null references \"date_tags\" (\"id\") on delete restrict, \"value\" integer not null) strict"
+  },
+  {
+    "type": "index",
+    "name": "track_date_tags_track_id_tag_id_value_index",
+    "tbl_name": "track_date_tags",
+    "sql": "CREATE UNIQUE INDEX \"track_date_tags_track_id_tag_id_value_index\" on \"track_date_tags\" (\"track_id\", \"tag_id\", \"value\")"
+  },
+  {
+    "type": "index",
+    "name": "track_date_tags_tag_id_value_index",
+    "tbl_name": "track_date_tags",
+    "sql": "CREATE INDEX \"track_date_tags_tag_id_value_index\" on \"track_date_tags\" (\"tag_id\", \"value\")"
+  },
+  {
+    "type": "trigger",
+    "name": "track_date_tags_single_value_insert",
+    "tbl_name": "track_date_tags",
+    "sql": "CREATE TRIGGER track_date_tags_single_value_insert\n        BEFORE INSERT ON track_date_tags\n        WHEN (SELECT multiple FROM date_tags WHERE id = NEW.tag_id) = 0\n          AND EXISTS (SELECT 1 FROM track_date_tags\n                      WHERE track_id = NEW.track_id AND tag_id = NEW.tag_id)\n        BEGIN\n          SELECT RAISE(ABORT, 'single-value tag already set on this track');\n        END"
+  },
+  {
+    "type": "trigger",
+    "name": "track_date_tags_single_value_update",
+    "tbl_name": "track_date_tags",
+    "sql": "CREATE TRIGGER track_date_tags_single_value_update\n        BEFORE UPDATE OF track_id, tag_id ON track_date_tags\n        WHEN (SELECT multiple FROM date_tags WHERE id = NEW.tag_id) = 0\n          AND EXISTS (SELECT 1 FROM track_date_tags\n                      WHERE track_id = NEW.track_id AND tag_id = NEW.tag_id\n                        AND id <> NEW.id)\n        BEGIN\n          SELECT RAISE(ABORT, 'single-value tag already set on this track');\n        END"
+  },
+  {
+    "type": "trigger",
+    "name": "track_date_tags_value_is_day_insert",
+    "tbl_name": "track_date_tags",
+    "sql": "CREATE TRIGGER track_date_tags_value_is_day_insert\n            BEFORE INSERT ON track_date_tags\n            WHEN NEW.value % 86400 <> 0\n            BEGIN\n              SELECT RAISE(ABORT, 'a date tag''s value must be a day, at midnight UTC');\n            END"
+  },
+  {
+    "type": "trigger",
+    "name": "track_date_tags_value_is_day_update",
+    "tbl_name": "track_date_tags",
+    "sql": "CREATE TRIGGER track_date_tags_value_is_day_update\n            BEFORE UPDATE OF value ON track_date_tags\n            WHEN NEW.value % 86400 <> 0\n            BEGIN\n              SELECT RAISE(ABORT, 'a date tag''s value must be a day, at midnight UTC');\n            END"
+  },
+  {
+    "type": "trigger",
+    "name": "date_tags_multiple_off",
+    "tbl_name": "date_tags",
+    "sql": "CREATE TRIGGER date_tags_multiple_off\n    BEFORE UPDATE OF multiple ON date_tags\n    WHEN OLD.multiple = 1 AND NEW.multiple = 0\n      AND (EXISTS (SELECT 1 FROM release_date_tags WHERE tag_id = NEW.id\n                    GROUP BY release_id\n                    HAVING count(*) > 1)\n          OR EXISTS (SELECT 1 FROM track_date_tags WHERE tag_id = NEW.id\n                    GROUP BY track_id\n                    HAVING count(*) > 1))\n    BEGIN\n      SELECT RAISE(ABORT, 'some releases or tracks have several values for this tag');\n    END"
+  },
+  {
+    "type": "table",
+    "name": "release_credits",
+    "tbl_name": "release_credits",
+    "sql": "CREATE TABLE \"release_credits\" (\"id\" integer not null primary key, \"release_id\" integer not null references \"releases\" (\"id\") on delete cascade, \"role\" text not null check (\"role\" <> '' AND \"role\" = trim(\"role\")) COLLATE NOCASE, \"position\" integer not null check (position >= 0), \"first_artist_position\" integer generated always as (0) not null, constraint \"release_credits_has_artist\" foreign key (\"id\", \"first_artist_position\") references \"artists_release_credits\" (\"credit_id\", \"position\") deferrable initially deferred) strict"
+  },
+  {
+    "type": "index",
+    "name": "release_credits_release_id_role_index",
+    "tbl_name": "release_credits",
+    "sql": "CREATE UNIQUE INDEX \"release_credits_release_id_role_index\" on \"release_credits\" (\"release_id\", \"role\")"
+  },
+  {
+    "type": "table",
+    "name": "track_credits",
+    "tbl_name": "track_credits",
+    "sql": "CREATE TABLE \"track_credits\" (\"id\" integer not null primary key, \"track_id\" integer not null references \"tracks\" (\"id\") on delete cascade, \"role\" text not null check (\"role\" <> '' AND \"role\" = trim(\"role\")) COLLATE NOCASE, \"position\" integer not null check (position >= 0), \"first_artist_position\" integer generated always as (0) not null, constraint \"track_credits_has_artist\" foreign key (\"id\", \"first_artist_position\") references \"artists_track_credits\" (\"credit_id\", \"position\") deferrable initially deferred) strict"
+  },
+  {
+    "type": "index",
+    "name": "track_credits_track_id_role_index",
+    "tbl_name": "track_credits",
+    "sql": "CREATE UNIQUE INDEX \"track_credits_track_id_role_index\" on \"track_credits\" (\"track_id\", \"role\")"
+  },
+  {
+    "type": "table",
+    "name": "release_disc_titles",
+    "tbl_name": "release_disc_titles",
+    "sql": "CREATE TABLE \"release_disc_titles\" (\"id\" integer not null primary key, \"release_id\" integer not null references \"releases\" (\"id\") on delete cascade, \"cd_number\" integer not null check (cd_number > 0), \"title\" text not null check (\"title\" <> '' AND \"title\" = trim(\"title\")), \"language\" text check ((\"language\" GLOB '[a-z][a-z]' OR \"language\" GLOB '[a-z][a-z][a-z]'\n    OR \"language\" GLOB '[a-z][a-z]-?*' OR \"language\" GLOB '[a-z][a-z][a-z]-?*')\n    AND \"language\" NOT GLOB '*[^A-Za-z0-9-]*'\n    AND \"language\" NOT GLOB '*--*' AND \"language\" NOT GLOB '*-'\n    AND \"language\" <> 'und' AND \"language\" NOT GLOB 'und-*')) strict"
+  },
+  {
+    "type": "index",
+    "name": "release_disc_titles_release_id_cd_number_index",
+    "tbl_name": "release_disc_titles",
+    "sql": "CREATE UNIQUE INDEX \"release_disc_titles_release_id_cd_number_index\" on \"release_disc_titles\" (\"release_id\", \"cd_number\")"
+  },
+  {
+    "type": "trigger",
+    "name": "release_disc_titles_disc_has_tracks_insert",
+    "tbl_name": "release_disc_titles",
+    "sql": "CREATE TRIGGER release_disc_titles_disc_has_tracks_insert\n        BEFORE INSERT ON release_disc_titles\n        WHEN NOT EXISTS (\n          SELECT 1 FROM tracks\n          WHERE release_id = NEW.release_id AND cd_number = NEW.cd_number\n        )\n        BEGIN\n          SELECT RAISE(ABORT, 'a disc title needs a track on its disc');\n        END"
+  },
+  {
+    "type": "trigger",
+    "name": "release_disc_titles_disc_has_tracks_update",
+    "tbl_name": "release_disc_titles",
+    "sql": "CREATE TRIGGER release_disc_titles_disc_has_tracks_update\n        BEFORE UPDATE OF release_id, cd_number ON release_disc_titles\n        WHEN NOT EXISTS (\n          SELECT 1 FROM tracks\n          WHERE release_id = NEW.release_id AND cd_number = NEW.cd_number\n        )\n        BEGIN\n          SELECT RAISE(ABORT, 'a disc title needs a track on its disc');\n        END"
+  },
+  {
+    "type": "trigger",
+    "name": "tracks_empty_disc_loses_title_delete",
+    "tbl_name": "tracks",
+    "sql": "CREATE TRIGGER tracks_empty_disc_loses_title_delete\n        AFTER DELETE ON tracks\n        \n        BEGIN\n          DELETE FROM release_disc_titles\n          WHERE release_id = OLD.release_id AND cd_number = OLD.cd_number\n            AND NOT EXISTS (\n              SELECT 1 FROM tracks\n              WHERE release_id = OLD.release_id AND cd_number = OLD.cd_number\n            );\n        END"
+  },
+  {
+    "type": "trigger",
+    "name": "tracks_empty_disc_loses_title_update",
+    "tbl_name": "tracks",
+    "sql": "CREATE TRIGGER tracks_empty_disc_loses_title_update\n        AFTER UPDATE OF release_id, cd_number ON tracks\n        WHEN OLD.release_id <> NEW.release_id OR OLD.cd_number <> NEW.cd_number\n        BEGIN\n          DELETE FROM release_disc_titles\n          WHERE release_id = OLD.release_id AND cd_number = OLD.cd_number\n            AND NOT EXISTS (\n              SELECT 1 FROM tracks\n              WHERE release_id = OLD.release_id AND cd_number = OLD.cd_number\n            );\n        END"
+  },
+  {
+    "type": "table",
+    "name": "artist_alternate_names",
+    "tbl_name": "artist_alternate_names",
+    "sql": "CREATE TABLE \"artist_alternate_names\" (\"id\" integer not null primary key, \"artist_id\" integer not null references \"artists\" (\"id\") on delete cascade, \"name\" text not null check (\"name\" <> '' AND \"name\" = trim(\"name\")), \"language\" text check ((\"language\" GLOB '[a-z][a-z]' OR \"language\" GLOB '[a-z][a-z][a-z]'\n    OR \"language\" GLOB '[a-z][a-z]-?*' OR \"language\" GLOB '[a-z][a-z][a-z]-?*')\n    AND \"language\" NOT GLOB '*[^A-Za-z0-9-]*'\n    AND \"language\" NOT GLOB '*--*' AND \"language\" NOT GLOB '*-'\n    AND \"language\" <> 'und' AND \"language\" NOT GLOB 'und-*'), \"real_name\" integer default 0 not null check (real_name IN (0, 1)), \"note\" text check (\"note\" <> '' AND \"note\" = trim(\"note\")), \"position\" integer not null check (position >= 0)) strict"
+  },
+  {
+    "type": "index",
+    "name": "artist_alternate_names_artist_id_name_index",
+    "tbl_name": "artist_alternate_names",
+    "sql": "CREATE UNIQUE INDEX \"artist_alternate_names_artist_id_name_index\" on \"artist_alternate_names\" (\"artist_id\", \"name\")"
+  },
+  {
+    "type": "table",
+    "name": "label_alternate_names",
+    "tbl_name": "label_alternate_names",
+    "sql": "CREATE TABLE \"label_alternate_names\" (\"id\" integer not null primary key, \"label_id\" integer not null references \"labels\" (\"id\") on delete cascade, \"name\" text not null check (\"name\" <> '' AND \"name\" = trim(\"name\")), \"language\" text check ((\"language\" GLOB '[a-z][a-z]' OR \"language\" GLOB '[a-z][a-z][a-z]'\n    OR \"language\" GLOB '[a-z][a-z]-?*' OR \"language\" GLOB '[a-z][a-z][a-z]-?*')\n    AND \"language\" NOT GLOB '*[^A-Za-z0-9-]*'\n    AND \"language\" NOT GLOB '*--*' AND \"language\" NOT GLOB '*-'\n    AND \"language\" <> 'und' AND \"language\" NOT GLOB 'und-*'), \"note\" text check (\"note\" <> '' AND \"note\" = trim(\"note\")), \"position\" integer not null check (position >= 0)) strict"
+  },
+  {
+    "type": "index",
+    "name": "label_alternate_names_label_id_name_index",
+    "tbl_name": "label_alternate_names",
+    "sql": "CREATE UNIQUE INDEX \"label_alternate_names_label_id_name_index\" on \"label_alternate_names\" (\"label_id\", \"name\")"
+  },
+  {
+    "type": "index",
+    "name": "artist_alternate_names_artist_id_id_index",
+    "tbl_name": "artist_alternate_names",
+    "sql": "CREATE UNIQUE INDEX \"artist_alternate_names_artist_id_id_index\" on \"artist_alternate_names\" (\"artist_id\", \"id\")"
+  },
+  {
+    "type": "index",
+    "name": "artist_alternate_names_name_index",
+    "tbl_name": "artist_alternate_names",
+    "sql": "CREATE INDEX \"artist_alternate_names_name_index\" on \"artist_alternate_names\" (name COLLATE NOCASE)"
+  },
+  {
+    "type": "table",
+    "name": "artists_releases",
+    "tbl_name": "artists_releases",
+    "sql": "CREATE TABLE \"artists_releases\" (\"id\" integer not null primary key, \"artist_id\" integer not null references \"artists\" (\"id\") on delete restrict, \"release_id\" integer not null references \"releases\" (\"id\") on delete cascade, \"position\" integer not null check (position >= 0), \"credited_name_id\" integer, constraint \"artists_releases_credited_name_is_the_artists\" foreign key (\"artist_id\", \"credited_name_id\") references \"artist_alternate_names\" (\"artist_id\", \"id\") on delete restrict) strict"
+  },
+  {
+    "type": "index",
+    "name": "artists_releases_release_id_artist_id_index",
+    "tbl_name": "artists_releases",
+    "sql": "CREATE UNIQUE INDEX \"artists_releases_release_id_artist_id_index\" on \"artists_releases\" (\"release_id\", \"artist_id\")"
+  },
+  {
+    "type": "index",
+    "name": "artists_releases_artist_id_credited_name_id_index",
+    "tbl_name": "artists_releases",
+    "sql": "CREATE INDEX \"artists_releases_artist_id_credited_name_id_index\" on \"artists_releases\" (\"artist_id\", \"credited_name_id\")"
+  },
+  {
+    "type": "table",
+    "name": "artists_tracks",
+    "tbl_name": "artists_tracks",
+    "sql": "CREATE TABLE \"artists_tracks\" (\"id\" integer not null primary key, \"artist_id\" integer not null references \"artists\" (\"id\") on delete restrict, \"track_id\" integer not null references \"tracks\" (\"id\") on delete cascade, \"featured\" integer default 0 not null check (featured IN (0, 1)), \"position\" integer not null check (position >= 0), \"credited_name_id\" integer, constraint \"artists_tracks_credited_name_is_the_artists\" foreign key (\"artist_id\", \"credited_name_id\") references \"artist_alternate_names\" (\"artist_id\", \"id\") on delete restrict) strict"
+  },
+  {
+    "type": "index",
+    "name": "artists_tracks_track_id_artist_id_index",
+    "tbl_name": "artists_tracks",
+    "sql": "CREATE UNIQUE INDEX \"artists_tracks_track_id_artist_id_index\" on \"artists_tracks\" (\"track_id\", \"artist_id\")"
+  },
+  {
+    "type": "index",
+    "name": "artists_tracks_artist_id_credited_name_id_index",
+    "tbl_name": "artists_tracks",
+    "sql": "CREATE INDEX \"artists_tracks_artist_id_credited_name_id_index\" on \"artists_tracks\" (\"artist_id\", \"credited_name_id\")"
+  },
+  {
+    "type": "table",
+    "name": "artists_release_credits",
+    "tbl_name": "artists_release_credits",
+    "sql": "CREATE TABLE \"artists_release_credits\" (\"id\" integer not null primary key, \"artist_id\" integer not null references \"artists\" (\"id\") on delete restrict, \"credit_id\" integer not null references \"release_credits\" (\"id\") on delete cascade, \"position\" integer not null check (position >= 0), \"credited_name_id\" integer, constraint \"artists_release_credits_credited_name_is_the_artists\" foreign key (\"artist_id\", \"credited_name_id\") references \"artist_alternate_names\" (\"artist_id\", \"id\") on delete restrict) strict"
+  },
+  {
+    "type": "index",
+    "name": "artists_release_credits_credit_id_artist_id_index",
+    "tbl_name": "artists_release_credits",
+    "sql": "CREATE UNIQUE INDEX \"artists_release_credits_credit_id_artist_id_index\" on \"artists_release_credits\" (\"credit_id\", \"artist_id\")"
+  },
+  {
+    "type": "index",
+    "name": "artists_release_credits_credit_id_position_index",
+    "tbl_name": "artists_release_credits",
+    "sql": "CREATE UNIQUE INDEX \"artists_release_credits_credit_id_position_index\" on \"artists_release_credits\" (\"credit_id\", \"position\")"
+  },
+  {
+    "type": "index",
+    "name": "artists_release_credits_artist_id_credited_name_id_index",
+    "tbl_name": "artists_release_credits",
+    "sql": "CREATE INDEX \"artists_release_credits_artist_id_credited_name_id_index\" on \"artists_release_credits\" (\"artist_id\", \"credited_name_id\")"
+  },
+  {
+    "type": "table",
+    "name": "artists_track_credits",
+    "tbl_name": "artists_track_credits",
+    "sql": "CREATE TABLE \"artists_track_credits\" (\"id\" integer not null primary key, \"artist_id\" integer not null references \"artists\" (\"id\") on delete restrict, \"credit_id\" integer not null references \"track_credits\" (\"id\") on delete cascade, \"position\" integer not null check (position >= 0), \"credited_name_id\" integer, constraint \"artists_track_credits_credited_name_is_the_artists\" foreign key (\"artist_id\", \"credited_name_id\") references \"artist_alternate_names\" (\"artist_id\", \"id\") on delete restrict) strict"
+  },
+  {
+    "type": "index",
+    "name": "artists_track_credits_credit_id_artist_id_index",
+    "tbl_name": "artists_track_credits",
+    "sql": "CREATE UNIQUE INDEX \"artists_track_credits_credit_id_artist_id_index\" on \"artists_track_credits\" (\"credit_id\", \"artist_id\")"
+  },
+  {
+    "type": "index",
+    "name": "artists_track_credits_credit_id_position_index",
+    "tbl_name": "artists_track_credits",
+    "sql": "CREATE UNIQUE INDEX \"artists_track_credits_credit_id_position_index\" on \"artists_track_credits\" (\"credit_id\", \"position\")"
+  },
+  {
+    "type": "index",
+    "name": "artists_track_credits_artist_id_credited_name_id_index",
+    "tbl_name": "artists_track_credits",
+    "sql": "CREATE INDEX \"artists_track_credits_artist_id_credited_name_id_index\" on \"artists_track_credits\" (\"artist_id\", \"credited_name_id\")"
+  },
+  {
+    "type": "table",
+    "name": "release_alternate_titles",
+    "tbl_name": "release_alternate_titles",
+    "sql": "CREATE TABLE \"release_alternate_titles\" (\"id\" integer not null primary key, \"release_id\" integer not null references \"releases\" (\"id\") on delete cascade, \"title\" text not null check (\"title\" <> '' AND \"title\" = trim(\"title\")), \"language\" text check ((\"language\" GLOB '[a-z][a-z]' OR \"language\" GLOB '[a-z][a-z][a-z]'\n    OR \"language\" GLOB '[a-z][a-z]-?*' OR \"language\" GLOB '[a-z][a-z][a-z]-?*')\n    AND \"language\" NOT GLOB '*[^A-Za-z0-9-]*'\n    AND \"language\" NOT GLOB '*--*' AND \"language\" NOT GLOB '*-'\n    AND \"language\" <> 'und' AND \"language\" NOT GLOB 'und-*'), \"printed\" integer default 1 not null check (printed IN (0, 1)), \"position\" integer not null check (position >= 0)) strict"
+  },
+  {
+    "type": "index",
+    "name": "release_alternate_titles_release_id_title_index",
+    "tbl_name": "release_alternate_titles",
+    "sql": "CREATE UNIQUE INDEX \"release_alternate_titles_release_id_title_index\" on \"release_alternate_titles\" (\"release_id\", \"title\")"
+  },
+  {
+    "type": "table",
+    "name": "track_alternate_titles",
+    "tbl_name": "track_alternate_titles",
+    "sql": "CREATE TABLE \"track_alternate_titles\" (\"id\" integer not null primary key, \"track_id\" integer not null references \"tracks\" (\"id\") on delete cascade, \"title\" text not null check (\"title\" <> '' AND \"title\" = trim(\"title\")), \"language\" text check ((\"language\" GLOB '[a-z][a-z]' OR \"language\" GLOB '[a-z][a-z][a-z]'\n    OR \"language\" GLOB '[a-z][a-z]-?*' OR \"language\" GLOB '[a-z][a-z][a-z]-?*')\n    AND \"language\" NOT GLOB '*[^A-Za-z0-9-]*'\n    AND \"language\" NOT GLOB '*--*' AND \"language\" NOT GLOB '*-'\n    AND \"language\" <> 'und' AND \"language\" NOT GLOB 'und-*'), \"printed\" integer default 1 not null check (printed IN (0, 1)), \"position\" integer not null check (position >= 0)) strict"
+  },
+  {
+    "type": "index",
+    "name": "track_alternate_titles_track_id_title_index",
+    "tbl_name": "track_alternate_titles",
+    "sql": "CREATE UNIQUE INDEX \"track_alternate_titles_track_id_title_index\" on \"track_alternate_titles\" (\"track_id\", \"title\")"
+  },
+  {
+    "type": "table",
+    "name": "release_disc_alternate_titles",
+    "tbl_name": "release_disc_alternate_titles",
+    "sql": "CREATE TABLE \"release_disc_alternate_titles\" (\"id\" integer not null primary key, \"disc_title_id\" integer not null references \"release_disc_titles\" (\"id\") on delete cascade, \"title\" text not null check (\"title\" <> '' AND \"title\" = trim(\"title\")), \"language\" text check ((\"language\" GLOB '[a-z][a-z]' OR \"language\" GLOB '[a-z][a-z][a-z]'\n    OR \"language\" GLOB '[a-z][a-z]-?*' OR \"language\" GLOB '[a-z][a-z][a-z]-?*')\n    AND \"language\" NOT GLOB '*[^A-Za-z0-9-]*'\n    AND \"language\" NOT GLOB '*--*' AND \"language\" NOT GLOB '*-'\n    AND \"language\" <> 'und' AND \"language\" NOT GLOB 'und-*'), \"printed\" integer default 1 not null check (printed IN (0, 1)), \"position\" integer not null check (position >= 0)) strict"
+  },
+  {
+    "type": "index",
+    "name": "release_disc_alternate_titles_disc_title_id_title_index",
+    "tbl_name": "release_disc_alternate_titles",
+    "sql": "CREATE UNIQUE INDEX \"release_disc_alternate_titles_disc_title_id_title_index\" on \"release_disc_alternate_titles\" (\"disc_title_id\", \"title\")"
+  }
+]

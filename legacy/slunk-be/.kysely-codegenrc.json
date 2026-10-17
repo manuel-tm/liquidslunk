@@ -1,0 +1,10 @@
+{
+  "dialect": "sqlite",
+  "outFile": "src/repo/db_types.ts",
+  "overrides": {
+    "columns": {
+      "files.type": "\"music\" | \"image\" | \"other\"",
+      "releases.release_date_precision": "\"year\" | \"month\" | \"day\" | null"
+    }
+  }
+}

@@ -1,0 +1,126 @@
+extend type Query {
+  "A page of registered files."
+  files(
+    page: Int! = 1
+    perPage: Int! = 50
+    "A column, `id` or `path`, with `-` in front for descending. Default: `-id`, newest first."
+    sort: String
+    "Part of the path, ignoring case."
+    q: String
+    type: FileType
+    "Only files nothing uses yet."
+    unused: Boolean
+    "Only files that aren't a track's audio yet, to create tracks from."
+    withoutTrack: Boolean
+  ): FilePage!
+  file(id: ID!): File
+  fileCounts: FileCounts!
+  "A folder's subfolders and the files directly in it, for browsing. Hidden files are left out."
+  folder(path: String! = ""): Folder!
+  "Every file in a folder and its subfolders, by path."
+  folderFiles(path: String!): [FolderFile!]!
+}
+
+type Mutation {
+  "Registers files on disk: reads their size, mtime and hash, and types them by extension. Paths already registered are returned as they are."
+  registerFiles(paths: [String!]!): [File!]!
+  "Changes a file's type, or its path to relink a file that moved, in which case its size, mtime and hash are read again."
+  updateFile(id: ID!, input: UpdateFileInput!): File!
+  "Deletes a file's record. The file on disk isn't touched. Fails while anything uses the file."
+  deleteFile(id: ID!): ID!
+}
+
+enum FileType {
+  music
+  image
+  other
+}
+
+"A file the user registered. Slunk only reads it."
+type File {
+  id: ID!
+  "Relative to the database's folder."
+  path: String!
+  "The last part of the path."
+  name: String!
+  type: FileType!
+  sizeBytes: Float!
+  "When the file was last modified, in epoch seconds, as read when it was registered or relinked."
+  mtime: Float!
+  sha256: String!
+  "Epoch seconds"
+  insertedAt: Float!
+  "Epoch seconds"
+  updatedAt: Float!
+  "Whether there's still a file at the path."
+  onDisk: Boolean!
+  "The track this file is the audio of."
+  track: Track
+  "Everything that uses the file. While anything does, it can't be deleted."
+  uses: [FileUse!]!
+}
+
+type FilePage {
+  items: [File!]!
+  total: Int!
+}
+
+type FileCounts {
+  total: Int!
+  "Files nothing uses yet"
+  unused: Int!
+}
+
+"Something that uses a file. It has no id of its own."
+type FileUse {
+  kind: FileUseKind!
+  "The id of the track, release, artist or label that uses the file."
+  entityId: ID!
+  "Its title or name"
+  name: String!
+  "A file link's note."
+  note: String
+}
+
+enum FileUseKind {
+  track_audio
+  release_cover
+  artist_picture
+  label_picture
+  release_link
+  artist_link
+  track_link
+}
+
+type Folder {
+  "Relative to the database's folder: `\"\"` is that folder, and `..` goes up."
+  path: String!
+  absolutePath: String!
+  "The folder above, or null at the top of the disk."
+  parent: String
+  folders: [Subfolder!]!
+  files: [FolderFile!]!
+}
+
+type Subfolder {
+  name: String!
+  path: String!
+  "Whether it, or a folder inside it, holds registered files."
+  hasRegisteredFiles: Boolean!
+}
+
+"A file on disk, registered or not."
+type FolderFile {
+  name: String!
+  path: String!
+  "From the extension"
+  type: FileType!
+  sizeBytes: Float!
+  "The file's registration, if it's registered."
+  file: File
+}
+
+input UpdateFileInput {
+  path: String
+  type: FileType
+}

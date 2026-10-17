@@ -1,0 +1,164 @@
+extend type Query {
+  "Tag definitions of one type, or of every type when `type` is left out."
+  tags(
+    type: TagType
+    page: Int! = 1
+    perPage: Int! = 50
+    "`name`, or `id`, with `-` for descending"
+    sort: String
+    "Part of the name"
+    q: String
+  ): TagPage!
+  tag(type: TagType!, id: ID!): Tag
+  "These tags, in the same order, leaving out any that don't exist. The release and track lists name their tag filters with it."
+  tagsByRef(refs: [TagRefInput!]!): [Tag!]!
+}
+
+extend type Mutation {
+  "Tag names are unique across types, ignoring case."
+  createTag(type: TagType!, input: TagInput!): Tag!
+  "The type can't change. Switching to single-value fails while a release or track has several values."
+  updateTag(type: TagType!, id: ID!, input: TagInput!): Tag!
+  "Fails while any release or track has a value."
+  deleteTag(type: TagType!, id: ID!): ID!
+  "Replaces every tag value on the release. A tag left out, or with only blank values, is removed."
+  setReleaseTags(id: ID!, tags: [TagValuesInput!]!): Release!
+  "Sets a tag on many releases at once: a single-value tag's value is replaced, and a multi-value tag gets the value added. Returns how many releases changed."
+  setTagOnReleases(ids: [ID!]!, type: TagType!, tagId: ID!, value: String!): Int!
+  "Removes a tag from many releases at once: one of its values, or all of them when `value` is left out. Returns how many releases changed."
+  removeTagFromReleases(
+    ids: [ID!]!
+    type: TagType!
+    tagId: ID!
+    value: String
+  ): Int!
+}
+
+"Each type has its own tables, so the same id exists once per type."
+enum TagType {
+  text
+  "A real number"
+  number
+  "A day, without a time"
+  date
+}
+
+"A tag definition, like Genre or Score."
+interface Tag {
+  id: ID!
+  type: TagType!
+  name: String!
+  "Several values per release or track, or at most one."
+  multiple: Boolean!
+  "How many releases have a value."
+  releaseCount: Int!
+  "How many tracks have a value."
+  trackCount: Int!
+  blockers: [String!]!
+  "Releases with several values, which keep the tag from being single-value."
+  multiValueReleases(page: Int! = 1, perPage: Int! = 20): ReleasePage!
+  "Tracks with several values, which keep the tag from being single-value."
+  multiValueTracks(page: Int! = 1, perPage: Int! = 20): TrackPage!
+}
+
+type TextTag implements Tag {
+  id: ID!
+  type: TagType!
+  name: String!
+  multiple: Boolean!
+  releaseCount: Int!
+  trackCount: Int!
+  blockers: [String!]!
+  multiValueReleases(page: Int! = 1, perPage: Int! = 20): ReleasePage!
+  multiValueTracks(page: Int! = 1, perPage: Int! = 20): TrackPage!
+  "The values, with how many releases and tracks have each, the most used first. Values that differ only in case count as one."
+  values(page: Int! = 1, perPage: Int! = 50, "Part of the value" q: String): TagValuePage!
+}
+
+type NumberTag implements Tag {
+  id: ID!
+  type: TagType!
+  name: String!
+  multiple: Boolean!
+  releaseCount: Int!
+  trackCount: Int!
+  blockers: [String!]!
+  multiValueReleases(page: Int! = 1, perPage: Int! = 20): ReleasePage!
+  multiValueTracks(page: Int! = 1, perPage: Int! = 20): TrackPage!
+}
+
+type DateTag implements Tag {
+  id: ID!
+  type: TagType!
+  name: String!
+  multiple: Boolean!
+  releaseCount: Int!
+  trackCount: Int!
+  blockers: [String!]!
+  multiValueReleases(page: Int! = 1, perPage: Int! = 20): ReleasePage!
+  multiValueTracks(page: Int! = 1, perPage: Int! = 20): TrackPage!
+}
+
+type TagValueCount {
+  value: String!
+  releases: Int!
+  tracks: Int!
+}
+
+type TagValuePage {
+  items: [TagValueCount!]!
+  total: Int!
+}
+
+type TagPage {
+  items: [Tag!]!
+  total: Int!
+}
+
+"A tag set on a release or track, with its values: one for a single-value tag."
+type TagValues {
+  tag: Tag!
+  "As text: `Rock`, `8.5`, or a date as `2006-01-10`. In the order they were set."
+  values: [String!]!
+}
+
+extend type Release {
+  "By tag name."
+  tags: [TagValues!]!
+}
+
+extend type Track {
+  "By tag name."
+  tags: [TagValues!]!
+}
+
+input TagRefInput {
+  type: TagType!
+  id: ID!
+}
+
+input TagInput {
+  name: String!
+  multiple: Boolean! = false
+}
+
+input TagValuesInput {
+  type: TagType!
+  tagId: ID!
+  "As typed: a number like `8.5`, a date as `2006`, `2006-01` or `2006-01-10`. Blank values are left out."
+  values: [String!]!
+}
+
+"A release or track list filter on one tag. Text takes `equals` or `contains`; numbers and dates take `equals`, or `min` and `max`."
+input TagFilterInput {
+  type: TagType!
+  tagId: ID!
+  "The value, ignoring case for text. A date covers its whole year, month or day (`2006`, `2006-01`, `2006-01-10`)."
+  equals: String
+  "Text only: part of the value, ignoring case."
+  contains: String
+  "Number or date, included. A date starts on its first day."
+  min: String
+  "Number or date, included. A date runs to its last day: `2006` includes Dec 31, 2006."
+  max: String
+}

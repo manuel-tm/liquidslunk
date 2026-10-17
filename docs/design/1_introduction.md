@@ -1,6 +1,6 @@
 # Introduction to liquidslunk
 
-> **Status: in design.**
+> **Status: being built.**
 
 liquidslunk is a local music library manager, built as a desktop app on Tauri 2. It's a port of slunk, an earlier version of the same app: a Node backend and a web frontend that talked over GraphQL. liquidslunk keeps what slunk does and its database, rewrites the backend in Rust, and builds it into the app. slunk is frozen, and this repository stands on its own.
 
@@ -355,6 +355,8 @@ Commands that need a library return `noLibrary` when none is open, and the front
 
 ### 6.4 Switching and closing
 
+> Changed during implementation, see [Appendix A](#appendix-a-switching-opens-the-new-library-before-closing-the-old-one) and [Appendix B](#appendix-b-the-sidecar-stops-before-the-connection-closes).
+
 - **The sidebar's header** shows the library's folder name, with a menu: Switch library…, Show in Finder, and the recent libraries.
 - **Switching:**
   1. Close the connection, which checkpoints the WAL and removes `-wal` and `-shm`.
@@ -594,6 +596,8 @@ Each phase is a vertical slice, as in slunk: it ports a context with its command
 - WebDriver inside debug builds (`tauri-plugin-wdio-webdriver`, or WebdriverIO's Tauri service). These support macOS, unlike the official `tauri-driver`.
 - `mockIPC` with fixtures, for checks that only need the layout.
 
+> Changed during implementation, see [Appendix C](#appendix-c-screenshots-go-through-webdriver-behind-a-feature).
+
 **macOS privacy prompts.** macOS asks before an app reads Desktop, Documents, Downloads, or external and network volumes. It asks once per app, and the dev and release builds count as two apps.
 
 **Network drives.** SQLite's WAL doesn't work on network file systems. That was already true of slunk, but a picker makes it easy to choose a library on a NAS. Welcome says so when opening one fails.
@@ -632,3 +636,29 @@ Each phase is a vertical slice, as in slunk: it ports a context with its command
 Still open:
 
 6. **Screenshot tooling:** WebDriver in debug builds, or `mockIPC` fixtures (§10). Phase 0 decides, trying WebDriver first.
+
+   > Settled during implementation, see [Appendix C](#appendix-c-screenshots-go-through-webdriver-behind-a-feature).
+
+## Appendix A: Switching opens the new library before closing the old one
+
+- **Date:** 2026-10-17
+- **Affects:** §6.4 Switching and closing
+- **Was:** switching closes the open library and stops the sidecar first, then clears the caches and opens the new library.
+- **Now:** opening another library checks it and migrates it first (§6.3, steps 1 to 3), while the open one stays open. Only then does the open one close, before the new connection opens. The frontend clears its caches once the new library is open. "Switch library…" in the sidebar still closes the open library, then shows Welcome.
+- **Why:** a library that fails to open, like one that isn't there or isn't a Slunk library, leaves the open one as it was, instead of no library at all.
+
+## Appendix B: The sidecar stops before the connection closes
+
+- **Date:** 2026-10-17
+- **Affects:** §6.4 Switching and closing
+- **Was:** closing a library closes the connection, which checkpoints the WAL and removes `-wal` and `-shm`, then stops the sidecar.
+- **Now:** closing a library, and the app's exit, stop the sidecar first, then close the connection.
+- **Why:** SQLite only removes `-wal` and `-shm` when the app's connection is the last one to close. When slunk's backend closed last, they stayed next to the database. Both orders were checked, with the app's connection and slunk's backend on the same library.
+
+## Appendix C: Screenshots go through WebDriver, behind a feature
+
+- **Date:** 2026-10-17
+- **Affects:** §10 Screenshots, §12 question 6
+- **Was:** still open: WebDriver inside debug builds, or `mockIPC` fixtures. Phase 0 decides, trying WebDriver first.
+- **Now:** WebDriver. tauri-plugin-wdio-webdriver embeds a W3C WebDriver server on `127.0.0.1:4445` in builds with the `webdriver` cargo feature, which is off by default: `npm run tauri dev -- --features webdriver`, then `npm run screenshot`. `mockIPC` isn't needed.
+- **Why:** it works on macOS's WKWebView, with real input, which Base UI's menus need. It's an opt-in feature rather than part of every debug build, since it opens an automation server on localhost. That also lets a release build be checked the same way, as phase 0's check of reloading a deep route needed.

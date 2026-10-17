@@ -3,7 +3,7 @@
 This folder documents liquidslunk as it's actually built, and it's kept up to date with the code (see [Keeping docs up to date](#keeping-docs-up-to-date)). Plans live separately, in [`design/`](design/).
 
 liquidslunk is a port of slunk, an earlier version of the same app. slunk's own docs aren't these docs:
-- Phase 0 of the base design copies them into `legacy/docs/`, each marked as slunk's, for reference while the port runs.
+- They're in `legacy/docs/`, each marked as slunk's, for reference while the port runs. Phase 6 deletes them.
 - These docs describe only what's built here, as it's built. Each phase carries over what it ports, rewritten for the new code.
 
 ## Contents
@@ -11,24 +11,40 @@ liquidslunk is a port of slunk, an earlier version of the same app. slunk's own 
 | Path | What's in it |
 |---|---|
 | [`design/`](design/) | Design docs: numbered plans used for planning and prompting, and an archive once they're built. [design/README.md](design/README.md) lists every design doc and its status. Start with [1_introduction.md](design/1_introduction.md), the base design. |
+| [`development/getting-started.md`](development/getting-started.md) | Setting up and running the app |
+| [`development/frontend.md`](development/frontend.md) | How the frontend is built, and its conventions |
+| [`development/backend.md`](development/backend.md) | How the Rust backend is built: the database, its migrations, the commands, the library, and slunk's backend as the sidecar |
+| [`reference/database.md`](reference/database.md) | The database schema as built, and the rules it enforces |
 
-Nothing is built yet. New docs are added as the code they describe lands:
-- `development/` holds how to set up, run and work on the app: getting started, the frontend, the backend.
-- `reference/` describes what's built, starting with the database's schema and the rules it enforces.
+New docs are added as the code they describe lands:
+- `development/` holds how to set up, run and work on the app.
+- `reference/` describes what's built: the database. The commands are documented by their Rust doc comments, which tauri-specta copies into `src/bindings.ts`.
 
 ## Repository layout
 
 ```
 docs/            documentation (this folder)
   design/        design docs (plans)
+  development/   setup and conventions for the code
+  reference/     the database schema
+src/             the frontend: React, in the app's webview
+src-tauri/       the app: Tauri, its commands, the library, the file protocol
+crates/slunk/    the domain and its database: migrations, with no Tauri
+                 dependency
+crates/slunk-cli/  the database commands (npm run db:*)
+scripts/         scripts for working on the app, like screenshots
+legacy/          slunk as of its last commit, read-only, until phase 6
 dev-library/     scratch libraries for development, never committed
 temp/            local assets for prompting, never committed
 AGENTS.md        instructions for AI coding agents (CLAUDE.md points to it)
+mise.toml        pinned Node and Rust
+Cargo.toml       the Cargo workspace
+package.json     the frontend, the Tauri CLI, and every npm script
 README.md
 LICENSE
 ```
 
-Phase 0 of [1_introduction.md](design/1_introduction.md) adds the code's folders, and this layout gets them then.
+`legacy/` holds slunk's backend, which the app runs as its sidecar until the port is done, and slunk's docs. Everything in it is read-only: see [legacy/README.md](../legacy/README.md).
 
 `temp/` holds files you share with an agent while prompting (screenshots, notes, sample data). Only its placeholder, `temp/.gitkeep`, is committed; the root `.gitignore` ignores everything else. Because those files exist only on your machine, nothing that gets committed (docs, design docs, code, commit messages) may reference them. If something in one of them belongs in the docs, write it into the doc itself.
 
@@ -80,6 +96,7 @@ A design doc is only ever edited by the work on its own topic. Every other desig
 Each design doc numbers its own sections and its own phases from 0, so a citation names its document:
 - **The base design** is cited without a name: "design §5.4", "phase 2" or "Appendix A" mean [1_introduction.md](design/1_introduction.md). The code and these docs cite it that way.
 - **Any later design doc** is cited by its file name: "2_topic.md §3", "phase 0 of 2_topic.md".
+- **slunk's design docs,** in `legacy/docs/design/` until phase 6, are cited with slunk's name: "slunk's design §7.4", "slunk's 3_alternate_names.md §7.1". The frontend's comments carried over from slunk cite them that way.
 
 ### Keeping docs up to date
 
