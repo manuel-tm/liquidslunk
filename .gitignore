@@ -1,3 +1,11 @@
 # Local prompting assets: the folder is committed, its contents never are (see AGENTS.md)
 /temp/*
 !/temp/.gitkeep
+
+# Scratch libraries for development, with copies of real music: the folder is
+# committed, its contents never are (see AGENTS.md)
+/dev-library/*
+!/dev-library/.gitkeep
+
+# macOS Finder metadata
+.DS_Store

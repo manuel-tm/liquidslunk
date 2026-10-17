@@ -21,6 +21,7 @@ Nothing is built yet. New docs are added as the code they describe lands:
 ```
 docs/            documentation (this folder)
   design/        design docs (plans)
+dev-library/     scratch libraries for development, never committed
 temp/            local assets for prompting, never committed
 AGENTS.md        instructions for AI coding agents (CLAUDE.md points to it)
 README.md
@@ -30,6 +31,8 @@ LICENSE
 Phase 0 of [1_introduction.md](design/1_introduction.md) adds the code's folders, and this layout gets them then.
 
 `temp/` holds files you share with an agent while prompting (screenshots, notes, sample data). Only its placeholder, `temp/.gitkeep`, is committed; the root `.gitignore` ignores everything else. Because those files exist only on your machine, nothing that gets committed (docs, design docs, code, commit messages) may reference them. If something in one of them belongs in the docs, write it into the doc itself.
+
+`dev-library/` holds scratch libraries for development. `dev-library/music/` is a copy of part of a real library, so, as with `temp/`, only its placeholder (`dev-library/.gitkeep`) is committed, and nothing committed depends on what's in it.
 
 The same goes for slunk: its repository won't stay around, so nothing here points to its files. What liquidslunk needs from it is copied into this repository, or written into these docs.
 

@@ -13,6 +13,7 @@ It's a port of slunk, an earlier version of the same app, with a Node backend an
 - **[`docs/design/`](docs/design/): design docs.** These are the plans, used for planning and prompting, and an archive once they're built. [`docs/design/README.md`](docs/design/README.md) lists them with their status. [`1_introduction.md`](docs/design/1_introduction.md) is the base design: the port to Tauri 2, its architecture and its phases. Read its relevant sections before changing the backend's structure, the commands, how the library is chosen, the migrations, or anything that touches files.
 - **The rest of [`docs/`](docs/README.md): what's actually built,** kept up to date with the code. Start at `docs/README.md`.
 - **`temp/`: local assets for prompting, never committed.** See [Never reference files in `temp/`](#never-reference-files-in-temp).
+- **`dev-library/`: scratch libraries for development, never committed.** See [Never commit or depend on `dev-library/`](#never-commit-or-depend-on-dev-library).
 
 There's no code yet. Phase 0 of `1_introduction.md` brings it in, and adds its folders here.
 
@@ -54,13 +55,20 @@ liquidslunk ports slunk's schema, behavior and routes ([design §2.1](docs/desig
 
 - liquidslunk never moves, copies, renames, deletes or retags a user's file. Code that touches the user's files may only read them.
 - The only things it writes are next to its database: `slunk.db`, SQLite's `-wal`/`-shm` files, and `slunk-backups/`. Apart from those, it writes its settings in the app's config folder ([design §6.2](docs/design/1_introduction.md#62-the-settings-file)).
-- For development and tests, use a scratch library with sample files. Never open a real music library from a development build ([design §6.5](docs/design/1_introduction.md#65-in-development)).
+- For development, use a scratch library in `dev-library/`. Never open a real music library from a development build ([design §6.5](docs/design/1_introduction.md#65-in-development)).
 
 ### Never reference files in `temp/`
 
 - `temp/` holds assets the user shares while prompting. Only its placeholder, `temp/.gitkeep`, is committed; the root `.gitignore` ignores everything else, so those files exist only on the user's machine.
 - Never reference a file in `temp/` in anything that gets committed or published: docs, design docs, code, comments, commit messages or PR descriptions. For anyone else, the reference would point to nothing.
 - If something from a `temp/` file belongs in the docs, write that content into the doc itself.
+
+### Never commit or depend on `dev-library/`
+
+- `dev-library/` holds scratch libraries for development. `dev-library/music/` is a copy of part of the user's real library: music files, artwork, rip logs, and backups of slunk's database for them.
+- Only its placeholder, `dev-library/.gitkeep`, is committed; the root `.gitignore` ignores everything else. Never commit a file from it, or force-add one: they're copies of the user's own music.
+- Nothing committed may depend on what's in it, since a fresh clone has an empty `dev-library/`. Tests make their own fixtures.
+- Treat its files like the user's: read them, never write them. A development build writes only next to the library's database, as a release build does.
 
 ### The database is the part built to last
 

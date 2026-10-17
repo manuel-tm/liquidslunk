@@ -173,7 +173,7 @@ liquidslunk/
     README.md                what this folder is
     docs/                    slunk's docs, each marked as legacy
     slunk-be/                slunk's backend
-  dev-library/               a scratch library for development
+  dev-library/               scratch libraries for development, never committed
   temp/                      local assets for prompting, never committed
 ```
 
@@ -367,9 +367,9 @@ Commands that need a library return `noLibrary` when none is open, and the front
 
 ### 6.5 In development
 
-- **Separate settings.** Debug builds use `settings.dev.json`, so `npm run tauri dev` never opens the library the installed app uses. The first dev run asks: pick `dev-library/slunk.db`. Development never points at a real music library, and this makes that hard to get wrong.
+- **Separate settings.** Debug builds use `settings.dev.json`, so `npm run tauri dev` never opens the library the installed app uses. The first dev run asks: open the library in `dev-library/music/`, or create one in a new folder of `dev-library/`. Development never points at a real music library, and this makes that hard to get wrong.
 - **`--library <path>`**, in debug builds only, opens a library without touching the settings, for scripts and screenshots.
-- **Tests** open temporary databases.
+- **Tests** open temporary databases. They never read `dev-library/`, which a fresh clone doesn't have. Audio tests use tiny fixtures committed with the tests: a second of silence in each format, with tags set.
 
 ## 7. Frontend
 
@@ -447,7 +447,7 @@ Each phase is a vertical slice, as in slunk: it ports a context with its command
   - all of slunk copied at once, from its last commit: its frontend at the root, and its backend and docs in `legacy/` (§8);
   - only the files git tracks, with `git archive`, so nothing local comes along: no `node_modules/`, builds, `.env`, databases, or `temp/` files;
   - a fresh history: slunk's files are copied in, not its commits;
-  - `dev-library/`, git-ignored except its `.gitkeep`.
+  - `dev-library/` is there already, git-ignored except its `.gitkeep`. `dev-library/music/` holds copies of real music files, and in `slunk-backups/`, two backups of slunk's database for them, from before most of the migrations.
 - The Tauri 2 scaffold, named liquidslunk, with the identifier `com.liquidslunk.desktop` (§12).
 - The Cargo workspace, `crates/slunk` and `crates/slunk-cli`, with Node and Rust pinned in `mise.toml`.
 - Rust:
@@ -486,7 +486,8 @@ Each phase is a vertical slice, as in slunk: it ports a context with its command
     - `npm run codegen` after changing a GraphQL document, until phase 6;
     - a screenshot of any change that shows in the UI, taken the way phase 0 settles on.
 - *Exit:*
-  - The first launch asks for a library. Opening a slunk library in `dev-library/` that needs migrating backs it up, migrates it and shows the whole app working, through the sidecar. Creating a new library there works too.
+  - The first launch asks for a library. Opening one that needs migrating backs it up, migrates it and shows the whole app working, through the sidecar. That's one of the backups in `dev-library/music/slunk-backups/`, copied to `dev-library/music/slunk.db`.
+  - Creating a new library in `dev-library/` works too.
   - A restart opens it without asking, and switching libraries works.
   - The migration parity tests pass.
   - Audio plays and seeks on the release page.
@@ -585,7 +586,7 @@ Each phase is a vertical slice, as in slunk: it ports a context with its command
 - Phase 1 counts the extensions of the real library's music files. If those formats are there, it adds a small reader for DSF's header and ID3 chunk, and decides what to do about WMA.
 - lofty's tag keys are checked against music-metadata's for album artist, the disc's title (`DISCSUBTITLE`, `TSST`) and dates, on samples of every format.
 
-**Media over the custom protocol.** WebKit asks for audio in ranges. Phase 0 checks seeking in FLAC, MP3 and M4A. If it doesn't work, the fallback is the asset protocol, with its scope widened at runtime to each registered file's folder.
+**Media over the custom protocol.** WebKit asks for audio in ranges. Phase 0 checks seeking in FLAC, MP3 and M4A. `dev-library/music/` only has FLAC, so phase 0 adds an MP3 and an M4A there. If it doesn't work, the fallback is the asset protocol, with its scope widened at runtime to each registered file's folder.
 
 **tauri-specta** is still a 2.0 release candidate. Pin its exact version. If it gets in the way, ts-rs for the types and a thin hand-written `invoke` wrapper per command do the same job.
 
