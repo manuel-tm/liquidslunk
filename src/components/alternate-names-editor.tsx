@@ -13,7 +13,7 @@ export type AlternateNameRow = {
   /** Tells rows apart, before they're saved too */
   key: string
   /** Null for a name that isn't saved yet */
-  id: string | null
+  id: number | null
   name: string
   language: string | null
   realName: boolean
@@ -24,9 +24,9 @@ export type AlternateNameRow = {
 
 let lastKey = 0
 
-/** A row for a name from the API, or a new one. */
+/** A row for a name from the backend, or a new one. */
 export function alternateNameRow(name: {
-  id?: string | null
+  id?: number | null
   name: string
   language?: string | null
   realName?: boolean

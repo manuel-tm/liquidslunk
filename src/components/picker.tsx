@@ -24,7 +24,7 @@ import {
 export type Option = {
   id: string
   name: string
-  image?: { id: string } | null
+  image?: { id: number | string } | null
   lang?: string | null
   detail?: string | null
   creditedAs?: string | null

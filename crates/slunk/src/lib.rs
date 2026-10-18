@@ -5,10 +5,15 @@
 //! - `repo`: the repository layer: the connection, the migration runner, its
 //!   backups, the migrations, and the repositories.
 //! - `media`: the media context: registered files, and the library on disk.
+//! - `catalog`: the catalog context: artists, labels, and the lists the user
+//!   manages, so far.
+//! - `languages`: language tags, as they're saved.
 //! - `paging`: a list's page, sort and search.
 //! - `text`: text as it's saved.
 
+pub mod catalog;
 pub mod error;
+pub mod languages;
 pub mod media;
 pub mod paging;
 pub mod repo;

@@ -5,8 +5,9 @@
 The backend is Rust, built into the app. It's being ported from slunk's Node backend one context at a time ([design §8](../design/1_introduction.md#8-the-transition)). So far:
 - **Phase 0:** the database connection, the migration runner with its backups, slunk's eight migrations, and their parity tests; the database commands, in `crates/slunk-cli`; the app: commands typed by tauri-specta, their error, the settings, opening, creating, switching and closing libraries, the file protocol, and opening files; and the sidecar, slunk's backend, which still serves every route not ported yet, in debug builds.
 - **Phase 1:** the media context: registered files, the library on disk, file links, and reading audio files; lists' paging; and the write parity script.
+- **Phase 2:** the catalog context's artists and labels, with their alternate names, pictures and logos, and an artist's file links; release formats and release media; and language tags.
 
-slunk's other contexts (catalog, tagging, library check) aren't ported yet, nor the media context's part of the library check (`checkFiles`, `relinkFiles`, `rehashFiles`). Their rules are in slunk's backend doc, `legacy/docs/development/backend.md`, and a rule moves here only once Rust does it, with a test.
+The rest of slunk's catalog context (releases, tracks, credits, the import's suggestions), its tagging context and its library check aren't ported yet, nor the media context's part of the library check (`checkFiles`, `relinkFiles`, `rehashFiles`). Their rules are in slunk's backend doc, `legacy/docs/development/backend.md`, and a rule moves here only once Rust does it, with a test.
 
 ## Stack
 
@@ -23,6 +24,7 @@ slunk's other contexts (catalog, tagging, library check) aren't ported yet, nor 
 | Hashing, walking folders | sha2, walkdir |
 | Text | unicode-normalization (NFC) |
 | Sorting file names | ICU4X's collator (`icu_collator`), with numeric ordering |
+| Language tags | ICU4X's locale canonicalizer (`icu_locale`), and its Unicode properties (`icu_properties`) for scripts |
 | CLI | clap |
 | Screenshots | tauri-plugin-wdio-webdriver, behind the `webdriver` feature |
 
@@ -40,6 +42,7 @@ crates/slunk/                the domain and its database, with no Tauri dependen
   src/error.rs               the domain's error
   src/text.rs                text as it's saved: NFC, trimmed as JavaScript trims
   src/paging.rs              a list's page, sort and search
+  src/languages.rs           language tags as they're saved, as Node's Intl gave them
   src/media/                 the media context
     mod.rs                   Media: registering, browsing, updating, deleting
     library.rs               the library on disk, read-only
@@ -47,6 +50,10 @@ crates/slunk/                the domain and its database, with no Tauri dependen
     file_types.rs            a file's type, from its extension
     repository.rs            the records the media context stores
     audio/                   an audio file's duration and tags
+  src/catalog/               the catalog context, so far: artists, labels, lists
+    mod.rs                   Catalog: lists, artists, labels, pictures, deletes
+    names.rs                 alternate names, and the links credited with them
+    repository.rs            the records the catalog stores
   src/repo/
     connection.rs            opening SQLite with the connection settings
     store.rs                 the one connection, and transactions
@@ -55,14 +62,23 @@ crates/slunk/                the domain and its database, with no Tauri dependen
     rebuild_table.rs         rebuild_table(), for migrations that change a table
     files.rs                 registered files
     file_links.rs            files linked to releases, artists and tracks
+    named.rs                 artists and labels: their rows and alternate names
+    artists.rs               names credited on links, and what blocks a delete
+    labels.rs                the releases a label is on
+    lists.rs                 release formats and release media
+    stats.rs                 the languages in use
     helpers.rs               chunked in (…) lists, grouping, sea-query's values
     migrations/              one module per migration, listed in mod.rs
   tests/parity.rs            the migrations, checked against slunk's
   tests/media.rs             the media context's rules
   tests/audio.rs             durations and tags, checked against slunk's
+  tests/catalog.rs           the catalog context's rules
+  tests/languages.rs         language tags, checked against Node's
   tests/fixtures/parity/     what slunk's runner made, and the script that made it
   tests/fixtures/audio/      audio files, what slunk read from them, and the
                              script that made both
+  tests/fixtures/languages/  what Node's Intl gave for language tags, and the
+                             script that asked it
 crates/slunk-cli/            the database commands (npm run db:*)
 src-tauri/
   tauri.conf.json            the app's name, identifier, window, CSP and bundle
@@ -75,7 +91,8 @@ src-tauri/
   src/library.rs             opening, creating, switching and closing libraries
   src/protocol.rs            slunk://localhost/files/:id
   src/sidecar.rs             slunk's backend, in debug builds
-  src/commands/              the commands and their DTOs, one module per context
+  src/commands/              the commands and their DTOs, one module per context;
+                             catalog/ has one per entity
   examples/run_commands.rs   runs commands without the app, for write parity
 scripts/write-parity/        the write parity script, with each phase's steps
 legacy/slunk-be/             slunk's backend, run as the sidecar
@@ -83,7 +100,7 @@ legacy/slunk-be/             slunk's backend, run as the sidecar
 
 `crates/slunk` doesn't depend on Tauri, so its tests run with a plain `cargo test`, and the CLI uses it directly. Its repositories are plain functions over a `&Connection`, and a `Transaction` is one.
 
-**Contexts** are structs, like slunk's context factories, wired once when a library opens (`Library::new()` in `src-tauri/src/library.rs`), as slunk's `server.ts` wired them: `Media::new(store, library)` takes the store and the library on disk. Commands call contexts, and contexts call repositories.
+**Contexts** are structs, like slunk's context factories, wired once when a library opens (`Library::new()` in `src-tauri/src/library.rs`), as slunk's `server.ts` wired them: `Media::new(store, library)` takes the store and the library on disk, and `Catalog::new(store, media)` the store and the media context, which it registers files with. The library holds the media context in an `Arc`, which both share. Commands call contexts, and contexts call repositories.
 
 **The store** (`repo/store.rs`) holds the library's one connection, behind a mutex. `store.conn()` takes it. `store.transaction(|tx| …)` runs a closure in a transaction, started with `BEGIN IMMEDIATE`, since slunk's backend writes the same database until phase 6. A context that writes inside another's transaction takes the `tx`, as `Media::insert_prepared(tx, prepared)` does, so there's no nesting. A context reads files before taking the connection, never while holding it: `prepare_files()` looks up what's registered, lets go of the connection, then reads and hashes the rest.
 
@@ -141,6 +158,54 @@ Known differences, which no file in `dev-library/music/` has:
 npm install --prefix legacy/slunk-be
 node crates/slunk/tests/fixtures/audio/generate.ts
 ```
+
+## The catalog context
+
+`crates/slunk/src/catalog/` holds what the user catalogs. So far it has artists and labels, and the two lists the user manages: release formats and release media. Each rule here has a test in `tests/catalog.rs`, or next to its code, and the write parity script checks them against slunk's backend.
+
+- **Lists** share one repository (`repo/lists.rs`) and one set of functions, with a `ListKind`. Names are cleaned like other text, and unique in their list ignoring case, which the database enforces: "There's already one with that name, ignoring case". Renaming an unknown one is `NotFound`: "There's no format 12".
+- **Listing** sorts by `name`, ignoring case, or by `id`, and searches the name ignoring ASCII case. Artists and labels then sort by id, and their search matches an alternate name too, so "福居" finds Ryo Fukui. Lists of each have their own sort error: "Artists can't be sorted by picture".
+- **Alternate names** (slunk's 3_alternate_names.md §4.2) are other names an artist or label goes by: other spellings ("ALIKA"), initials ("R. Fukui"), names in other scripts ("福居良"). An artist's can be real names.
+  - They're saved with their artist or label, as an ordered list: a name with an id keeps its row, one without is added, and names left out are deleted. Left out entirely, they stay as they are.
+  - Names are cleaned like other text, and a blank one is left out. They compare exactly, case included, so "ALIKA" isn't "Alika".
+  - A save is refused when a name is given twice (`"ALIKA" is listed twice`), when one is the main name (`"Alika" is already the artist's main name`), unless it's an artist's real name, and when an id isn't one of the owner's names (`Name 3 isn't one of its alternate names`). Labels have no real names.
+  - A name given without an id, which the artist has already, keeps its row, and so the links credited with it.
+  - Names can trade places between rows in one save: renamed rows first move clear of the unique (owner, name) index, to U+FFFF and their id, as tracks are renumbered.
+  - A label's are replaced. Left out, they stay as they are, except one the label is renamed to, which goes.
+- **An artist's names and its links** are saved together (`catalog/names.rs`), so every link keeps showing what it showed. A link is a release artist, a track artist or feature, or an artist on a credit line, credited with one of the artist's alternate names, or with none, which shows the main name.
+  - Removing a name that links are credited with credits them with the main name, then deletes it.
+  - Renaming an alternate name renames it on its links: that's how a misprint is fixed.
+  - A rename shows on the links with no credited name. With `keepOldName`, they're credited with the old name instead, which is added after the others, with the old name's language, if the artist doesn't have it. That happens first, so the links of a name that goes in the same save don't get it. With no link showing the main name, nothing is kept.
+  - With the list left out, renaming the artist to one of its alternate names promotes it: its links lose their credited name, and the name goes, unless it's a real name, which stays as one. Its links then show the main name, the same text.
+  - So "Make main", which sends the old main name as a new row, drops the promoted name and sets `keepOldName`, swaps the two names, and every link shows what it did.
+  - `artist_name_uses()` counts the links credited with each name, and `main_name_uses()` those that show the main name.
+- **Pictures and logos** can be set on their own (`set_artist_picture`, `set_label_picture`), from a file id or a path. A path that isn't registered yet is registered in the same transaction, so a file the database refuses ("an artist picture must be an image") isn't left registered, and neither is one for an artist or label that isn't there. A ref with neither: "A file needs an id or a path".
+- **An artist's file links** are saved with it, replacing the old ones, in their order, with paths registered in the same transaction. Notes are cleaned, and a blank one is none.
+- **Saving** an artist or label checks its language first, then reads the files given by path, then writes everything in one transaction, so a failure saves nothing and registers nothing. An unknown id is `NotFound`: "There's no artist 12". A blank name is the database's CHECK: "The name can't be empty".
+- **Deletes** check what blocks them first, and the error says what: "The artist is still used: release artist on 1 release, credited 2 times", "The label is on 1 release", "The format is used by 3 releases". `artist_blockers()`, `label_blockers()` and `list_item_blockers()` give the same reasons ahead of time, for the delete dialog. Deleting an artist deletes its alternate names and file links, and its files stay registered. An unknown id deletes nothing, as in slunk.
+- **`languages()`** lists the language tags in use on names and titles, the most used first, then by tag, for the language picker.
+
+### Languages
+
+`languages.rs` saves the language of a name as slunk saved it: a BCP 47 tag in the canonical form Node 26's `Intl.getCanonicalLocales` gives, with ICU 78 and CLDR 48. "JA-latn" is `ja-Latn`, "iw" is `he` and "jpn" is `ja`. A blank one is `None`, which means unknown. Refused:
+- a malformed tag: `"ja_JP" isn't a language tag, like en, ja or ja-Latn`;
+- `und`: "Leave the language blank when it isn't known";
+- a well-formed tag whose language isn't 2 or 3 letters: `"japanese" isn't a language tag: it starts with a 2- or 3-letter code, like en or jpn`.
+
+ICU4X's canonicalizer does most of the work. `canonical_locale()` adds what V8 and ICU4C do that it doesn't:
+- V8 returns a lowercase two-letter code as it is, without asking ICU, unless it's one of eight deprecated or legacy codes. So `bh` stays `bh`, where ICU makes it `bho`, but `BH` is `bho`.
+- ICU4C has an alias ICU4X's data doesn't: `jaw` is `jv`.
+- ICU's languages can have 5 to 8 letters, and ICU4X's can't. The rest of such a tag is canonicalized with a placeholder language, which has no aliases.
+- A `posix` variant on its own is `-u-va-posix`.
+- ICU replaces deprecated extension values: `yes` for any `-u-` key, which is `true` and so left out, and the values in `KEYWORD_ALIASES` and `FIELD_ALIASES`, like `-u-ca-islamicc` and `-u-tz-japan`. Those tables are what Node replaced among every value of 3 and 4 letters, every time zone of 5, and the longer legacy names in ICU's data.
+
+`tests/languages.rs` checks it against `tests/fixtures/languages/expected.json`, what Node gave: every 2- and 3-letter code, and 548 tags around them, with scripts, regions, variants and extensions, and the ones it refuses. While porting, it agreed with Node on all of about 650,000 tags. Node's answer depends on its ICU, so the fixture records the versions. To make it again, from the repository's root:
+
+```sh
+node crates/slunk/tests/fixtures/languages/generate.ts
+```
+
+`script_language()` gives the language a name's script gives away, for a name added as it was credited: kana are `ja`, and Hangul `ko`. Han characters could be Chinese or Japanese, so they give none. Nothing calls it yet.
 
 ## The database
 
@@ -256,14 +321,20 @@ node crates/slunk/tests/fixtures/parity/generate.ts
 
 The frontend calls the backend through Tauri commands, in `src-tauri/src/commands/`, one module per context:
 - `library.rs`: `library_status`, `open_library`, `create_library`, `close_library`, `recent_libraries` and `reveal_library`;
-- `media.rs`: `files`, `file`, `file_counts`, `folder`, `folder_files`, `register_files`, `update_file` and `delete_file` ([The media context](#the-media-context)), and `open_file` and `reveal_file`.
+- `media.rs`: `files`, `file`, `file_counts`, `folder`, `folder_files`, `register_files`, `update_file` and `delete_file` ([The media context](#the-media-context)), and `open_file` and `reveal_file`;
+- `catalog/` ([The catalog context](#the-catalog-context)), a module per entity:
+  - `lists.rs`: `list_items`, `list_item`, `list_item_options`, `create_list_item`, `rename_list_item` and `delete_list_item`, each with a `kind`;
+  - `artists.rs`: `artists`, `artist`, `artist_options`, `artist_names`, `create_artist`, `update_artist`, `set_artist_picture` and `delete_artist`;
+  - `labels.rs`: `labels`, `label`, `label_options`, `create_label`, `update_label`, `set_label_picture` and `delete_label`;
+  - `mod.rs`: `languages`, and what they share.
 
 Their conventions:
 - **Async.** Every command is `async`, and does its database and disk work on Tokio's blocking pool, with `blocking()`, or `on_library()` for one that needs the open library, which is `noLibrary` without one. A command that isn't `async` runs on the main thread, and freezes the window while it works.
-- **Thin.** A command that uses the library is a wrapper over a plain function that takes it, like `media::register(library, args)`, which maps the context's records to DTOs. The write parity script calls those functions too.
+- **Thin.** A command that uses the library is a wrapper over a plain function that takes it, like `media::register(library, args)` or `catalog::artists::create(library, args)`, which maps the context's records to DTOs. The write parity script calls those functions too.
 - **Results.** Every command returns `Result<_, CommandError>`.
 - **Arguments.** A command takes its arguments as one struct, `args`, like `open_file`'s `FileArgs`, so the frontend passes them as an object, as `useCommand()` expects: `call("openFile", { id })`. A command can also take a `Channel` to report progress, as `open_library` does with a path.
-- **DTOs** derive `Serialize` (or `Deserialize`) and `specta::Type`, with `#[serde(rename_all = "camelCase")]`. Enums are tagged: `{ type: "created", … }`. A DTO has the fields its GraphQL document asked for, with the same names, so components change little: a file's `type`, `sizeBytes` and `uses[].entityId`. A shared one is flattened in with `#[serde(flatten)]`, as `FileDetails` holds a `File`.
+- **DTOs** derive `Serialize` (or `Deserialize`) and `specta::Type`, with `#[serde(rename_all = "camelCase")]`. Enums are tagged: `{ type: "created", … }`. A DTO has the fields its GraphQL document asked for, with the same names, so components change little: a file's `type`, `sizeBytes` and `uses[].entityId`. A shared one is flattened in with `#[serde(flatten)]`, as `FileDetails` holds a `File`, and an update's arguments hold its input: `UpdateArtistArgs` is `{ id, ...ArtistInput }`.
+- **Pickers** have their own small commands, like `artist_options`, which return the first 20 matches by name (slunk's design §7.3).
 - **Optional arguments** are `Option`s with `#[serde(default)]` and `#[specta(optional)]`, so the frontend leaves them out: `useCommand("files", { sort: "path" })`.
 - **Ids** are `i64`, exported to TypeScript as `number` (`dangerously_cast_bigints_to_number()`): SQLite's ids stay far below 2^53.
 
@@ -326,12 +397,12 @@ The app's CSP allows `slunk:` and `http://slunk.localhost` in `img-src` and `med
 ## Write parity
 
 `npm run parity:writes` checks that commands write what slunk's GraphQL wrote (design §10). It runs the same steps on two copies of a seeded library, one through slunk's backend and one through the commands, then compares what each step returned, its error included, and the two databases, table by table, leaving out `inserted_at`, `updated_at` and `applied_at`:
-1. It makes, in a temporary folder, two libraries with the same files: audio fixtures, text files, a hidden folder, symlinks, a name in NFD, and a folder next to the library for `../` paths. Their mtimes are a few nanoseconds before a second.
+1. It makes, in a temporary folder, two libraries with the same files: audio fixtures, text files and images, a hidden folder, symlinks, a name in NFD, and a folder next to the library for `../` paths. Their mtimes are a few nanoseconds before a second.
 2. It migrates one with the CLI, seeds it, and prepares it through GraphQL with each phase's `prepare` steps, then copies the database to the other.
 3. It runs the steps through slunk's backend, on a free port, and through `src-tauri/examples/run_commands.rs`, which opens the other library without the app and calls the commands' functions with the same JSON arguments.
-4. It compares results with ids as numbers, since GraphQL's are strings, and each library's folder replaced.
+4. It compares results with ids as numbers, since GraphQL's are strings, and each library's folder replaced. Where a command returns something else than its GraphQL query, the step's `fromGraphql` maps one to the other: a picker's command returns a list, and its query a page.
 
-Each phase adds its steps in a module of `scripts/write-parity/` (`media.ts` is phase 1's), lists it in `PHASES`, and adds its commands to `run_commands.rs`. A step that fails says so, with its message, even when both sides fail alike. `KEEP=1` keeps the temporary folder when they differ. It needs `npm install --prefix legacy/slunk-be`, and runs until phase 6, which deletes slunk's backend.
+Each phase adds its steps in a module of `scripts/write-parity/` (`media.ts` is phase 1's, `catalog.ts` phase 2's), lists it in `PHASES`, and adds its commands to `run_commands.rs`. The steps run in order, on the same library, so a phase's steps start where the earlier phases' left it. A step that fails says so, with its message, even when both sides fail alike. `KEEP=1` keeps the temporary folder when they differ. It needs `npm install --prefix legacy/slunk-be`, and runs until phase 6, which deletes slunk's backend.
 
 ## The sidecar
 
@@ -347,5 +418,5 @@ Both write the same database. WAL and `busy_timeout` handle it. Release builds n
 ## Conventions
 
 - **Formatting and linting:** `cargo fmt`, and `cargo clippy --workspace --all-targets` with no warnings.
-- **Tests:** `cargo test --workspace`. Tests make their own temporary databases and files, and never read `dev-library/`. Audio tests use the committed fixtures in `crates/slunk/tests/fixtures/audio/`.
+- **Tests:** `cargo test --workspace`. Tests make their own temporary databases and files, and never read `dev-library/`. Audio and language tag tests use the committed fixtures in `crates/slunk/tests/fixtures/`.
 - **Comments** cite the base design as "design §5.6", and slunk's docs by name, like "slunk's design §7.4".

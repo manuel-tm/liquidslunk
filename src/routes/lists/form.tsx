@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 import { useNavigate, useParams } from "react-router"
 
@@ -9,49 +9,26 @@ import { Button } from "@/components/ui/button"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { graphql } from "@/gql"
-import type { ListKind } from "@/gql/graphql"
+import type { ListKind } from "@/bindings"
+import { call, idParam, useCommand } from "@/lib/query"
 import { LISTS } from "@/routes/lists/config"
 import { NotFound } from "@/routes/not-found"
-
-const ListItemNameQuery = graphql(`
-  query ListItemName($kind: ListKind!, $id: ID!) {
-    listItem(kind: $kind, id: $id) {
-      id
-      name
-    }
-  }
-`)
-
-const CreateListItem = graphql(`
-  mutation CreateListItem($kind: ListKind!, $name: String!) {
-    createListItem(kind: $kind, name: $name) {
-      id
-      name
-    }
-  }
-`)
-
-const RenameListItem = graphql(`
-  mutation RenameListItem($kind: ListKind!, $id: ID!, $name: String!) {
-    renameListItem(kind: $kind, id: $id, name: $name) {
-      id
-      name
-    }
-  }
-`)
 
 /** Creates (no `:id`) or renames a format or medium. */
 export function ListItemForm({ kind }: { kind: ListKind }) {
   const { id } = useParams()
+  const itemId = idParam(id)
   const { path, title } = LISTS[kind]
-  const { data, error } = useQuery(ListItemNameQuery, {
-    variables: { kind, id: id ?? "" },
-    skip: id === undefined,
-  })
+  // A form starts from fresh data (design §7.2)
+  const { data: item, error } = useCommand(
+    "listItem",
+    { kind, id: itemId ?? 0 },
+    { fresh: true, enabled: itemId !== null }
+  )
 
-  if (data && !data.listItem) return <NotFound />
-  const item = data?.listItem
+  if ((id !== undefined && itemId === null) || item === null) {
+    return <NotFound />
+  }
 
   return (
     <>
@@ -75,7 +52,13 @@ export function ListItemForm({ kind }: { kind: ListKind }) {
         ) : id && !item ? (
           <Skeleton className="h-24 w-full" />
         ) : (
-          <NameForm kind={kind} id={id} initial={item?.name ?? ""} />
+          // Keyed, so a form for another row, or a new one, starts afresh
+          <NameForm
+            key={item?.id ?? "new"}
+            kind={kind}
+            id={item?.id}
+            initial={item?.name ?? ""}
+          />
         )}
       </div>
     </>
@@ -88,25 +71,25 @@ function NameForm({
   initial,
 }: {
   kind: ListKind
-  id?: string
+  id?: number
   initial: string
 }) {
   const navigate = useNavigate()
   const { path } = LISTS[kind]
   const [name, setName] = useState(initial)
-  const [create, created] = useMutation(CreateListItem)
-  const [rename, renamed] = useMutation(RenameListItem)
-  const error = created.error ?? renamed.error
+  const save = useMutation({
+    mutationFn: () =>
+      id === undefined
+        ? call("createListItem", { kind, name })
+        : call("renameListItem", { kind, id, name }),
+  })
 
   return (
     <form
       onSubmit={async (event) => {
         event.preventDefault()
         try {
-          const saved = id
-            ? (await rename({ variables: { kind, id, name } })).data!
-                .renameListItem
-            : (await create({ variables: { kind, name } })).data!.createListItem
+          const saved = await save.mutateAsync()
           navigate(`${path}/${saved.id}`)
         } catch {
           // The form shows the error
@@ -114,7 +97,7 @@ function NameForm({
       }}
     >
       <FieldGroup>
-        {error && <QueryError error={error} title="Can't save" />}
+        {save.error && <QueryError error={save.error} title="Can't save" />}
         <Field>
           <FieldLabel htmlFor="name">Name</FieldLabel>
           <Input
@@ -125,7 +108,7 @@ function NameForm({
           />
         </Field>
         <div className="flex gap-2">
-          <Button type="submit" disabled={created.loading || renamed.loading}>
+          <Button type="submit" disabled={save.isPending}>
             Save
           </Button>
           <ButtonLink variant="outline" to={id ? `${path}/${id}` : path}>

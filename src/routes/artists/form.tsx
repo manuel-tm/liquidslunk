@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 import { useNavigate, useParams } from "react-router"
 
@@ -40,77 +40,24 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { graphql } from "@/gql"
 import { textProps } from "@/lib/languages"
+import { call, idParam, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
-
-const ArtistFormQuery = graphql(`
-  query ArtistForm($id: ID!) {
-    artist(id: $id) {
-      id
-      name
-      nameLanguage
-      mainNameUses
-      alternateNames {
-        id
-        name
-        language
-        realName
-        note
-        uses
-      }
-      picture {
-        id
-        path
-      }
-      files {
-        note
-        file {
-          id
-          path
-        }
-      }
-    }
-  }
-`)
-
-const CreateArtist = graphql(`
-  mutation CreateArtist($input: ArtistInput!) {
-    createArtist(input: $input) {
-      id
-    }
-  }
-`)
-
-const UpdateArtist = graphql(`
-  mutation UpdateArtist($id: ID!, $input: ArtistInput!) {
-    updateArtist(id: $id, input: $input) {
-      id
-      name
-      nameLanguage
-      mainNameUses
-      alternateNames {
-        id
-        name
-        language
-        realName
-        note
-        uses
-      }
-    }
-  }
-`)
 
 /** `/artists/create` and `/artists/:id/update` (slunk's design §7.7). */
 export function ArtistForm() {
   const { id } = useParams()
-  const { data, error } = useQuery(ArtistFormQuery, {
-    variables: { id: id ?? "" },
-    skip: id === undefined,
-  })
+  const artistId = idParam(id)
+  // A form starts from fresh data (design §7.2)
+  const { data: artist, error } = useCommand(
+    "artist",
+    { id: artistId ?? 0 },
+    { fresh: true, enabled: artistId !== null }
+  )
 
-  if (data && !data.artist) return <NotFound />
-  const artist = data?.artist
+  if ((id !== undefined && artistId === null) || artist === null) {
+    return <NotFound />
+  }
 
   return (
     <>
@@ -135,19 +82,21 @@ export function ArtistForm() {
         ) : id && !artist ? (
           <Skeleton className="h-40 w-full" />
         ) : (
+          // Keyed, so a form for another artist, or a new one, starts afresh
           <Form
-            id={id}
+            key={artist?.id ?? "new"}
+            id={artist?.id}
             initialName={artist?.name ?? ""}
             initialLanguage={artist?.nameLanguage ?? null}
             initialNames={(artist?.alternateNames ?? []).map(alternateNameRow)}
             mainNameUses={artist?.mainNameUses ?? 0}
             initialPicture={
               artist?.picture
-                ? { id: artist.picture.id, name: artist.picture.path }
+                ? { id: String(artist.picture.id), name: artist.picture.path }
                 : null
             }
             initialLinks={(artist?.files ?? []).map((link) => ({
-              file: { id: link.file.id, name: link.file.path },
+              file: { id: String(link.file.id), name: link.file.path },
               note: link.note ?? "",
             }))}
           />
@@ -174,7 +123,7 @@ function Form({
   initialPicture,
   initialLinks,
 }: {
-  id?: string
+  id?: number
   initialName: string
   initialLanguage: string | null
   initialNames: AlternateNameRow[]
@@ -192,9 +141,25 @@ function Form({
   const [picture, setPicture] = useState(initialPicture)
   const [links, setLinks] = useState(initialLinks)
   const [asking, setAsking] = useState<Consequences | null>(null)
-  const [create, created] = useMutation(CreateArtist)
-  const [update, updated] = useMutation(UpdateArtist)
-  const error = created.error ?? updated.error
+  const save = useMutation({
+    mutationFn: (keep: boolean) => {
+      const input = {
+        name,
+        nameLanguage,
+        alternateNames: artistNamesInput(names),
+        keepOldName: keep,
+        // Pickers' ids are strings, for the forms that still send GraphQL
+        pictureId: picture ? Number(picture.id) : null,
+        files: fileLinksInput(links).map((link) => ({
+          ...link,
+          fileId: Number(link.fileId),
+        })),
+      }
+      return id === undefined
+        ? call("createArtist", input)
+        : call("updateArtist", { id, ...input })
+    },
+  })
 
   /**
    * Swaps a name with the main name (slunk's 3_alternate_names.md §7.6): the name
@@ -233,19 +198,9 @@ function Form({
     return removed.length > 0 || renamed ? { removed, renamed } : null
   }
 
-  async function save(keep: boolean) {
-    const input = {
-      name,
-      nameLanguage,
-      alternateNames: artistNamesInput(names),
-      keepOldName: keep,
-      pictureId: picture?.id ?? null,
-      files: fileLinksInput(links),
-    }
+  async function saveArtist(keep: boolean) {
     try {
-      const saved = id
-        ? (await update({ variables: { id, input } })).data!.updateArtist
-        : (await create({ variables: { input } })).data!.createArtist
+      const saved = await save.mutateAsync(keep)
       navigate(`/artists/${saved.id}`)
     } catch {
       // The form shows the error
@@ -260,11 +215,11 @@ function Form({
         event.preventDefault()
         const ask = consequences()
         if (ask) setAsking(ask)
-        else await save(keepOldName)
+        else await saveArtist(keepOldName)
       }}
     >
       <FieldGroup>
-        {error && <QueryError error={error} title="Can't save" />}
+        {save.error && <QueryError error={save.error} title="Can't save" />}
         <Field>
           <FieldLabel htmlFor="name">Name</FieldLabel>
           <div className="grid grid-cols-[1fr_14rem] gap-2">
@@ -319,11 +274,7 @@ function Form({
         <div className="flex gap-2">
           <Button
             type="submit"
-            disabled={
-              created.loading ||
-              updated.loading ||
-              !alternateNamesValid(name, names, true)
-            }
+            disabled={save.isPending || !alternateNamesValid(name, names, true)}
           >
             Save
           </Button>
@@ -337,9 +288,9 @@ function Form({
         oldName={cleanName(initialName)}
         newName={cleanName(name)}
         mainNameUses={mainNameUses}
-        busy={updated.loading}
+        busy={save.isPending}
         onCancel={() => setAsking(null)}
-        onSave={save}
+        onSave={saveArtist}
       />
     </form>
   )

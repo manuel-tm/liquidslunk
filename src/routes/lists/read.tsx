@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { Link, useParams } from "react-router"
 
 import { ButtonLink } from "@/components/button-link"
@@ -6,37 +6,26 @@ import { DeleteButton } from "@/components/delete-button"
 import { PageHeader } from "@/components/page-header"
 import { QueryError } from "@/components/query-error"
 import { Skeleton } from "@/components/ui/skeleton"
-import { graphql } from "@/gql"
-import type { ListKind } from "@/gql/graphql"
+import type { ListKind } from "@/bindings"
+import { call, idParam, queryClient, useCommand } from "@/lib/query"
 import { LISTS } from "@/routes/lists/config"
 import { NotFound } from "@/routes/not-found"
-
-const ListItemQuery = graphql(`
-  query ListItem($kind: ListKind!, $id: ID!) {
-    listItem(kind: $kind, id: $id) {
-      id
-      name
-      uses
-      blockers
-    }
-  }
-`)
-
-const DeleteListItem = graphql(`
-  mutation DeleteListItem($kind: ListKind!, $id: ID!) {
-    deleteListItem(kind: $kind, id: $id)
-  }
-`)
 
 /** A format or medium, and how many releases use it (slunk's design §7.8). */
 export function ListItemRead({ kind }: { kind: ListKind }) {
   const { id = "" } = useParams()
+  const itemId = idParam(id)
   const { path, title, one, releaseFilter } = LISTS[kind]
-  const { data, error } = useQuery(ListItemQuery, { variables: { kind, id } })
-  const [deleteItem] = useMutation(DeleteListItem, { variables: { kind, id } })
+  const { data: item, error } = useCommand(
+    "listItem",
+    { kind, id: itemId ?? 0 },
+    { enabled: itemId !== null }
+  )
+  const deleteItem = useMutation({
+    mutationFn: (id: number) => call("deleteListItem", { kind, id }),
+  })
 
-  if (data && !data.listItem) return <NotFound />
-  const item = data?.listItem
+  if (itemId === null || item === null) return <NotFound />
 
   return (
     <>
@@ -54,8 +43,13 @@ export function ListItemRead({ kind }: { kind: ListKind }) {
             <DeleteButton
               name={`the ${one} ${item.name}`}
               blockers={item.blockers}
-              onDelete={() => deleteItem()}
+              onDelete={() => deleteItem.mutateAsync(item.id)}
               then={path}
+              afterDelete={() =>
+                queryClient.removeQueries({
+                  queryKey: ["listItem", { kind, id: item.id }],
+                })
+              }
             />
           </>
         )}

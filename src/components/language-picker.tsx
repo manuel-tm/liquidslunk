@@ -1,15 +1,8 @@
-import { useQuery } from "@apollo/client/react"
 import { useState } from "react"
 
 import { type Option, Picker } from "@/components/picker"
-import { graphql } from "@/gql"
 import { canonicalTag, LANGUAGES, languageName } from "@/lib/languages"
-
-const LanguagesQuery = graphql(`
-  query Languages {
-    languages
-  }
-`)
+import { useCommand } from "@/lib/query"
 
 // Like the other pickers (slunk's design §7.3)
 const LIMIT = 20
@@ -38,8 +31,8 @@ export function LanguagePicker({
   "aria-label"?: string
 }) {
   const [query, setQuery] = useState("")
-  const { data } = useQuery(LanguagesQuery)
-  const tags = [...new Set([...(data?.languages ?? []), ...LANGUAGES])]
+  const { data } = useCommand("languages")
+  const tags = [...new Set([...(data ?? []), ...LANGUAGES])]
   const typed = query.trim().toLowerCase()
   const options = tags
     .map(optionOf)

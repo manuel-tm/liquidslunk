@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::ErrorCode;
 use serde::Serialize;
+use slunk::catalog::Catalog;
 use slunk::media::Media;
 use slunk::repo::connection::{self, DATABASE_FILE};
 use slunk::repo::migrator;
@@ -28,7 +29,8 @@ pub struct Library {
     pub folder: PathBuf,
     /// The app's one connection (design §5.4), which the contexts share.
     pub store: Arc<Store>,
-    pub media: Media,
+    pub media: Arc<Media>,
+    pub catalog: Catalog,
 }
 
 impl Library {
@@ -36,10 +38,12 @@ impl Library {
     /// it, with its contexts wired as slunk's `server.ts` wired them.
     pub fn new(db: &Path, conn: rusqlite::Connection) -> Library {
         let store = Arc::new(Store::new(conn));
+        let media = Arc::new(Media::new(store.clone(), slunk::media::Library::new(db)));
         Library {
             db: db.to_path_buf(),
             folder: folder_of(db),
-            media: Media::new(store.clone(), slunk::media::Library::new(db)),
+            catalog: Catalog::new(store.clone(), media.clone()),
+            media,
             store,
         }
     }

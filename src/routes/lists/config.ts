@@ -1,4 +1,4 @@
-import type { ListKind } from "@/gql/graphql"
+import type { ListKind } from "@/bindings"
 
 /** The two lists the user manages, which share their pages (slunk's design §7.8). */
 export const LISTS: Record<

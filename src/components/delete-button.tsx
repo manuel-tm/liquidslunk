@@ -25,6 +25,7 @@ export function DeleteButton({
   blockers,
   onDelete,
   then,
+  afterDelete,
   detail,
 }: {
   /** What's deleted, as the dialog names it */
@@ -34,6 +35,11 @@ export function DeleteButton({
   onDelete: () => Promise<unknown>
   /** Where to go afterwards: the list */
   then: string
+  /**
+   * Runs once it has gone there, to remove the deleted entity's queries
+   * (design §7.2)
+   */
+  afterDelete?: () => void
   /** More about what deleting does */
   detail?: string
 }) {
@@ -84,6 +90,7 @@ export function DeleteButton({
                 }
                 toast.success(`Deleted ${name}`)
                 navigate(then)
+                afterDelete?.()
               }}
             >
               Delete

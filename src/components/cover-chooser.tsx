@@ -17,8 +17,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import type { FolderFile } from "@/bindings"
-import type { FileRefInput } from "@/gql/graphql"
+import type { FileRefInput, FolderFile } from "@/bindings"
 import { fileUrl, useCommand } from "@/lib/query"
 import { cn } from "@/lib/utils"
 
@@ -70,7 +69,7 @@ export function CoverChooser({
   folder,
   onChoose,
 }: {
-  file: { id: string } | null | undefined
+  file: { id: number | string } | null | undefined
   alt: string
   className?: string
   /** What the image is: "cover", "picture" or "logo" */

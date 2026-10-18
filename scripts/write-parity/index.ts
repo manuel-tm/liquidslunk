@@ -32,9 +32,10 @@ import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import { isDeepStrictEqual } from "node:util"
 
+import { catalog } from "./catalog.ts"
 import { type Phase, media } from "./media.ts"
 
-const PHASES: Phase[] = [media]
+const PHASES: Phase[] = [media, catalog]
 
 // Copies keep their files' times and their symlinks
 const COPY = {
@@ -101,6 +102,9 @@ try {
   steps.forEach((step, i) => {
     const graphql = viaGraphql[i]
     if (step.returnsId && "ok" in graphql) graphql.ok = Number(graphql.ok)
+    if (step.fromGraphql && "ok" in graphql) {
+      graphql.ok = step.fromGraphql(graphql.ok)
+    }
     const theirs = normalize(graphql, join(graphqlLibrary, ".."))
     const ours = normalize(viaCommands[i], join(commandsLibrary, ".."))
     if (!isDeepStrictEqual(theirs, ours)) {
@@ -160,6 +164,11 @@ function makeFiles(folder: string, shared: string) {
     ["music/Alika/Café.flac", audio("flac-variants.flac")],
     ["music/moved/2 Early Summer.flac", audio("flac.flac")],
     ["music/.hidden/secret.flac", audio("flac.flac")],
+    // Phase 2's pictures, logo and file links
+    ["music/Drake/drake.jpg", Buffer.from("not really a jpeg")],
+    ["music/Drake/logo.png", Buffer.from("not really a png")],
+    ["music/Drake/notes.txt", "Notes"],
+    ["music/Drake/interview.pdf", "An interview"],
   ]
   for (const [path, content] of files) {
     const file = join(folder, path)

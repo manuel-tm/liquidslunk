@@ -15,6 +15,7 @@ use tauri_specta::{Builder, collect_commands};
 use crate::error::CommandError;
 use crate::library::{Libraries, Library};
 
+pub mod catalog;
 pub mod library;
 pub mod media;
 
@@ -38,6 +39,28 @@ pub fn builder() -> Builder<Wry> {
             media::delete_file,
             media::open_file,
             media::reveal_file,
+            catalog::lists::list_items,
+            catalog::lists::list_item,
+            catalog::lists::list_item_options,
+            catalog::lists::create_list_item,
+            catalog::lists::rename_list_item,
+            catalog::lists::delete_list_item,
+            catalog::artists::artists,
+            catalog::artists::artist,
+            catalog::artists::artist_options,
+            catalog::artists::artist_names,
+            catalog::artists::create_artist,
+            catalog::artists::update_artist,
+            catalog::artists::set_artist_picture,
+            catalog::artists::delete_artist,
+            catalog::labels::labels,
+            catalog::labels::label,
+            catalog::labels::label_options,
+            catalog::labels::create_label,
+            catalog::labels::update_label,
+            catalog::labels::set_label_picture,
+            catalog::labels::delete_label,
+            catalog::languages,
         ])
         // Ids are i64. SQLite's stay far below 2^53, so they're numbers.
         .dangerously_cast_bigints_to_number()
@@ -77,6 +100,10 @@ mod tests {
         let bindings = std::fs::read_to_string(&path).unwrap();
         assert!(
             bindings.contains("registerFiles: (args: RegisterFilesArgs)"),
+            "{bindings}"
+        );
+        assert!(
+            bindings.contains("updateArtist: (args: UpdateArtistArgs)"),
             "{bindings}"
         );
         if let Ok(copy) = std::env::var("LIQUIDSLUNK_BINDINGS_COPY") {

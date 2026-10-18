@@ -1,4 +1,5 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { Link, useParams } from "react-router"
 
@@ -27,11 +28,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import type { FileRefInput } from "@/bindings"
 import { graphql } from "@/gql"
 import type { ArtistHeaderFragment } from "@/gql/graphql"
 import { useListParams } from "@/hooks/use-list-params"
 import { formatReleased, roleKey } from "@/lib/format"
 import { textProps } from "@/lib/languages"
+import { call, queryClient } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
 
 graphql(`
@@ -58,24 +61,6 @@ graphql(`
   }
 `)
 
-const SetArtistPicture = graphql(`
-  mutation SetArtistPicture($id: ID!, $picture: FileRefInput!) {
-    setArtistPicture(id: $id, picture: $picture) {
-      ...ArtistHeader
-      picture {
-        id
-        name
-      }
-    }
-  }
-`)
-
-const DeleteArtist = graphql(`
-  mutation DeleteArtist($id: ID!) {
-    deleteArtist(id: $id)
-  }
-`)
-
 /**
  * The frame of every artist tab (slunk's design §7.7): the header with Edit and
  * Delete, the tabs with their counts, then the picture and name.
@@ -93,8 +78,14 @@ function ArtistFrame({
   loaded: boolean
   children: ReactNode
 }) {
-  const [deleteArtist] = useMutation(DeleteArtist, { variables: { id } })
-  const [setPicture] = useMutation(SetArtistPicture)
+  // Its reads are GraphQL's until phase 4, but its writes are commands
+  const deleteArtist = useMutation({
+    mutationFn: (artistId: number) => call("deleteArtist", { id: artistId }),
+  })
+  const setPicture = useMutation({
+    mutationFn: ({ id, picture }: { id: number; picture: FileRefInput }) =>
+      call("setArtistPicture", { id, picture }),
+  })
   if (loaded && !artist) return <NotFound />
   const base = `/artists/${id}`
 
@@ -117,8 +108,13 @@ function ArtistFrame({
             <DeleteButton
               name={artist.name}
               blockers={artist.blockers}
-              onDelete={() => deleteArtist()}
+              onDelete={() => deleteArtist.mutateAsync(Number(artist.id))}
               then="/artists"
+              afterDelete={() =>
+                queryClient.removeQueries({
+                  queryKey: ["artist", { id: Number(artist.id) }],
+                })
+              }
             />
           </>
         )}
@@ -159,7 +155,7 @@ function ArtistFrame({
                 className="size-64"
                 noun="picture"
                 onChoose={(picture) =>
-                  setPicture({ variables: { id, picture } })
+                  setPicture.mutateAsync({ id: Number(artist.id), picture })
                 }
               />
               <div className="flex flex-col gap-2">

@@ -1,4 +1,3 @@
-import { useQuery } from "@apollo/client/react"
 import { useId, useState } from "react"
 
 import type { Option } from "@/components/picker"
@@ -8,21 +7,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { graphql } from "@/gql"
 import { textProps } from "@/lib/languages"
-
-const ArtistNamesQuery = graphql(`
-  query ArtistNames($id: ID!) {
-    artist(id: $id) {
-      id
-      alternateNames {
-        id
-        name
-        language
-      }
-    }
-  }
-`)
+import { useCommand } from "@/lib/query"
 
 /**
  * The name an artist is credited with, as printed (slunk's 3_alternate_names.md
@@ -43,11 +29,12 @@ export function CreditedAsInput({
   const id = useId()
   // Only the field being typed in asks for the names
   const [focused, setFocused] = useState(false)
-  const { data } = useQuery(ArtistNamesQuery, {
-    variables: { id: artist.id },
-    skip: !focused,
-  })
-  const names = data?.artist?.alternateNames ?? []
+  const { data: names = [] } = useCommand(
+    "artistNames",
+    // Pickers' ids are strings, for the forms that still send GraphQL
+    { id: Number(artist.id) },
+    { enabled: focused }
+  )
   const language = names.find((name) => name.name === artist.creditedAs)
   return (
     <>

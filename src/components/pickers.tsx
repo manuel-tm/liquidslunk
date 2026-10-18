@@ -1,16 +1,17 @@
 // A picker for each kind of row, searching the backend as the user types.
 // Each one owns its query, so it stays typed; they share the Picker view.
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 
 import { type Option, Picker, type PickerProps } from "@/components/picker"
 import { type CreatedTag, NewTagDialog } from "@/components/tag-fields"
 import { graphql } from "@/gql"
-import type { FileType } from "@/bindings"
-import type { ListKind, TagType } from "@/gql/graphql"
+import type { FileType, ListKind } from "@/bindings"
+import type { TagType } from "@/gql/graphql"
 import { useDebounced } from "@/hooks/use-debounced"
 import { matchedName } from "@/lib/names"
-import { useCommand } from "@/lib/query"
+import { call, useCommand } from "@/lib/query"
 import { tagValueKey } from "@/lib/tags"
 
 // Pickers return the first 20 matches (slunk's design §7.3)
@@ -28,7 +29,7 @@ const withCredits =
     T extends {
       id: string
       name: string
-      alternateNames: { id: string; name: string; realName: boolean }[]
+      alternateNames: { id: number; name: string; realName: boolean }[]
     },
   >({
     alternateNames,
@@ -62,116 +63,73 @@ const withMatch =
     detail: matchedName(option.name, alternateNames, q)?.name ?? null,
   })
 
-const ArtistOptions = graphql(`
-  query ArtistOptions($q: String, $perPage: Int!) {
-    artists(q: $q, perPage: $perPage, sort: "name") {
-      items {
-        id
-        name
-        lang: nameLanguage
-        alternateNames {
-          id
-          name
-          realName
-        }
-        image: picture {
-          id
-        }
-      }
-    }
-  }
-`)
-
-const CreateArtistOption = graphql(`
-  mutation CreateArtistOption($name: String!) {
-    createArtist(input: { name: $name }) {
-      id
-      name
-    }
-  }
-`)
+/**
+ * Options' ids are strings, as the other pickers' are, for the forms that
+ * still send GraphQL.
+ */
+const artistOption = (artist: {
+  id: number
+  name: string
+  nameLanguage: string | null
+  picture: { id: number } | null
+  alternateNames: { id: number; name: string; realName: boolean }[]
+}) => ({
+  id: String(artist.id),
+  name: artist.name,
+  lang: artist.nameLanguage,
+  image: artist.picture,
+  alternateNames: artist.alternateNames,
+})
 
 export function ArtistPicker(props: PickerProps) {
   const [query, setQuery] = useState(props.defaultQuery ?? "")
   const q = useDebounced(query)
-  const { data } = useQuery(ArtistOptions, { variables: { q, perPage: LIMIT } })
-  const [create] = useMutation(CreateArtistOption)
+  const { data } = useCommand("artistOptions", { q })
+  const create = useMutation({
+    mutationFn: (name: string) => call("createArtist", { name }),
+  })
   return (
     <Picker
       {...props}
       noun="artist"
       query={query}
       onQuery={setQuery}
-      options={(data?.artists.items ?? []).flatMap(withCredits(q))}
-      onCreate={async (name) =>
-        (await create({ variables: { name } })).data!.createArtist
-      }
+      options={(data ?? []).map(artistOption).flatMap(withCredits(q))}
+      onCreate={async (name) => {
+        const artist = await create.mutateAsync(name)
+        return { id: String(artist.id), name: artist.name }
+      }}
     />
   )
 }
 
-const LabelOptions = graphql(`
-  query LabelOptions($q: String, $perPage: Int!) {
-    labels(q: $q, perPage: $perPage, sort: "name") {
-      items {
-        id
-        name
-        lang: nameLanguage
-        alternateNames {
-          name
-        }
-      }
-    }
-  }
-`)
-
-const CreateLabelOption = graphql(`
-  mutation CreateLabelOption($name: String!) {
-    createLabel(input: { name: $name }) {
-      id
-      name
-    }
-  }
-`)
-
 export function LabelPicker(props: PickerProps) {
   const [query, setQuery] = useState("")
   const q = useDebounced(query)
-  const { data } = useQuery(LabelOptions, { variables: { q, perPage: LIMIT } })
-  const [create] = useMutation(CreateLabelOption)
+  const { data } = useCommand("labelOptions", { q })
+  const create = useMutation({
+    mutationFn: (name: string) => call("createLabel", { name }),
+  })
+  const options = (data ?? []).map((label) => ({
+    id: String(label.id),
+    name: label.name,
+    lang: label.nameLanguage,
+    alternateNames: label.alternateNames,
+  }))
   return (
     <Picker
       {...props}
       noun="label"
       query={query}
       onQuery={setQuery}
-      options={(data?.labels.items ?? []).map(withMatch(q))}
-      onCreate={async (name) =>
-        (await create({ variables: { name } })).data!.createLabel
-      }
+      options={options.map(withMatch(q))}
+      onCreate={async (name) => {
+        const label = await create.mutateAsync(name)
+        return { id: String(label.id), name: label.name }
+      }}
     />
   )
 }
-
-const ListItemOptions = graphql(`
-  query ListItemOptions($kind: ListKind!, $q: String, $perPage: Int!) {
-    listItems(kind: $kind, q: $q, perPage: $perPage, sort: "name") {
-      items {
-        id
-        name
-      }
-    }
-  }
-`)
-
-const CreateListItemOption = graphql(`
-  mutation CreateListItemOption($kind: ListKind!, $name: String!) {
-    createListItem(kind: $kind, name: $name) {
-      id
-      name
-    }
-  }
-`)
 
 export const LIST_NOUNS: Record<ListKind, string> = {
   release_formats: "format",
@@ -185,20 +143,22 @@ export function ListItemPicker({
 }: PickerProps & { kind: ListKind }) {
   const [query, setQuery] = useState("")
   const q = useDebounced(query)
-  const { data } = useQuery(ListItemOptions, {
-    variables: { kind, q, perPage: LIMIT },
+  const { data } = useCommand("listItemOptions", { kind, q })
+  const create = useMutation({
+    mutationFn: (name: string) => call("createListItem", { kind, name }),
   })
-  const [create] = useMutation(CreateListItemOption)
+  const option = (item: { id: number; name: string }) => ({
+    id: String(item.id),
+    name: item.name,
+  })
   return (
     <Picker
       {...props}
       noun={LIST_NOUNS[kind]}
       query={query}
       onQuery={setQuery}
-      options={data?.listItems.items ?? []}
-      onCreate={async (name) =>
-        (await create({ variables: { kind, name } })).data!.createListItem
-      }
+      options={(data ?? []).map(option)}
+      onCreate={async (name) => option(await create.mutateAsync(name))}
     />
   )
 }

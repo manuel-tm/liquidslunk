@@ -1,4 +1,3 @@
-import { useQuery } from "@apollo/client/react"
 import { Link } from "react-router"
 
 import { MatchedName } from "@/components/alternate-names"
@@ -12,40 +11,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { graphql } from "@/gql"
 import { useListParams } from "@/hooks/use-list-params"
 import { formatDateTime } from "@/lib/format"
 import { textProps } from "@/lib/languages"
-
-const LabelsQuery = graphql(`
-  query Labels($page: Int!, $perPage: Int!, $sort: String, $q: String) {
-    labels(page: $page, perPage: $perPage, sort: $sort, q: $q) {
-      total
-      items {
-        id
-        name
-        nameLanguage
-        alternateNames {
-          name
-          language
-        }
-        insertedAt
-        updatedAt
-      }
-    }
-  }
-`)
+import { useCommand } from "@/lib/query"
 
 /** `/labels` (slunk's design §7.8) */
 export function LabelList() {
   const list = useListParams()
-  const { data, error } = useQuery(LabelsQuery, {
-    variables: {
-      page: list.page,
-      perPage: PER_PAGE,
-      sort: list.sort,
-      q: list.q,
-    },
+  const { data, error } = useCommand("labels", {
+    page: list.page,
+    perPage: PER_PAGE,
+    sort: list.sort,
+    q: list.q,
   })
 
   return (
@@ -54,8 +32,8 @@ export function LabelList() {
       newTo="/labels/create"
       list={list}
       searchPlaceholder="Search names"
-      total={data?.labels.total}
-      error={error}
+      total={data?.total}
+      error={error ?? undefined}
       emptyText="No labels yet."
     >
       <Table>
@@ -74,7 +52,7 @@ export function LabelList() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data?.labels.items.map((label) => (
+          {data?.items.map((label) => (
             <TableRow key={label.id}>
               <TableCell className="tabular-nums">{label.id}</TableCell>
               <TableCell>

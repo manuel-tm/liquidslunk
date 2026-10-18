@@ -72,7 +72,7 @@ For Rust, run from the repository's root:
 
 | Command | What it does |
 |---|---|
-| `cargo test --workspace` | Runs the Rust tests, including the migrations' parity with slunk, and audio files read as slunk read them |
+| `cargo test --workspace` | Runs the Rust tests, including the migrations' parity with slunk, audio files read as slunk read them, and language tags canonical as slunk saved them |
 | `cargo clippy --workspace --all-targets` | Lints the Rust code |
 | `cargo fmt` | Formats the Rust code |
 

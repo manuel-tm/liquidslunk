@@ -1,0 +1,2636 @@
+{
+ "generatedBy": "crates/slunk/tests/fixtures/languages/generate.ts",
+ "node": "26.10.0",
+ "icu": "78.3",
+ "cldr": "48.0",
+ "aliases": {
+  "aam": "aas",
+  "aar": "aa",
+  "abk": "ab",
+  "adp": "dz",
+  "afr": "af",
+  "agp": "apf",
+  "ais": "ami",
+  "ajp": "apc",
+  "ajt": "aeb",
+  "aju": "jrb",
+  "aka": "ak",
+  "alb": "sq",
+  "als": "sq",
+  "amh": "am",
+  "ara": "ar",
+  "arb": "ar",
+  "arg": "an",
+  "arm": "hy",
+  "asd": "snz",
+  "asm": "as",
+  "aue": "ktz",
+  "ava": "av",
+  "ave": "ae",
+  "aym": "ay",
+  "ayr": "ay",
+  "ayx": "nun",
+  "aze": "az",
+  "azj": "az",
+  "bak": "ba",
+  "bam": "bm",
+  "baq": "eu",
+  "baz": "nvo",
+  "bcc": "bal",
+  "bcl": "bik",
+  "bel": "be",
+  "ben": "bn",
+  "bgm": "bcg",
+  "bhk": "fbl",
+  "bic": "bir",
+  "bih": "bho",
+  "bis": "bi",
+  "bjd": "drl",
+  "bjq": "bzc",
+  "bkb": "ebk",
+  "blg": "iba",
+  "bod": "bo",
+  "bos": "bs",
+  "bre": "br",
+  "btb": "beb",
+  "bul": "bg",
+  "bur": "my",
+  "bxk": "luy",
+  "bxr": "bua",
+  "cat": "ca",
+  "ccq": "rki",
+  "ces": "cs",
+  "cha": "ch",
+  "che": "ce",
+  "chi": "zh",
+  "chu": "cu",
+  "chv": "cv",
+  "cjr": "mom",
+  "cka": "cmr",
+  "cld": "syr",
+  "cls": "sa",
+  "cmk": "xch",
+  "cmn": "zh",
+  "cnr": "sr-ME",
+  "cor": "kw",
+  "cos": "co",
+  "coy": "pij",
+  "cqu": "quh",
+  "cre": "cr",
+  "cwd": "cr",
+  "cym": "cy",
+  "cze": "cs",
+  "daf": "dnj",
+  "dan": "da",
+  "dap": "njz",
+  "dek": "sqm",
+  "deu": "de",
+  "dgo": "doi",
+  "dhd": "mwr",
+  "dik": "din",
+  "diq": "zza",
+  "dit": "dif",
+  "div": "dv",
+  "djl": "dze",
+  "dkl": "aqd",
+  "drh": "mn",
+  "drr": "kzk",
+  "drw": "fa-AF",
+  "dud": "uth",
+  "duj": "dwu",
+  "dut": "nl",
+  "dwl": "dbt",
+  "dzo": "dz",
+  "ekk": "et",
+  "ell": "el",
+  "elp": "amq",
+  "emk": "man",
+  "eng": "en",
+  "epo": "eo",
+  "esk": "ik",
+  "est": "et",
+  "eus": "eu",
+  "ewe": "ee",
+  "fao": "fo",
+  "fas": "fa",
+  "fat": "ak",
+  "fij": "fj",
+  "fin": "fi",
+  "fra": "fr",
+  "fre": "fr",
+  "fry": "fy",
+  "fuc": "ff",
+  "ful": "ff",
+  "gav": "dev",
+  "gaz": "om",
+  "gbc": "wny",
+  "gbo": "grb",
+  "geo": "ka",
+  "ger": "de",
+  "gfx": "vaj",
+  "ggn": "gvr",
+  "ggo": "esg",
+  "ggr": "gtu",
+  "gio": "aou",
+  "gla": "gd",
+  "gle": "ga",
+  "glg": "gl",
+  "gli": "kzk",
+  "glv": "gv",
+  "gno": "gon",
+  "gom": "kok",
+  "gre": "el",
+  "grn": "gn",
+  "gti": "nyc",
+  "gug": "gn",
+  "guj": "gu",
+  "guv": "duz",
+  "gya": "gba",
+  "hat": "ht",
+  "hau": "ha",
+  "hbs": "sr-Latn",
+  "hdn": "hai",
+  "hea": "hmn",
+  "heb": "he",
+  "her": "hz",
+  "him": "srx",
+  "hin": "hi",
+  "hmo": "ho",
+  "hrr": "jal",
+  "hrv": "hr",
+  "hun": "hu",
+  "hye": "hy",
+  "ibi": "opa",
+  "ibo": "ig",
+  "ice": "is",
+  "ido": "io",
+  "iii": "ii",
+  "ike": "iu",
+  "iku": "iu",
+  "ile": "ie",
+  "ill": "ilm",
+  "ilw": "gal",
+  "in": "id",
+  "ina": "ia",
+  "ind": "id",
+  "ipk": "ik",
+  "isl": "is",
+  "ita": "it",
+  "iw": "he",
+  "izi": "eza",
+  "jar": "jgk",
+  "jav": "jv",
+  "jaw": "jv",
+  "jeg": "oyb",
+  "ji": "yi",
+  "jpn": "ja",
+  "jw": "jv",
+  "kal": "kl",
+  "kan": "kn",
+  "kas": "ks",
+  "kat": "ka",
+  "kau": "kr",
+  "kaz": "kk",
+  "kdv": "zkd",
+  "kgc": "tdf",
+  "kgd": "ncq",
+  "kgh": "kml",
+  "kgm": "plu",
+  "khk": "mn",
+  "khm": "km",
+  "kik": "ki",
+  "kin": "rw",
+  "kir": "ky",
+  "kmr": "ku",
+  "knc": "kr",
+  "kng": "kg",
+  "koj": "kwv",
+  "kom": "kv",
+  "kon": "kg",
+  "kor": "ko",
+  "kpp": "jkm",
+  "kpv": "kv",
+  "krm": "bmf",
+  "ktr": "dtp",
+  "kua": "kj",
+  "kur": "ku",
+  "kvs": "gdj",
+  "kwq": "yam",
+  "kxe": "tvd",
+  "kxl": "kru",
+  "kzh": "dgl",
+  "kzj": "dtp",
+  "kzt": "dtp",
+  "lak": "ksp",
+  "lao": "lo",
+  "lat": "la",
+  "lav": "lv",
+  "lbk": "bnc",
+  "leg": "enl",
+  "lii": "raq",
+  "lim": "li",
+  "lin": "ln",
+  "lit": "lt",
+  "llo": "ngt",
+  "lmm": "rmx",
+  "ltz": "lb",
+  "lub": "lu",
+  "lug": "lg",
+  "lvs": "lv",
+  "mac": "mk",
+  "mah": "mh",
+  "mal": "ml",
+  "mao": "mi",
+  "mar": "mr",
+  "may": "ms",
+  "meg": "cir",
+  "mgx": "jbk",
+  "mhr": "chm",
+  "mkd": "mk",
+  "mlg": "mg",
+  "mlt": "mt",
+  "mnt": "wnn",
+  "mo": "ro",
+  "mof": "xnt",
+  "mol": "ro",
+  "mon": "mn",
+  "mri": "mi",
+  "msa": "ms",
+  "mst": "mry",
+  "mup": "raj",
+  "mwd": "dmw",
+  "mwj": "vaj",
+  "mya": "my",
+  "myd": "aog",
+  "myt": "mry",
+  "nad": "xny",
+  "nau": "na",
+  "nav": "nv",
+  "nbf": "nru",
+  "nbl": "nr",
+  "nbx": "gll",
+  "ncp": "kdz",
+  "nde": "nd",
+  "ndo": "ng",
+  "nep": "ne",
+  "nld": "nl",
+  "nln": "azd",
+  "nlr": "nrk",
+  "nno": "nn",
+  "nns": "nbr",
+  "nnx": "ngv",
+  "nob": "nb",
+  "nom": "cbr",
+  "noo": "dtd",
+  "nor": "no",
+  "npi": "ne",
+  "nte": "eko",
+  "nts": "pij",
+  "nxu": "bpp",
+  "nya": "ny",
+  "oci": "oc",
+  "ojg": "oj",
+  "oji": "oj",
+  "ori": "or",
+  "orm": "om",
+  "ory": "or",
+  "oss": "os",
+  "oun": "vaj",
+  "pan": "pa",
+  "pat": "kxr",
+  "pbu": "ps",
+  "pcr": "adx",
+  "per": "fa",
+  "pes": "fa",
+  "pli": "pi",
+  "plt": "mg",
+  "pmc": "huw",
+  "pmk": "crr",
+  "pmu": "phr",
+  "pnb": "lah",
+  "pol": "pl",
+  "por": "pt",
+  "ppa": "bfy",
+  "ppr": "lcq",
+  "prp": "gu",
+  "prs": "fa-AF",
+  "pry": "prt",
+  "pus": "ps",
+  "puz": "pub",
+  "que": "qu",
+  "quz": "qu",
+  "rmr": "emx",
+  "rmy": "rom",
+  "roh": "rm",
+  "ron": "ro",
+  "rum": "ro",
+  "run": "rn",
+  "rus": "ru",
+  "sag": "sg",
+  "san": "sa",
+  "sap": "aqt",
+  "sca": "hle",
+  "scc": "sr",
+  "scr": "hr",
+  "sgl": "isk",
+  "sh": "sr-Latn",
+  "sin": "si",
+  "skk": "oyb",
+  "slk": "sk",
+  "slo": "sk",
+  "slv": "sl",
+  "smd": "kmb",
+  "sme": "se",
+  "smo": "sm",
+  "sna": "sn",
+  "snb": "iba",
+  "snd": "sd",
+  "som": "so",
+  "sot": "st",
+  "spa": "es",
+  "spy": "kln",
+  "sqi": "sq",
+  "src": "sc",
+  "srd": "sc",
+  "srp": "sr",
+  "ssw": "ss",
+  "sul": "sgd",
+  "sum": "ulw",
+  "sun": "su",
+  "swa": "sw",
+  "swc": "sw-CD",
+  "swe": "sv",
+  "swh": "sw",
+  "szd": "umi",
+  "tah": "ty",
+  "tam": "ta",
+  "tat": "tt",
+  "tdu": "dtp",
+  "tel": "te",
+  "tgg": "bjp",
+  "tgk": "tg",
+  "tgl": "fil",
+  "tha": "th",
+  "thc": "tpo",
+  "thw": "ola",
+  "thx": "oyb",
+  "tib": "bo",
+  "tid": "itd",
+  "tie": "ras",
+  "tir": "ti",
+  "tkk": "twm",
+  "tl": "fil",
+  "tlw": "weo",
+  "tmk": "tdg",
+  "tmp": "tyj",
+  "tne": "kak",
+  "tnf": "fa-AF",
+  "ton": "to",
+  "tpw": "tpn",
+  "tsf": "taj",
+  "tsn": "tn",
+  "tso": "ts",
+  "ttq": "tmh",
+  "tuk": "tk",
+  "tur": "tr",
+  "twi": "ak",
+  "uig": "ug",
+  "ukr": "uk",
+  "umu": "del",
+  "unp": "wro",
+  "uok": "ema",
+  "urd": "ur",
+  "uzb": "uz",
+  "uzn": "uz",
+  "ven": "ve",
+  "vie": "vi",
+  "vol": "vo",
+  "wel": "cy",
+  "wgw": "wgb",
+  "wit": "nol",
+  "wiw": "nwo",
+  "wln": "wa",
+  "wol": "wo",
+  "xba": "cax",
+  "xho": "xh",
+  "xia": "acn",
+  "xkh": "waw",
+  "xpe": "kpe",
+  "xrq": "dmw",
+  "xsj": "suj",
+  "xsl": "den",
+  "xss": "zko",
+  "ybd": "rki",
+  "ydd": "yi",
+  "yen": "ynq",
+  "yid": "yi",
+  "yiy": "yrm",
+  "yma": "lrr",
+  "ymt": "mtm",
+  "yor": "yo",
+  "yos": "zom",
+  "yuu": "yug",
+  "zai": "zap",
+  "zha": "za",
+  "zho": "zh",
+  "zir": "scv",
+  "zkb": "kjh",
+  "zsm": "ms",
+  "zul": "zu",
+  "zyb": "za"
+ },
+ "cases": [
+  [
+   "ja",
+   "ja"
+  ],
+  [
+   "JA",
+   "ja"
+  ],
+  [
+   "Ja",
+   "ja"
+  ],
+  [
+   "jA",
+   "ja"
+  ],
+  [
+   "ja-Latn",
+   "ja-Latn"
+  ],
+  [
+   "JA-latn",
+   "ja-Latn"
+  ],
+  [
+   "ja-LATN-jp",
+   "ja-Latn-JP"
+  ],
+  [
+   "ja-Latn-JP-hepburn",
+   "ja-Latn-JP-hepburn"
+  ],
+  [
+   "bh",
+   "bh"
+  ],
+  [
+   "BH",
+   "bho"
+  ],
+  [
+   "Bh",
+   "bho"
+  ],
+  [
+   "tw",
+   "tw"
+  ],
+  [
+   "TW",
+   "ak"
+  ],
+  [
+   "jaw",
+   "jv"
+  ],
+  [
+   "JAW",
+   "jv"
+  ],
+  [
+   "fil",
+   "fil"
+  ],
+  [
+   "FIL",
+   "fil"
+  ],
+  [
+   "fil-PH",
+   "fil-PH"
+  ],
+  [
+   "in",
+   "id"
+  ],
+  [
+   "IN",
+   "id"
+  ],
+  [
+   "iw",
+   "he"
+  ],
+  [
+   "iw-IL",
+   "he-IL"
+  ],
+  [
+   "no",
+   "no"
+  ],
+  [
+   "NO",
+   "no"
+  ],
+  [
+   "sh",
+   "sr-Latn"
+  ],
+  [
+   "Sh",
+   "sr-Latn"
+  ],
+  [
+   "zh-Hans-CN",
+   "zh-Hans-CN"
+  ],
+  [
+   "zh-hant-tw",
+   "zh-Hant-TW"
+  ],
+  [
+   "ZH-HANT-TW",
+   "zh-Hant-TW"
+  ],
+  [
+   "sr-latn-rs",
+   "sr-Latn-RS"
+  ],
+  [
+   "az-cyrl-az",
+   "az-Cyrl-AZ"
+  ],
+  [
+   "es-419",
+   "es-419"
+  ],
+  [
+   "ar-001",
+   "ar-001"
+  ],
+  [
+   "art-lojban",
+   "jbo"
+  ],
+  [
+   "zh-guoyu",
+   "zh"
+  ],
+  [
+   "zh-min-nan",
+   null
+  ],
+  [
+   "i-klingon",
+   null
+  ],
+  [
+   "en-GB-oed",
+   null
+  ],
+  [
+   "sgn-BR",
+   "bzs"
+  ],
+  [
+   "x-foo",
+   null
+  ],
+  [
+   "en-x-foo",
+   "en-x-foo"
+  ],
+  [
+   "en-gb-x-private",
+   "en-GB-x-private"
+  ],
+  [
+   "EN-GB-x-Foo",
+   "en-GB-x-foo"
+  ],
+  [
+   "en-x-posix",
+   "en-x-posix"
+  ],
+  [
+   "en-a-bbb-x-a-ccc",
+   "en-a-bbb-x-a-ccc"
+  ],
+  [
+   "EN-a-AAA-b-BBB",
+   "en-a-aaa-b-bbb"
+  ],
+  [
+   "en-z-zz",
+   "en-z-zz"
+  ],
+  [
+   "en-a-aa-a-bb",
+   null
+  ],
+  [
+   "en-u-aa-u-bb",
+   null
+  ],
+  [
+   "en-u-attr-co-phonebk",
+   "en-u-attr-co-phonebk"
+  ],
+  [
+   "en-u-attr1-attr2-ca-islamicc",
+   "en-u-attr1-attr2-ca-islamic-civil"
+  ],
+  [
+   "en-u-ca",
+   "en-u-ca"
+  ],
+  [
+   "en-u-kb",
+   "en-u-kb"
+  ],
+  [
+   "en-u-ca-japanese-ca-buddhist",
+   "en-u-ca-japanese"
+  ],
+  [
+   "en-u-ks-tertiary-kn-yes",
+   "en-u-kn-ks-level3"
+  ],
+  [
+   "en-u-kb-yes-ca-islamicc",
+   "en-u-ca-islamic-civil-kb"
+  ],
+  [
+   "en-u-CA-Gregory",
+   "en-u-ca-gregory"
+  ],
+  [
+   "EN-U-KB-YES",
+   "en-u-kb"
+  ],
+  [
+   "en-U-CA-GREGORY-NU-LATN",
+   "en-u-ca-gregory-nu-latn"
+  ],
+  [
+   "en-u-ca-gregorian",
+   null
+  ],
+  [
+   "en-u-co-phonebook",
+   null
+  ],
+  [
+   "en-u-ks-identical",
+   null
+  ],
+  [
+   "en-t-ja",
+   "en-t-ja"
+  ],
+  [
+   "en-t-iw",
+   "en-t-he"
+  ],
+  [
+   "en-t-iw-u-ca-islamicc",
+   "en-t-he-u-ca-islamic-civil"
+  ],
+  [
+   "en-t-ja-m0-names",
+   "en-t-ja-m0-prprname"
+  ],
+  [
+   "en-t-m0-names",
+   "en-t-m0-prprname"
+  ],
+  [
+   "en-t-d0-name",
+   "en-t-d0-charname"
+  ],
+  [
+   "en-t-ja-m0-names-x-foo",
+   "en-t-ja-m0-prprname-x-foo"
+  ],
+  [
+   "en-t-m0-yes",
+   "en-t-m0-yes"
+  ],
+  [
+   "en-t-ja-d0-yes",
+   "en-t-ja-d0-yes"
+  ],
+  [
+   "en-US-POSIX",
+   "en-US-u-va-posix"
+  ],
+  [
+   "en-posix-u-va-foo",
+   "en-u-va-foo"
+  ],
+  [
+   "en-posix-x-foo",
+   "en-u-va-posix-x-foo"
+  ],
+  [
+   "en-posix-t-ja",
+   "en-t-ja-u-va-posix"
+  ],
+  [
+   "en-US-posix-u-ca-gregory",
+   "en-US-u-ca-gregory-va-posix"
+  ],
+  [
+   "de-1901-posix-1996",
+   "de-1901-1996-posix"
+  ],
+  [
+   "de-1901-1901",
+   null
+  ],
+  [
+   "und",
+   "und"
+  ],
+  [
+   "und-Latn",
+   "und-Latn"
+  ],
+  [
+   "root",
+   null
+  ],
+  [
+   "japanese",
+   "japanese"
+  ],
+  [
+   "abcd",
+   null
+  ],
+  [
+   "abcdefghi",
+   null
+  ],
+  [
+   "a",
+   null
+  ],
+  [
+   "toolongsubtag",
+   null
+  ],
+  [
+   "JAPANESE-latn",
+   "japanese-Latn"
+  ],
+  [
+   "abcde",
+   "abcde"
+  ],
+  [
+   "abcdefgh",
+   "abcdefgh"
+  ],
+  [
+   "japanese-x-foo",
+   "japanese-x-foo"
+  ],
+  [
+   "abcde-US-posix",
+   "abcde-US-u-va-posix"
+  ],
+  [
+   "abcde-SU",
+   "abcde-RU"
+  ],
+  [
+   "abcde-u-ca-islamicc",
+   "abcde-u-ca-islamic-civil"
+  ],
+  [
+   "abcde-aaland",
+   "abcde-AX"
+  ],
+  [
+   "abcde-1901-1901",
+   null
+  ],
+  [
+   "abcde-hepburn-heploc",
+   "abcde-alalc97"
+  ],
+  [
+   "ja_JP",
+   null
+  ],
+  [
+   "zh_Hant",
+   null
+  ],
+  [
+   "en-",
+   null
+  ],
+  [
+   "-en",
+   null
+  ],
+  [
+   "en--US",
+   null
+  ],
+  [
+   "ja-u-",
+   null
+  ],
+  [
+   "zh-cmn",
+   null
+  ],
+  [
+   "zh-yue",
+   null
+  ],
+  [
+   "no-bok",
+   null
+  ],
+  [
+   "",
+   null
+  ],
+  [
+   " ja",
+   null
+  ],
+  [
+   "ja ",
+   null
+  ],
+  [
+   "ja ",
+   null
+  ],
+  [
+   "日本語",
+   null
+  ],
+  [
+   "ja-JP-u-ca-japanese",
+   "ja-JP-u-ca-japanese"
+  ],
+  [
+   "ja-u-nu-latn-ca-japanese",
+   "ja-u-ca-japanese-nu-latn"
+  ],
+  [
+   "ja-Cyrl",
+   "ja-Cyrl"
+  ],
+  [
+   "ja-Hant",
+   "ja-Hant"
+  ],
+  [
+   "ja-kana",
+   "ja-Kana"
+  ],
+  [
+   "ja-Qaaa",
+   "ja-Qaaa"
+  ],
+  [
+   "ja-Zzzz",
+   "ja-Zzzz"
+  ],
+  [
+   "ja-US",
+   "ja-US"
+  ],
+  [
+   "ja-jp",
+   "ja-JP"
+  ],
+  [
+   "ja-SU",
+   "ja-RU"
+  ],
+  [
+   "ja-DD",
+   "ja-DE"
+  ],
+  [
+   "ja-YU",
+   "ja-RS"
+  ],
+  [
+   "ja-CS",
+   "ja-RS"
+  ],
+  [
+   "ja-BU",
+   "ja-MM"
+  ],
+  [
+   "ja-419",
+   "ja-419"
+  ],
+  [
+   "ja-062",
+   "ja-034"
+  ],
+  [
+   "ja-XK",
+   "ja-XK"
+  ],
+  [
+   "en-Latn",
+   "en-Latn"
+  ],
+  [
+   "en-Cyrl",
+   "en-Cyrl"
+  ],
+  [
+   "en-Hant",
+   "en-Hant"
+  ],
+  [
+   "en-kana",
+   "en-Kana"
+  ],
+  [
+   "en-Qaaa",
+   "en-Qaaa"
+  ],
+  [
+   "en-Zzzz",
+   "en-Zzzz"
+  ],
+  [
+   "en-US",
+   "en-US"
+  ],
+  [
+   "en-jp",
+   "en-JP"
+  ],
+  [
+   "en-SU",
+   "en-RU"
+  ],
+  [
+   "en-DD",
+   "en-DE"
+  ],
+  [
+   "en-YU",
+   "en-RS"
+  ],
+  [
+   "en-CS",
+   "en-RS"
+  ],
+  [
+   "en-BU",
+   "en-MM"
+  ],
+  [
+   "en-419",
+   "en-419"
+  ],
+  [
+   "en-062",
+   "en-034"
+  ],
+  [
+   "en-XK",
+   "en-XK"
+  ],
+  [
+   "zh-Latn",
+   "zh-Latn"
+  ],
+  [
+   "zh-Cyrl",
+   "zh-Cyrl"
+  ],
+  [
+   "zh-Hant",
+   "zh-Hant"
+  ],
+  [
+   "zh-kana",
+   "zh-Kana"
+  ],
+  [
+   "zh-Qaaa",
+   "zh-Qaaa"
+  ],
+  [
+   "zh-Zzzz",
+   "zh-Zzzz"
+  ],
+  [
+   "zh-US",
+   "zh-US"
+  ],
+  [
+   "zh-jp",
+   "zh-JP"
+  ],
+  [
+   "zh-SU",
+   "zh-RU"
+  ],
+  [
+   "zh-DD",
+   "zh-DE"
+  ],
+  [
+   "zh-YU",
+   "zh-RS"
+  ],
+  [
+   "zh-CS",
+   "zh-RS"
+  ],
+  [
+   "zh-BU",
+   "zh-MM"
+  ],
+  [
+   "zh-419",
+   "zh-419"
+  ],
+  [
+   "zh-062",
+   "zh-034"
+  ],
+  [
+   "zh-XK",
+   "zh-XK"
+  ],
+  [
+   "sr-Latn",
+   "sr-Latn"
+  ],
+  [
+   "sr-Cyrl",
+   "sr-Cyrl"
+  ],
+  [
+   "sr-Hant",
+   "sr-Hant"
+  ],
+  [
+   "sr-kana",
+   "sr-Kana"
+  ],
+  [
+   "sr-Qaaa",
+   "sr-Qaaa"
+  ],
+  [
+   "sr-Zzzz",
+   "sr-Zzzz"
+  ],
+  [
+   "sr-US",
+   "sr-US"
+  ],
+  [
+   "sr-jp",
+   "sr-JP"
+  ],
+  [
+   "sr-SU",
+   "sr-RU"
+  ],
+  [
+   "sr-DD",
+   "sr-DE"
+  ],
+  [
+   "sr-YU",
+   "sr-RS"
+  ],
+  [
+   "sr-CS",
+   "sr-RS"
+  ],
+  [
+   "sr-BU",
+   "sr-MM"
+  ],
+  [
+   "sr-419",
+   "sr-419"
+  ],
+  [
+   "sr-062",
+   "sr-034"
+  ],
+  [
+   "sr-XK",
+   "sr-XK"
+  ],
+  [
+   "hy-Latn",
+   "hy-Latn"
+  ],
+  [
+   "hy-Cyrl",
+   "hy-Cyrl"
+  ],
+  [
+   "hy-Hant",
+   "hy-Hant"
+  ],
+  [
+   "hy-kana",
+   "hy-Kana"
+  ],
+  [
+   "hy-Qaaa",
+   "hy-Qaaa"
+  ],
+  [
+   "hy-Zzzz",
+   "hy-Zzzz"
+  ],
+  [
+   "hy-US",
+   "hy-US"
+  ],
+  [
+   "hy-jp",
+   "hy-JP"
+  ],
+  [
+   "hy-SU",
+   "hy-AM"
+  ],
+  [
+   "hy-DD",
+   "hy-DE"
+  ],
+  [
+   "hy-YU",
+   "hy-RS"
+  ],
+  [
+   "hy-CS",
+   "hy-RS"
+  ],
+  [
+   "hy-BU",
+   "hy-MM"
+  ],
+  [
+   "hy-419",
+   "hy-419"
+  ],
+  [
+   "hy-062",
+   "hy-034"
+  ],
+  [
+   "hy-XK",
+   "hy-XK"
+  ],
+  [
+   "ru-Latn",
+   "ru-Latn"
+  ],
+  [
+   "ru-Cyrl",
+   "ru-Cyrl"
+  ],
+  [
+   "ru-Hant",
+   "ru-Hant"
+  ],
+  [
+   "ru-kana",
+   "ru-Kana"
+  ],
+  [
+   "ru-Qaaa",
+   "ru-Qaaa"
+  ],
+  [
+   "ru-Zzzz",
+   "ru-Zzzz"
+  ],
+  [
+   "ru-US",
+   "ru-US"
+  ],
+  [
+   "ru-jp",
+   "ru-JP"
+  ],
+  [
+   "ru-SU",
+   "ru-RU"
+  ],
+  [
+   "ru-DD",
+   "ru-DE"
+  ],
+  [
+   "ru-YU",
+   "ru-RS"
+  ],
+  [
+   "ru-CS",
+   "ru-RS"
+  ],
+  [
+   "ru-BU",
+   "ru-MM"
+  ],
+  [
+   "ru-419",
+   "ru-419"
+  ],
+  [
+   "ru-062",
+   "ru-034"
+  ],
+  [
+   "ru-XK",
+   "ru-XK"
+  ],
+  [
+   "sh-Latn",
+   "sr-Latn"
+  ],
+  [
+   "sh-Cyrl",
+   "sr-Cyrl"
+  ],
+  [
+   "sh-Hant",
+   "sr-Hant"
+  ],
+  [
+   "sh-kana",
+   "sr-Kana"
+  ],
+  [
+   "sh-Qaaa",
+   "sr-Qaaa"
+  ],
+  [
+   "sh-Zzzz",
+   "sr-Zzzz"
+  ],
+  [
+   "sh-US",
+   "sr-Latn-US"
+  ],
+  [
+   "sh-jp",
+   "sr-Latn-JP"
+  ],
+  [
+   "sh-SU",
+   "sr-Latn-RU"
+  ],
+  [
+   "sh-DD",
+   "sr-Latn-DE"
+  ],
+  [
+   "sh-YU",
+   "sr-Latn-RS"
+  ],
+  [
+   "sh-CS",
+   "sr-Latn-RS"
+  ],
+  [
+   "sh-BU",
+   "sr-Latn-MM"
+  ],
+  [
+   "sh-419",
+   "sr-Latn-419"
+  ],
+  [
+   "sh-062",
+   "sr-Latn-034"
+  ],
+  [
+   "sh-XK",
+   "sr-Latn-XK"
+  ],
+  [
+   "iw-Latn",
+   "he-Latn"
+  ],
+  [
+   "iw-Cyrl",
+   "he-Cyrl"
+  ],
+  [
+   "iw-Hant",
+   "he-Hant"
+  ],
+  [
+   "iw-kana",
+   "he-Kana"
+  ],
+  [
+   "iw-Qaaa",
+   "he-Qaaa"
+  ],
+  [
+   "iw-Zzzz",
+   "he-Zzzz"
+  ],
+  [
+   "iw-US",
+   "he-US"
+  ],
+  [
+   "iw-jp",
+   "he-JP"
+  ],
+  [
+   "iw-SU",
+   "he-RU"
+  ],
+  [
+   "iw-DD",
+   "he-DE"
+  ],
+  [
+   "iw-YU",
+   "he-RS"
+  ],
+  [
+   "iw-CS",
+   "he-RS"
+  ],
+  [
+   "iw-BU",
+   "he-MM"
+  ],
+  [
+   "iw-419",
+   "he-419"
+  ],
+  [
+   "iw-062",
+   "he-034"
+  ],
+  [
+   "iw-XK",
+   "he-XK"
+  ],
+  [
+   "no-Latn",
+   "no-Latn"
+  ],
+  [
+   "no-Cyrl",
+   "no-Cyrl"
+  ],
+  [
+   "no-Hant",
+   "no-Hant"
+  ],
+  [
+   "no-kana",
+   "no-Kana"
+  ],
+  [
+   "no-Qaaa",
+   "no-Qaaa"
+  ],
+  [
+   "no-Zzzz",
+   "no-Zzzz"
+  ],
+  [
+   "no-US",
+   "no-US"
+  ],
+  [
+   "no-jp",
+   "no-JP"
+  ],
+  [
+   "no-SU",
+   "no-RU"
+  ],
+  [
+   "no-DD",
+   "no-DE"
+  ],
+  [
+   "no-YU",
+   "no-RS"
+  ],
+  [
+   "no-CS",
+   "no-RS"
+  ],
+  [
+   "no-BU",
+   "no-MM"
+  ],
+  [
+   "no-419",
+   "no-419"
+  ],
+  [
+   "no-062",
+   "no-034"
+  ],
+  [
+   "no-XK",
+   "no-XK"
+  ],
+  [
+   "sgn-Latn",
+   "sgn-Latn"
+  ],
+  [
+   "sgn-Cyrl",
+   "sgn-Cyrl"
+  ],
+  [
+   "sgn-Hant",
+   "sgn-Hant"
+  ],
+  [
+   "sgn-kana",
+   "sgn-Kana"
+  ],
+  [
+   "sgn-Qaaa",
+   "sgn-Qaaa"
+  ],
+  [
+   "sgn-Zzzz",
+   "sgn-Zzzz"
+  ],
+  [
+   "sgn-US",
+   "ase"
+  ],
+  [
+   "sgn-jp",
+   "jsl"
+  ],
+  [
+   "sgn-SU",
+   "sgn-RU"
+  ],
+  [
+   "sgn-DD",
+   "gsg"
+  ],
+  [
+   "sgn-YU",
+   "sgn-RS"
+  ],
+  [
+   "sgn-CS",
+   "sgn-RS"
+  ],
+  [
+   "sgn-BU",
+   "sgn-MM"
+  ],
+  [
+   "sgn-419",
+   "sgn-419"
+  ],
+  [
+   "sgn-062",
+   "sgn-034"
+  ],
+  [
+   "sgn-XK",
+   "sgn-XK"
+  ],
+  [
+   "cnr-Latn",
+   "sr-Latn-ME"
+  ],
+  [
+   "cnr-Cyrl",
+   "sr-Cyrl-ME"
+  ],
+  [
+   "cnr-Hant",
+   "sr-Hant-ME"
+  ],
+  [
+   "cnr-kana",
+   "sr-Kana-ME"
+  ],
+  [
+   "cnr-Qaaa",
+   "sr-Qaaa-ME"
+  ],
+  [
+   "cnr-Zzzz",
+   "sr-Zzzz-ME"
+  ],
+  [
+   "cnr-US",
+   "sr-US"
+  ],
+  [
+   "cnr-jp",
+   "sr-JP"
+  ],
+  [
+   "cnr-SU",
+   "sr-RU"
+  ],
+  [
+   "cnr-DD",
+   "sr-DE"
+  ],
+  [
+   "cnr-YU",
+   "sr-RS"
+  ],
+  [
+   "cnr-CS",
+   "sr-RS"
+  ],
+  [
+   "cnr-BU",
+   "sr-MM"
+  ],
+  [
+   "cnr-419",
+   "sr-419"
+  ],
+  [
+   "cnr-062",
+   "sr-034"
+  ],
+  [
+   "cnr-XK",
+   "sr-XK"
+  ],
+  [
+   "bh-Latn",
+   "bho-Latn"
+  ],
+  [
+   "bh-Cyrl",
+   "bho-Cyrl"
+  ],
+  [
+   "bh-Hant",
+   "bho-Hant"
+  ],
+  [
+   "bh-kana",
+   "bho-Kana"
+  ],
+  [
+   "bh-Qaaa",
+   "bho-Qaaa"
+  ],
+  [
+   "bh-Zzzz",
+   "bho-Zzzz"
+  ],
+  [
+   "bh-US",
+   "bho-US"
+  ],
+  [
+   "bh-jp",
+   "bho-JP"
+  ],
+  [
+   "bh-SU",
+   "bho-RU"
+  ],
+  [
+   "bh-DD",
+   "bho-DE"
+  ],
+  [
+   "bh-YU",
+   "bho-RS"
+  ],
+  [
+   "bh-CS",
+   "bho-RS"
+  ],
+  [
+   "bh-BU",
+   "bho-MM"
+  ],
+  [
+   "bh-419",
+   "bho-419"
+  ],
+  [
+   "bh-062",
+   "bho-034"
+  ],
+  [
+   "bh-XK",
+   "bho-XK"
+  ],
+  [
+   "tw-Latn",
+   "ak-Latn"
+  ],
+  [
+   "tw-Cyrl",
+   "ak-Cyrl"
+  ],
+  [
+   "tw-Hant",
+   "ak-Hant"
+  ],
+  [
+   "tw-kana",
+   "ak-Kana"
+  ],
+  [
+   "tw-Qaaa",
+   "ak-Qaaa"
+  ],
+  [
+   "tw-Zzzz",
+   "ak-Zzzz"
+  ],
+  [
+   "tw-US",
+   "ak-US"
+  ],
+  [
+   "tw-jp",
+   "ak-JP"
+  ],
+  [
+   "tw-SU",
+   "ak-RU"
+  ],
+  [
+   "tw-DD",
+   "ak-DE"
+  ],
+  [
+   "tw-YU",
+   "ak-RS"
+  ],
+  [
+   "tw-CS",
+   "ak-RS"
+  ],
+  [
+   "tw-BU",
+   "ak-MM"
+  ],
+  [
+   "tw-419",
+   "ak-419"
+  ],
+  [
+   "tw-062",
+   "ak-034"
+  ],
+  [
+   "tw-XK",
+   "ak-XK"
+  ],
+  [
+   "jaw-Latn",
+   "jv-Latn"
+  ],
+  [
+   "jaw-Cyrl",
+   "jv-Cyrl"
+  ],
+  [
+   "jaw-Hant",
+   "jv-Hant"
+  ],
+  [
+   "jaw-kana",
+   "jv-Kana"
+  ],
+  [
+   "jaw-Qaaa",
+   "jv-Qaaa"
+  ],
+  [
+   "jaw-Zzzz",
+   "jv-Zzzz"
+  ],
+  [
+   "jaw-US",
+   "jv-US"
+  ],
+  [
+   "jaw-jp",
+   "jv-JP"
+  ],
+  [
+   "jaw-SU",
+   "jv-RU"
+  ],
+  [
+   "jaw-DD",
+   "jv-DE"
+  ],
+  [
+   "jaw-YU",
+   "jv-RS"
+  ],
+  [
+   "jaw-CS",
+   "jv-RS"
+  ],
+  [
+   "jaw-BU",
+   "jv-MM"
+  ],
+  [
+   "jaw-419",
+   "jv-419"
+  ],
+  [
+   "jaw-062",
+   "jv-034"
+  ],
+  [
+   "jaw-XK",
+   "jv-XK"
+  ],
+  [
+   "art-Latn",
+   "art-Latn"
+  ],
+  [
+   "art-Cyrl",
+   "art-Cyrl"
+  ],
+  [
+   "art-Hant",
+   "art-Hant"
+  ],
+  [
+   "art-kana",
+   "art-Kana"
+  ],
+  [
+   "art-Qaaa",
+   "art-Qaaa"
+  ],
+  [
+   "art-Zzzz",
+   "art-Zzzz"
+  ],
+  [
+   "art-US",
+   "art-US"
+  ],
+  [
+   "art-jp",
+   "art-JP"
+  ],
+  [
+   "art-SU",
+   "art-RU"
+  ],
+  [
+   "art-DD",
+   "art-DE"
+  ],
+  [
+   "art-YU",
+   "art-RS"
+  ],
+  [
+   "art-CS",
+   "art-RS"
+  ],
+  [
+   "art-BU",
+   "art-MM"
+  ],
+  [
+   "art-419",
+   "art-419"
+  ],
+  [
+   "art-062",
+   "art-034"
+  ],
+  [
+   "art-XK",
+   "art-XK"
+  ],
+  [
+   "und-Cyrl",
+   "und-Cyrl"
+  ],
+  [
+   "und-Hant",
+   "und-Hant"
+  ],
+  [
+   "und-kana",
+   "und-Kana"
+  ],
+  [
+   "und-Qaaa",
+   "und-Qaaa"
+  ],
+  [
+   "und-Zzzz",
+   "und-Zzzz"
+  ],
+  [
+   "und-US",
+   "und-US"
+  ],
+  [
+   "und-jp",
+   "und-JP"
+  ],
+  [
+   "und-SU",
+   "und-RU"
+  ],
+  [
+   "und-DD",
+   "und-DE"
+  ],
+  [
+   "und-YU",
+   "und-RS"
+  ],
+  [
+   "und-CS",
+   "und-RS"
+  ],
+  [
+   "und-BU",
+   "und-MM"
+  ],
+  [
+   "und-419",
+   "und-419"
+  ],
+  [
+   "und-062",
+   "und-034"
+  ],
+  [
+   "und-XK",
+   "und-XK"
+  ],
+  [
+   "en-1901",
+   "en-1901"
+  ],
+  [
+   "en-1996",
+   "en-1996"
+  ],
+  [
+   "en-posix",
+   "en-u-va-posix"
+  ],
+  [
+   "en-hepburn",
+   "en-hepburn"
+  ],
+  [
+   "en-arevela",
+   "en"
+  ],
+  [
+   "en-arevmda",
+   "en"
+  ],
+  [
+   "en-rozaj-biske",
+   "en-biske-rozaj"
+  ],
+  [
+   "en-biske-rozaj",
+   "en-biske-rozaj"
+  ],
+  [
+   "en-1996-1901",
+   "en-1901-1996"
+  ],
+  [
+   "en-1901-posix",
+   "en-1901-posix"
+  ],
+  [
+   "en-posix-hepburn",
+   "en-hepburn-posix"
+  ],
+  [
+   "en-lojban",
+   "en"
+  ],
+  [
+   "en-guoyu",
+   "en-guoyu"
+  ],
+  [
+   "en-oed",
+   null
+  ],
+  [
+   "en-bokmal",
+   "en"
+  ],
+  [
+   "ja-Latn-1901",
+   "ja-Latn-1901"
+  ],
+  [
+   "ja-Latn-1996",
+   "ja-Latn-1996"
+  ],
+  [
+   "ja-Latn-posix",
+   "ja-Latn-u-va-posix"
+  ],
+  [
+   "ja-Latn-hepburn",
+   "ja-Latn-hepburn"
+  ],
+  [
+   "ja-Latn-arevela",
+   "ja-Latn"
+  ],
+  [
+   "ja-Latn-arevmda",
+   "ja-Latn"
+  ],
+  [
+   "ja-Latn-rozaj-biske",
+   "ja-Latn-biske-rozaj"
+  ],
+  [
+   "ja-Latn-biske-rozaj",
+   "ja-Latn-biske-rozaj"
+  ],
+  [
+   "ja-Latn-1996-1901",
+   "ja-Latn-1901-1996"
+  ],
+  [
+   "ja-Latn-1901-posix",
+   "ja-Latn-1901-posix"
+  ],
+  [
+   "ja-Latn-posix-hepburn",
+   "ja-Latn-hepburn-posix"
+  ],
+  [
+   "ja-Latn-lojban",
+   "ja-Latn"
+  ],
+  [
+   "ja-Latn-guoyu",
+   "ja-Latn-guoyu"
+  ],
+  [
+   "ja-Latn-oed",
+   null
+  ],
+  [
+   "ja-Latn-bokmal",
+   "ja-Latn"
+  ],
+  [
+   "hy-1901",
+   "hy-1901"
+  ],
+  [
+   "hy-1996",
+   "hy-1996"
+  ],
+  [
+   "hy-posix",
+   "hy-u-va-posix"
+  ],
+  [
+   "hy-hepburn",
+   "hy-hepburn"
+  ],
+  [
+   "hy-arevela",
+   "hy"
+  ],
+  [
+   "hy-arevmda",
+   "hyw"
+  ],
+  [
+   "hy-rozaj-biske",
+   "hy-biske-rozaj"
+  ],
+  [
+   "hy-biske-rozaj",
+   "hy-biske-rozaj"
+  ],
+  [
+   "hy-1996-1901",
+   "hy-1901-1996"
+  ],
+  [
+   "hy-1901-posix",
+   "hy-1901-posix"
+  ],
+  [
+   "hy-posix-hepburn",
+   "hy-hepburn-posix"
+  ],
+  [
+   "hy-lojban",
+   "hy"
+  ],
+  [
+   "hy-guoyu",
+   "hy-guoyu"
+  ],
+  [
+   "hy-oed",
+   null
+  ],
+  [
+   "hy-bokmal",
+   "hy"
+  ],
+  [
+   "sl-1901",
+   "sl-1901"
+  ],
+  [
+   "sl-1996",
+   "sl-1996"
+  ],
+  [
+   "sl-posix",
+   "sl-u-va-posix"
+  ],
+  [
+   "sl-hepburn",
+   "sl-hepburn"
+  ],
+  [
+   "sl-arevela",
+   "sl"
+  ],
+  [
+   "sl-arevmda",
+   "sl"
+  ],
+  [
+   "sl-rozaj-biske",
+   "sl-biske-rozaj"
+  ],
+  [
+   "sl-biske-rozaj",
+   "sl-biske-rozaj"
+  ],
+  [
+   "sl-1996-1901",
+   "sl-1901-1996"
+  ],
+  [
+   "sl-1901-posix",
+   "sl-1901-posix"
+  ],
+  [
+   "sl-posix-hepburn",
+   "sl-hepburn-posix"
+  ],
+  [
+   "sl-lojban",
+   "sl"
+  ],
+  [
+   "sl-guoyu",
+   "sl-guoyu"
+  ],
+  [
+   "sl-oed",
+   null
+  ],
+  [
+   "sl-bokmal",
+   "sl"
+  ],
+  [
+   "de-CH-1901",
+   "de-CH-1901"
+  ],
+  [
+   "de-CH-1996",
+   "de-CH-1996"
+  ],
+  [
+   "de-CH-posix",
+   "de-CH-u-va-posix"
+  ],
+  [
+   "de-CH-hepburn",
+   "de-CH-hepburn"
+  ],
+  [
+   "de-CH-arevela",
+   "de-CH"
+  ],
+  [
+   "de-CH-arevmda",
+   "de-CH"
+  ],
+  [
+   "de-CH-rozaj-biske",
+   "de-CH-biske-rozaj"
+  ],
+  [
+   "de-CH-biske-rozaj",
+   "de-CH-biske-rozaj"
+  ],
+  [
+   "de-CH-1996-1901",
+   "de-CH-1901-1996"
+  ],
+  [
+   "de-CH-1901-posix",
+   "de-CH-1901-posix"
+  ],
+  [
+   "de-CH-posix-hepburn",
+   "de-CH-hepburn-posix"
+  ],
+  [
+   "de-CH-lojban",
+   "de-CH"
+  ],
+  [
+   "de-CH-guoyu",
+   "de-CH-guoyu"
+  ],
+  [
+   "de-CH-oed",
+   null
+  ],
+  [
+   "de-CH-bokmal",
+   "de-CH"
+  ],
+  [
+   "art-1901",
+   "art-1901"
+  ],
+  [
+   "art-1996",
+   "art-1996"
+  ],
+  [
+   "art-posix",
+   "art-u-va-posix"
+  ],
+  [
+   "art-hepburn",
+   "art-hepburn"
+  ],
+  [
+   "art-arevela",
+   "art"
+  ],
+  [
+   "art-arevmda",
+   "art"
+  ],
+  [
+   "art-rozaj-biske",
+   "art-biske-rozaj"
+  ],
+  [
+   "art-biske-rozaj",
+   "art-biske-rozaj"
+  ],
+  [
+   "art-1996-1901",
+   "art-1901-1996"
+  ],
+  [
+   "art-1901-posix",
+   "art-1901-posix"
+  ],
+  [
+   "art-posix-hepburn",
+   "art-hepburn-posix"
+  ],
+  [
+   "art-guoyu",
+   "art-guoyu"
+  ],
+  [
+   "art-oed",
+   null
+  ],
+  [
+   "art-bokmal",
+   "art"
+  ],
+  [
+   "sgn-1901",
+   "sgn-1901"
+  ],
+  [
+   "sgn-1996",
+   "sgn-1996"
+  ],
+  [
+   "sgn-posix",
+   "sgn-u-va-posix"
+  ],
+  [
+   "sgn-hepburn",
+   "sgn-hepburn"
+  ],
+  [
+   "sgn-arevela",
+   "sgn"
+  ],
+  [
+   "sgn-arevmda",
+   "sgn"
+  ],
+  [
+   "sgn-rozaj-biske",
+   "sgn-biske-rozaj"
+  ],
+  [
+   "sgn-biske-rozaj",
+   "sgn-biske-rozaj"
+  ],
+  [
+   "sgn-1996-1901",
+   "sgn-1901-1996"
+  ],
+  [
+   "sgn-1901-posix",
+   "sgn-1901-posix"
+  ],
+  [
+   "sgn-posix-hepburn",
+   "sgn-hepburn-posix"
+  ],
+  [
+   "sgn-lojban",
+   "sgn"
+  ],
+  [
+   "sgn-guoyu",
+   "sgn-guoyu"
+  ],
+  [
+   "sgn-oed",
+   null
+  ],
+  [
+   "sgn-bokmal",
+   "sgn"
+  ],
+  [
+   "en-u-ca-gregory",
+   "en-u-ca-gregory"
+  ],
+  [
+   "en-u-ca-islamicc",
+   "en-u-ca-islamic-civil"
+  ],
+  [
+   "en-u-ca-ISLAMICC",
+   "en-u-ca-islamic-civil"
+  ],
+  [
+   "en-u-ca-ethiopic-amete-alem",
+   "en-u-ca-ethioaa"
+  ],
+  [
+   "en-u-ca-yes",
+   "en-u-ca"
+  ],
+  [
+   "en-u-ks-primary",
+   "en-u-ks-level1"
+  ],
+  [
+   "en-u-ks-tertiary",
+   "en-u-ks-level3"
+  ],
+  [
+   "en-u-ks-level2",
+   "en-u-ks-level2"
+  ],
+  [
+   "en-u-ks-yes",
+   "en-u-ks"
+  ],
+  [
+   "en-u-ms-imperial",
+   "en-u-ms-uksystem"
+  ],
+  [
+   "en-u-ms-metric",
+   "en-u-ms-metric"
+  ],
+  [
+   "en-u-kb-yes",
+   "en-u-kb"
+  ],
+  [
+   "en-u-kb-true",
+   "en-u-kb"
+  ],
+  [
+   "en-u-kb-no",
+   "en-u-kb-no"
+  ],
+  [
+   "en-u-kb-false",
+   "en-u-kb-false"
+  ],
+  [
+   "en-u-kb-yes-yes",
+   "en-u-kb-yes-yes"
+  ],
+  [
+   "en-u-co-phonebk",
+   "en-u-co-phonebk"
+  ],
+  [
+   "en-u-co-yes",
+   "en-u-co"
+  ],
+  [
+   "en-u-nu-latn",
+   "en-u-nu-latn"
+  ],
+  [
+   "en-u-nu-traditio",
+   "en-u-nu-traditio"
+  ],
+  [
+   "en-u-sd-cn11",
+   "en-u-sd-cnbj"
+  ],
+  [
+   "en-u-sd-frg",
+   "en-u-sd-frges"
+  ],
+  [
+   "en-u-sd-usca",
+   "en-u-sd-usca"
+  ],
+  [
+   "en-u-sd-gbsct",
+   "en-u-sd-gbsct"
+  ],
+  [
+   "en-u-rg-cn11zzzz",
+   "en-u-rg-cn11zzzz"
+  ],
+  [
+   "en-u-rg-gbzzzz",
+   "en-u-rg-gbzzzz"
+  ],
+  [
+   "en-u-tz-aqams",
+   "en-u-tz-aqmcm"
+  ],
+  [
+   "en-u-tz-aukns",
+   "en-u-tz-auhba"
+  ],
+  [
+   "en-u-tz-caffs",
+   "en-u-tz-cawnp"
+  ],
+  [
+   "en-u-tz-camtr",
+   "en-u-tz-cator"
+  ],
+  [
+   "en-u-tz-canpg",
+   "en-u-tz-cator"
+  ],
+  [
+   "en-u-tz-capnt",
+   "en-u-tz-caiql"
+  ],
+  [
+   "en-u-tz-cathu",
+   "en-u-tz-cator"
+  ],
+  [
+   "en-u-tz-cayzf",
+   "en-u-tz-caedm"
+  ],
+  [
+   "en-u-tz-cet",
+   "en-u-tz-bebru"
+  ],
+  [
+   "en-u-tz-cnckg",
+   "en-u-tz-cnsha"
+  ],
+  [
+   "en-u-tz-cnhrb",
+   "en-u-tz-cnsha"
+  ],
+  [
+   "en-u-tz-cnkhg",
+   "en-u-tz-cnurc"
+  ],
+  [
+   "en-u-tz-cst6cdt",
+   "en-u-tz-uschi"
+  ],
+  [
+   "en-u-tz-cuba",
+   "en-u-tz-cuhav"
+  ],
+  [
+   "en-u-tz-eet",
+   "en-u-tz-grath"
+  ],
+  [
+   "en-u-tz-egypt",
+   "en-u-tz-egcai"
+  ],
+  [
+   "en-u-tz-eire",
+   "en-u-tz-iedub"
+  ],
+  [
+   "en-u-tz-est",
+   "en-u-tz-papty"
+  ],
+  [
+   "en-u-tz-est5edt",
+   "en-u-tz-usnyc"
+  ],
+  [
+   "en-u-tz-factory",
+   "en-u-tz-unk"
+  ],
+  [
+   "en-u-tz-gaza",
+   "en-u-tz-gazastrp"
+  ],
+  [
+   "en-u-tz-gmt0",
+   "en-u-tz-gmt"
+  ],
+  [
+   "en-u-tz-hongkong",
+   "en-u-tz-hkhkg"
+  ],
+  [
+   "en-u-tz-hst",
+   "en-u-tz-ushnl"
+  ],
+  [
+   "en-u-tz-iceland",
+   "en-u-tz-isrey"
+  ],
+  [
+   "en-u-tz-iran",
+   "en-u-tz-irthr"
+  ],
+  [
+   "en-u-tz-israel",
+   "en-u-tz-jeruslm"
+  ],
+  [
+   "en-u-tz-jamaica",
+   "en-u-tz-jmkin"
+  ],
+  [
+   "en-u-tz-japan",
+   "en-u-tz-jptyo"
+  ],
+  [
+   "en-u-tz-libya",
+   "en-u-tz-lytip"
+  ],
+  [
+   "en-u-tz-met",
+   "en-u-tz-bebru"
+  ],
+  [
+   "en-u-tz-mncoq",
+   "en-u-tz-mnuln"
+  ],
+  [
+   "en-u-tz-mst",
+   "en-u-tz-usphx"
+  ],
+  [
+   "en-u-tz-mst7mdt",
+   "en-u-tz-usden"
+  ],
+  [
+   "en-u-tz-navajo",
+   "en-u-tz-usden"
+  ],
+  [
+   "en-u-tz-poland",
+   "en-u-tz-plwaw"
+  ],
+  [
+   "en-u-tz-portugal",
+   "en-u-tz-ptlis"
+  ],
+  [
+   "en-u-tz-prc",
+   "en-u-tz-cnsha"
+  ],
+  [
+   "en-u-tz-pst8pdt",
+   "en-u-tz-uslax"
+  ],
+  [
+   "en-u-tz-roc",
+   "en-u-tz-twtpe"
+  ],
+  [
+   "en-u-tz-rok",
+   "en-u-tz-krsel"
+  ],
+  [
+   "en-u-tz-turkey",
+   "en-u-tz-trist"
+  ],
+  [
+   "en-u-tz-uaozh",
+   "en-u-tz-uaiev"
+  ],
+  [
+   "en-u-tz-uauzh",
+   "en-u-tz-uaiev"
+  ],
+  [
+   "en-u-tz-uct",
+   "en-u-tz-utc"
+  ],
+  [
+   "en-u-tz-umjon",
+   "en-u-tz-ushnl"
+  ],
+  [
+   "en-u-tz-usnavajo",
+   "en-u-tz-usden"
+  ],
+  [
+   "en-u-tz-wet",
+   "en-u-tz-ptlis"
+  ],
+  [
+   "en-u-tz-zulu",
+   "en-u-tz-utc"
+  ],
+  [
+   "en-u-tz-utc",
+   "en-u-tz-utc"
+  ],
+  [
+   "en-u-tz-usnyc",
+   "en-u-tz-usnyc"
+  ],
+  [
+   "en-u-tz-asia",
+   "en-u-tz-asia"
+  ]
+ ]
+}

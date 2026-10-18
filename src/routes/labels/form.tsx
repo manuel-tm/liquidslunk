@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 import { useNavigate, useParams } from "react-router"
 
@@ -24,65 +24,24 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { graphql } from "@/gql"
 import { textProps } from "@/lib/languages"
+import { call, idParam, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
-
-const LabelFormQuery = graphql(`
-  query LabelForm($id: ID!) {
-    label(id: $id) {
-      id
-      name
-      nameLanguage
-      alternateNames {
-        name
-        language
-        note
-      }
-      picture {
-        id
-        path
-      }
-    }
-  }
-`)
-
-const CreateLabel = graphql(`
-  mutation CreateLabel($input: LabelInput!) {
-    createLabel(input: $input) {
-      id
-    }
-  }
-`)
-
-const UpdateLabel = graphql(`
-  mutation UpdateLabel($id: ID!, $input: LabelInput!) {
-    updateLabel(id: $id, input: $input) {
-      id
-      name
-      nameLanguage
-      alternateNames {
-        name
-        language
-        note
-      }
-      picture {
-        id
-      }
-    }
-  }
-`)
 
 /** `/labels/create` and `/labels/:id/update`: name and logo. */
 export function LabelForm() {
   const { id } = useParams()
-  const { data, error } = useQuery(LabelFormQuery, {
-    variables: { id: id ?? "" },
-    skip: id === undefined,
-  })
+  const labelId = idParam(id)
+  // A form starts from fresh data (design §7.2)
+  const { data: label, error } = useCommand(
+    "label",
+    { id: labelId ?? 0 },
+    { fresh: true, enabled: labelId !== null }
+  )
 
-  if (data && !data.label) return <NotFound />
-  const label = data?.label
+  if ((id !== undefined && labelId === null) || label === null) {
+    return <NotFound />
+  }
 
   return (
     <>
@@ -107,14 +66,16 @@ export function LabelForm() {
         ) : id && !label ? (
           <Skeleton className="h-40 w-full" />
         ) : (
+          // Keyed, so a form for another label, or a new one, starts afresh
           <Form
-            id={id}
+            key={label?.id ?? "new"}
+            id={label?.id}
             initialName={label?.name ?? ""}
             initialLanguage={label?.nameLanguage ?? null}
             initialNames={(label?.alternateNames ?? []).map(alternateNameRow)}
             initialPicture={
               label?.picture
-                ? { id: label.picture.id, name: label.picture.path }
+                ? { id: String(label.picture.id), name: label.picture.path }
                 : null
             }
           />
@@ -131,7 +92,7 @@ function Form({
   initialNames,
   initialPicture,
 }: {
-  id?: string
+  id?: number
   initialName: string
   initialLanguage: string | null
   initialNames: AlternateNameRow[]
@@ -142,24 +103,27 @@ function Form({
   const [nameLanguage, setNameLanguage] = useState(initialLanguage)
   const [names, setNames] = useState(initialNames)
   const [picture, setPicture] = useState(initialPicture)
-  const [create, created] = useMutation(CreateLabel)
-  const [update, updated] = useMutation(UpdateLabel)
-  const error = created.error ?? updated.error
+  const save = useMutation({
+    mutationFn: () => {
+      const input = {
+        name,
+        nameLanguage,
+        alternateNames: labelNamesInput(names),
+        // Pickers' ids are strings, for the forms that still send GraphQL
+        pictureId: picture ? Number(picture.id) : null,
+      }
+      return id === undefined
+        ? call("createLabel", input)
+        : call("updateLabel", { id, ...input })
+    },
+  })
 
   return (
     <form
       onSubmit={async (event) => {
         event.preventDefault()
-        const input = {
-          name,
-          nameLanguage,
-          alternateNames: labelNamesInput(names),
-          pictureId: picture?.id ?? null,
-        }
         try {
-          const saved = id
-            ? (await update({ variables: { id, input } })).data!.updateLabel
-            : (await create({ variables: { input } })).data!.createLabel
+          const saved = await save.mutateAsync()
           navigate(`/labels/${saved.id}`)
         } catch {
           // The form shows the error
@@ -167,7 +131,7 @@ function Form({
       }}
     >
       <FieldGroup>
-        {error && <QueryError error={error} title="Can't save" />}
+        {save.error && <QueryError error={save.error} title="Can't save" />}
         <Field>
           <FieldLabel htmlFor="name">Name</FieldLabel>
           <div className="grid grid-cols-[1fr_14rem] gap-2">
@@ -214,9 +178,7 @@ function Form({
           <Button
             type="submit"
             disabled={
-              created.loading ||
-              updated.loading ||
-              !alternateNamesValid(name, names, false)
+              save.isPending || !alternateNamesValid(name, names, false)
             }
           >
             Save

@@ -1,5 +1,5 @@
 //! Runs commands on a library without the app, for the write parity script
-//! (`scripts/write-parity.ts`, design §10): the same functions the commands
+//! (`scripts/write-parity/`, design §10): the same functions the commands
 //! call, with the same JSON arguments.
 //!
 //!   cargo run -p liquidslunk --example run_commands -- <slunk.db> <steps.json>
@@ -11,6 +11,7 @@
 
 use std::path::Path;
 
+use liquidslunk_lib::commands::catalog::{self, artists, labels, lists};
 use liquidslunk_lib::commands::media;
 use liquidslunk_lib::error::CommandError;
 use liquidslunk_lib::library::Library;
@@ -58,6 +59,28 @@ fn run(library: &Library, command: &str, args: Value) -> Result<Value, CommandEr
         "registerFiles" => json(media::register(library, parse(args)?)?),
         "updateFile" => json(media::update(library, parse(args)?)?),
         "deleteFile" => json(media::delete(library, parse(args)?)?),
+        "listItems" => json(lists::list(library, parse(args)?)?),
+        "listItem" => json(lists::details(library, parse(args)?)?),
+        "listItemOptions" => json(lists::options(library, parse(args)?)?),
+        "createListItem" => json(lists::create(library, parse(args)?)?),
+        "renameListItem" => json(lists::rename(library, parse(args)?)?),
+        "deleteListItem" => json(lists::delete(library, parse(args)?)?),
+        "artists" => json(artists::list(library, parse(args)?)?),
+        "artist" => json(artists::details(library, parse(args)?)?),
+        "artistOptions" => json(artists::options(library, parse(args)?)?),
+        "artistNames" => json(artists::names(library, parse(args)?)?),
+        "createArtist" => json(artists::create(library, parse(args)?)?),
+        "updateArtist" => json(artists::update(library, parse(args)?)?),
+        "setArtistPicture" => json(artists::set_picture(library, parse(args)?)?),
+        "deleteArtist" => json(artists::delete(library, parse(args)?)?),
+        "labels" => json(labels::list(library, parse(args)?)?),
+        "label" => json(labels::details(library, parse(args)?)?),
+        "labelOptions" => json(labels::options(library, parse(args)?)?),
+        "createLabel" => json(labels::create(library, parse(args)?)?),
+        "updateLabel" => json(labels::update(library, parse(args)?)?),
+        "setLabelPicture" => json(labels::set_picture(library, parse(args)?)?),
+        "deleteLabel" => json(labels::delete(library, parse(args)?)?),
+        "languages" => json(catalog::in_use(library)?),
         _ => return Err(CommandError::invalid(format!("No command {command}"))),
     };
     Ok(value)

@@ -3,14 +3,19 @@
 //! are plain functions over a `&Connection`, and a `Transaction` is one
 //! (design §12.2).
 
+pub mod artists;
 pub mod backups;
 pub mod connection;
 pub mod file_links;
 pub mod files;
 pub mod helpers;
+pub mod labels;
+pub mod lists;
 pub mod migrations;
 pub mod migrator;
+pub mod named;
 pub mod rebuild_table;
+pub mod stats;
 pub mod store;
 
 /// An SQL identifier, quoted, as Kysely quotes table and column names.

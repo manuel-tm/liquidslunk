@@ -1,4 +1,3 @@
-import { useQuery } from "@apollo/client/react"
 import { Link } from "react-router"
 
 import { ListLayout, PER_PAGE } from "@/components/list/list-layout"
@@ -11,42 +10,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { graphql } from "@/gql"
-import type { ListKind } from "@/gql/graphql"
+import type { ListKind } from "@/bindings"
 import { useListParams } from "@/hooks/use-list-params"
+import { useCommand } from "@/lib/query"
 import { LISTS } from "@/routes/lists/config"
-
-const ListItemsQuery = graphql(`
-  query ListItems(
-    $kind: ListKind!
-    $page: Int!
-    $perPage: Int!
-    $sort: String
-    $q: String
-  ) {
-    listItems(kind: $kind, page: $page, perPage: $perPage, sort: $sort, q: $q) {
-      total
-      items {
-        id
-        name
-        uses
-      }
-    }
-  }
-`)
 
 /** `/release-formats` and `/release-media` */
 export function ListItemList({ kind }: { kind: ListKind }) {
   const list = useListParams()
   const { path, title } = LISTS[kind]
-  const { data, error } = useQuery(ListItemsQuery, {
-    variables: {
-      kind,
-      page: list.page,
-      perPage: PER_PAGE,
-      sort: list.sort,
-      q: list.q,
-    },
+  const { data, error } = useCommand("listItems", {
+    kind,
+    page: list.page,
+    perPage: PER_PAGE,
+    sort: list.sort,
+    q: list.q,
   })
 
   return (
@@ -55,8 +33,8 @@ export function ListItemList({ kind }: { kind: ListKind }) {
       newTo={`${path}/create`}
       list={list}
       searchPlaceholder="Search names"
-      total={data?.listItems.total}
-      error={error}
+      total={data?.total}
+      error={error ?? undefined}
       emptyText={`No ${title.toLowerCase()} yet.`}
     >
       <Table>
@@ -74,7 +52,7 @@ export function ListItemList({ kind }: { kind: ListKind }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data?.listItems.items.map((item) => (
+          {data?.items.map((item) => (
             <TableRow key={item.id}>
               <TableCell className="tabular-nums">{item.id}</TableCell>
               <TableCell>

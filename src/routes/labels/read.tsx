@@ -1,4 +1,5 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { useParams } from "react-router"
 
 import { AlternateNames } from "@/components/alternate-names"
@@ -11,9 +12,11 @@ import { PageHeader } from "@/components/page-header"
 import { QueryError } from "@/components/query-error"
 import { ReleaseTable } from "@/components/release-table"
 import { Skeleton } from "@/components/ui/skeleton"
+import type { FileRefInput } from "@/bindings"
 import { graphql } from "@/gql"
 import { useListParams } from "@/hooks/use-list-params"
 import { textProps } from "@/lib/languages"
+import { call, queryClient } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
 
 const LabelQuery = graphql(`
@@ -67,23 +70,6 @@ const LabelQuery = graphql(`
   }
 `)
 
-const SetLabelPicture = graphql(`
-  mutation SetLabelPicture($id: ID!, $picture: FileRefInput!) {
-    setLabelPicture(id: $id, picture: $picture) {
-      id
-      picture {
-        id
-      }
-    }
-  }
-`)
-
-const DeleteLabel = graphql(`
-  mutation DeleteLabel($id: ID!) {
-    deleteLabel(id: $id)
-  }
-`)
-
 /** `/labels/:id`: the logo and name, then the label's releases (slunk's design §7.8). */
 export function LabelRead() {
   const { id = "" } = useParams()
@@ -96,8 +82,14 @@ export function LabelRead() {
       sort: list.sort ?? "released",
     },
   })
-  const [deleteLabel] = useMutation(DeleteLabel, { variables: { id } })
-  const [setPicture] = useMutation(SetLabelPicture)
+  // Its reads are GraphQL's until phase 4, but its writes are commands
+  const deleteLabel = useMutation({
+    mutationFn: (labelId: number) => call("deleteLabel", { id: labelId }),
+  })
+  const setPicture = useMutation({
+    mutationFn: ({ id, picture }: { id: number; picture: FileRefInput }) =>
+      call("setLabelPicture", { id, picture }),
+  })
 
   if (data && !data.label) return <NotFound />
   const label = data?.label
@@ -121,8 +113,13 @@ export function LabelRead() {
             <DeleteButton
               name={label.name}
               blockers={label.blockers}
-              onDelete={() => deleteLabel()}
+              onDelete={() => deleteLabel.mutateAsync(Number(label.id))}
               then="/labels"
+              afterDelete={() =>
+                queryClient.removeQueries({
+                  queryKey: ["label", { id: Number(label.id) }],
+                })
+              }
             />
           </>
         )}
@@ -141,7 +138,7 @@ export function LabelRead() {
                 className="size-24"
                 noun="logo"
                 onChoose={(picture) =>
-                  setPicture({ variables: { id, picture } })
+                  setPicture.mutateAsync({ id: Number(label.id), picture })
                 }
               />
               <div className="flex flex-col gap-2">

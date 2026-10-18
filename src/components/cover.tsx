@@ -14,7 +14,7 @@ export function Cover({
   alt,
   className,
 }: {
-  file: { id: string } | null | undefined
+  file: { id: number | string } | null | undefined
   alt: string
   className?: string
 }) {

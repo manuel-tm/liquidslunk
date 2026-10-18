@@ -12,6 +12,11 @@ export type Step = {
   args?: (library: string) => object
   /** GraphQL returns an id, a string, where the command returns a number */
   returnsId?: boolean
+  /**
+   * What the command returns, from what GraphQL returns, where they differ:
+   * a picker's command returns a list, and its GraphQL query a page
+   */
+  fromGraphql?: (data: unknown) => unknown
 }
 
 export type Phase = {

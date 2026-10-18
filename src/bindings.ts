@@ -62,12 +62,213 @@ export const commands = {
 	openFile: (args: FileArgs) => typedError<null, CommandError>(__TAURI_INVOKE("open_file", { args })),
 	/**  Shows a registered file in Finder. */
 	revealFile: (args: FileArgs) => typedError<null, CommandError>(__TAURI_INVOKE("reveal_file", { args })),
+	/**  Release formats or release media. */
+	listItems: (args: ListItemsArgs) => typedError<ListItemPage, CommandError>(__TAURI_INVOKE("list_items", { args })),
+	/**  A format or medium, or null for an unknown id. */
+	listItem: (args: ListItemArgs) => typedError<({
+	uses: number,
+	blockers: string[],
+}) & (ListItem) | null, CommandError>(__TAURI_INVOKE("list_item", { args })),
+	/**
+	 *  The first formats or media whose name has `q` in it, by name, for a
+	 *  picker.
+	 */
+	listItemOptions: (args: ListItemOptionsArgs) => typedError<ListItem[], CommandError>(__TAURI_INVOKE("list_item_options", { args })),
+	createListItem: (args: CreateListItemArgs) => typedError<ListItem, CommandError>(__TAURI_INVOKE("create_list_item", { args })),
+	renameListItem: (args: RenameListItemArgs) => typedError<ListItem, CommandError>(__TAURI_INVOKE("rename_list_item", { args })),
+	/**
+	 *  Deletes a format or medium, and returns its id. It fails while anything
+	 *  uses it.
+	 */
+	deleteListItem: (args: ListItemArgs) => typedError<number, CommandError>(__TAURI_INVOKE("delete_list_item", { args })),
+	/**
+	 *  Artists, with their alternate names. `q` matches part of the main name or
+	 *  of an alternate name.
+	 */
+	artists: (args: PageArgs) => typedError<ArtistPage, CommandError>(__TAURI_INVOKE("artists", { args })),
+	/**  An artist, as its form edits it, or null for an unknown id. */
+	artist: (args: IdArgs) => typedError<{
+	id: number,
+	name: string,
+	nameLanguage: string | null,
+	/**
+	 *  Artist links that show the main name: the ones a rename changes,
+	 *  unless it keeps the old name on them.
+	 */
+	mainNameUses: number,
+	alternateNames: UsedArtistName[],
+	picture: File | null,
+	files: FileLink[],
+} | null, CommandError>(__TAURI_INVOKE("artist", { args })),
+	/**  The first artists with `q` in a name, by name, for a picker. */
+	artistOptions: (args: OptionsArgs) => typedError<ArtistListItem[], CommandError>(__TAURI_INVOKE("artist_options", { args })),
+	/**
+	 *  An artist's alternate names, in order, to suggest the name it's credited
+	 *  with. An unknown artist has none.
+	 */
+	artistNames: (args: IdArgs) => typedError<ArtistName[], CommandError>(__TAURI_INVOKE("artist_names", { args })),
+	/**
+	 *  Creates an artist. Files given by path are registered first, in the same
+	 *  transaction.
+	 */
+	createArtist: (args: ArtistInput) => typedError<Artist, CommandError>(__TAURI_INVOKE("create_artist", { args })),
+	/**
+	 *  Saves an artist, its alternate names and its file links. Files given by
+	 *  path are registered first, in the same transaction.
+	 */
+	updateArtist: (args: UpdateArtistArgs) => typedError<Artist, CommandError>(__TAURI_INVOKE("update_artist", { args })),
+	/**
+	 *  Sets only the picture. A file given by path is registered first, in the
+	 *  same transaction.
+	 */
+	setArtistPicture: (args: SetPictureArgs) => typedError<Artist, CommandError>(__TAURI_INVOKE("set_artist_picture", { args })),
+	/**
+	 *  Deletes an artist, with its alternate names and file links, and returns
+	 *  its id. It fails while the artist is a release or track artist, or
+	 *  credited.
+	 */
+	deleteArtist: (args: IdArgs) => typedError<number, CommandError>(__TAURI_INVOKE("delete_artist", { args })),
+	/**
+	 *  Labels, with their alternate names. `q` matches part of the main name or
+	 *  of an alternate name.
+	 */
+	labels: (args: PageArgs) => typedError<LabelPage, CommandError>(__TAURI_INVOKE("labels", { args })),
+	/**  A label, as its form edits it, or null for an unknown id. */
+	label: (args: IdArgs) => typedError<{
+	id: number,
+	name: string,
+	nameLanguage: string | null,
+	alternateNames: LabelName[],
+	/**  The logo */
+	picture: File | null,
+} | null, CommandError>(__TAURI_INVOKE("label", { args })),
+	/**  The first labels with `q` in a name, by name, for a picker. */
+	labelOptions: (args: OptionsArgs) => typedError<LabelListItem[], CommandError>(__TAURI_INVOKE("label_options", { args })),
+	createLabel: (args: LabelInput) => typedError<Label, CommandError>(__TAURI_INVOKE("create_label", { args })),
+	updateLabel: (args: UpdateLabelArgs) => typedError<Label, CommandError>(__TAURI_INVOKE("update_label", { args })),
+	/**
+	 *  Sets only the logo. A file given by path is registered first, in the same
+	 *  transaction.
+	 */
+	setLabelPicture: (args: SetPictureArgs) => typedError<Label, CommandError>(__TAURI_INVOKE("set_label_picture", { args })),
+	/**
+	 *  Deletes a label, with its alternate names, and returns its id. It fails
+	 *  while the label is on a release.
+	 */
+	deleteLabel: (args: IdArgs) => typedError<number, CommandError>(__TAURI_INVOKE("delete_label", { args })),
+	/**
+	 *  Language tags in use on names and titles, the most used first, for the
+	 *  language picker.
+	 */
+	languages: () => typedError<string[], CommandError>(__TAURI_INVOKE("languages")),
 };
 
 /* Types */
+export type Artist = {
+	id: number,
+	/**  The main name */
+	name: string,
+	/**
+	 *  The main name's language: a BCP 47 tag, like ja or ja-Latn. Null when
+	 *  it isn't known.
+	 */
+	nameLanguage: string | null,
+	/**  The primary image. Other images are file links. */
+	picture: FileRef | null,
+	/**  Epoch seconds */
+	insertedAt: number,
+	/**  Epoch seconds */
+	updatedAt: number,
+};
+
+/**  An artist, as its form edits it. */
+export type ArtistDetails = {
+	id: number,
+	name: string,
+	nameLanguage: string | null,
+	/**
+	 *  Artist links that show the main name: the ones a rename changes,
+	 *  unless it keeps the old name on them.
+	 */
+	mainNameUses: number,
+	alternateNames: UsedArtistName[],
+	picture: File | null,
+	files: FileLink[],
+};
+
+/**  An artist to save. */
+export type ArtistInput = {
+	name: string,
+	/**
+	 *  A BCP 47 tag, stored in canonical form: JA-latn becomes ja-Latn.
+	 *  Blank means unknown.
+	 */
+	nameLanguage?: string | null,
+	pictureId?: number | null,
+	/**  Replaces the file links. Default none. */
+	files?: FileLinkInput[] | null,
+	/**
+	 *  Replaces the alternate names, in order. Left out, they stay as they
+	 *  are, except one the main name is renamed to: it's promoted, and goes
+	 *  unless it's a real name. Removing a name that's credited credits its
+	 *  links with the main name.
+	 */
+	alternateNames?: ArtistNameInput[] | null,
+	/**
+	 *  On a rename, credits the links that showed the old main name with it,
+	 *  as an alternate name, so they keep showing it. Default false.
+	 */
+	keepOldName?: boolean | null,
+};
+
+/**  An artist in a list or a picker, with its alternate names, in order. */
+export type ArtistListItem = {
+	alternateNames: ArtistName[],
+} & Artist;
+
+/**
+ *  A name an artist goes by, besides its main one: another spelling (ALIKA),
+ *  a name in another script (福居良), a real name.
+ */
+export type ArtistName = {
+	id: number,
+	/**  As written. Compared exactly, case included. */
+	name: string,
+	/**  A BCP 47 tag. Null when it isn't known. */
+	language: string | null,
+	/**  A legal or birth name */
+	realName: boolean,
+	note: string | null,
+};
+
+/**
+ *  An alternate name. Names are trimmed, a blank one is left out, and none
+ *  can be given twice or be the main name, except a real name.
+ */
+export type ArtistNameInput = {
+	/**  One of the artist's alternate names. Without an id, the name is added. */
+	id?: number | null,
+	name: string,
+	language?: string | null,
+	/**  Default false */
+	realName?: boolean | null,
+	note?: string | null,
+};
+
+export type ArtistPage = {
+	items: ArtistListItem[],
+	total: number,
+};
+
 export type CommandError = {
 	kind: ErrorKind,
 	message: string,
+};
+
+export type CreateListItemArgs = {
+	kind: ListKind,
+	/**  Unique in its list, ignoring case */
+	name: string,
 };
 
 /**  What creating a library did. */
@@ -124,6 +325,20 @@ export type FileDetails = {
 	uses: FileUse[],
 } & File;
 
+/**  A file linked to an artist, with its note. */
+export type FileLink = {
+	file: File,
+	note: string | null,
+};
+
+/**  A file to link, by id or by a path to register first, with a note. */
+export type FileLinkInput = {
+	fileId?: number | null,
+	path?: string | null,
+	/**  Trimmed. Blank means none. */
+	note?: string | null,
+};
+
 /**  A file in a list, with the track it's the audio of. */
 export type FileListItem = {
 	id: number,
@@ -144,6 +359,13 @@ export type FilePage = {
 
 export type FileRef = {
 	id: number,
+};
+
+/**  A file by id, or a path to register first. */
+export type FileRefInput = {
+	fileId?: number | null,
+	/**  Relative to the database's folder, or absolute */
+	path?: string | null,
 };
 
 export type FileTrack = {
@@ -219,6 +441,72 @@ export type FolderFilesArgs = {
 	path: string,
 };
 
+export type IdArgs = {
+	id: number,
+};
+
+export type Label = {
+	id: number,
+	/**  The main name */
+	name: string,
+	/**  The main name's language: a BCP 47 tag. Null when it isn't known. */
+	nameLanguage: string | null,
+	/**  The logo */
+	picture: FileRef | null,
+	/**  Epoch seconds */
+	insertedAt: number,
+	/**  Epoch seconds */
+	updatedAt: number,
+};
+
+/**  A label, as its form edits it. */
+export type LabelDetails = {
+	id: number,
+	name: string,
+	nameLanguage: string | null,
+	alternateNames: LabelName[],
+	/**  The logo */
+	picture: File | null,
+};
+
+/**  A label to save. */
+export type LabelInput = {
+	name: string,
+	nameLanguage?: string | null,
+	pictureId?: number | null,
+	/**
+	 *  Replaces the alternate names, in order. Left out, they stay as they
+	 *  are.
+	 */
+	alternateNames?: LabelNameInput[] | null,
+};
+
+/**  A label in a list or a picker, with its alternate names, in order. */
+export type LabelListItem = {
+	alternateNames: LabelName[],
+} & Label;
+
+/**
+ *  A name a label goes by, besides its main one. It has no id: nothing
+ *  refers to it.
+ */
+export type LabelName = {
+	name: string,
+	language: string | null,
+	note: string | null,
+};
+
+export type LabelNameInput = {
+	name: string,
+	language?: string | null,
+	note?: string | null,
+};
+
+export type LabelPage = {
+	items: LabelListItem[],
+	total: number,
+};
+
 /**  A library, as the frontend shows it. */
 export type LibraryInfo = {
 	/**  Its database, as an absolute path. */
@@ -244,6 +532,42 @@ export type LibraryStatus = {
 	devLibrary: string | null,
 };
 
+/**  A row of a list the user manages: a release format or release medium. */
+export type ListItem = {
+	id: number,
+	kind: ListKind,
+	name: string,
+};
+
+export type ListItemArgs = {
+	kind: ListKind,
+	id: number,
+};
+
+/**
+ *  A row, with how many releases have it, and what keeps it from being
+ *  deleted, in words.
+ */
+export type ListItemDetails = {
+	uses: number,
+	blockers: string[],
+} & ListItem;
+
+export type ListItemOptionsArgs = {
+	kind: ListKind,
+} & OptionsArgs;
+
+export type ListItemPage = {
+	items: UsedListItem[],
+	total: number,
+};
+
+export type ListItemsArgs = {
+	kind: ListKind,
+} & PageArgs;
+
+export type ListKind = "release_formats" | "release_media";
+
 /**  The migrations opening a library applied, and the backup made first. */
 export type MigrationReport = {
 	backup: string | null,
@@ -263,6 +587,29 @@ export type Opened = {
 	migration: MigrationReport,
 };
 
+/**  What a picker searches: the first matches by name. */
+export type OptionsArgs = {
+	q?: string | null,
+};
+
+/**  A page of a list: artists, labels, formats or media. */
+export type PageArgs = {
+	/**  From 1. Default 1. */
+	page?: number | null,
+	/**  Default 50, at most 200 */
+	perPage?: number | null,
+	/**
+	 *  `name` or `id`, with `-` in front for descending. Default `-id`,
+	 *  newest first.
+	 */
+	sort?: string | null,
+	/**
+	 *  Part of the name, ignoring case. For artists and labels, part of an
+	 *  alternate name finds them too.
+	 */
+	q?: string | null,
+};
+
 /**  A library opened recently. */
 export type RecentLibrary = {
 	path: string,
@@ -275,6 +622,12 @@ export type RegisterFilesArgs = {
 	paths: string[],
 };
 
+export type RenameListItemArgs = {
+	kind: ListKind,
+	id: number,
+	name: string,
+};
+
 export type SavedLibrary = {
 	path: string,
 	/**
@@ -284,12 +637,23 @@ export type SavedLibrary = {
 	found: boolean,
 };
 
+/**  Sets only a picture or logo. */
+export type SetPictureArgs = {
+	id: number,
+	/**  A file given by path is registered first, in the same transaction. */
+	picture: FileRefInput,
+};
+
 export type Subfolder = {
 	name: string,
 	path: string,
 	/**  Whether it, or a folder inside it, holds registered files */
 	hasRegisteredFiles: boolean,
 };
+
+export type UpdateArtistArgs = {
+	id: number,
+} & ArtistInput;
 
 export type UpdateFileArgs = {
 	id: number,
@@ -300,6 +664,24 @@ export type UpdateFileArgs = {
 	path?: string | null,
 	type?: FileType | null,
 };
+
+export type UpdateLabelArgs = {
+	id: number,
+} & LabelInput;
+
+/**  An alternate name, with the links credited with it. */
+export type UsedArtistName = {
+	/**
+	 *  Artist links credited with it: as a release artist, a track artist or
+	 *  feature, or on a credit line.
+	 */
+	uses: number,
+} & ArtistName;
+
+/**  A row in the list, with how many releases have it. */
+export type UsedListItem = {
+	uses: number,
+} & ListItem;
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {
