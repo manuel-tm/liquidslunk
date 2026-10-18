@@ -34,9 +34,10 @@ import { isDeepStrictEqual } from "node:util"
 
 import { catalog } from "./catalog.ts"
 import { type Phase, media } from "./media.ts"
+import { releases } from "./releases.ts"
 import { tagging } from "./tagging.ts"
 
-const PHASES: Phase[] = [media, catalog, tagging]
+const PHASES: Phase[] = [media, catalog, tagging, releases]
 
 // Copies keep their files' times and their symlinks
 const COPY = {
@@ -88,7 +89,11 @@ try {
   await withBackend(db, async (graphql) => {
     for (const step of steps) {
       viaGraphql.push(
-        await graphql(step.graphql, step.variables?.(graphqlLibrary))
+        await graphql(
+          step.graphql,
+          step.variables?.(graphqlLibrary),
+          step.whole
+        )
       )
     }
   })
@@ -194,7 +199,11 @@ function makeFiles(folder: string, shared: string) {
 async function withBackend(
   db: string,
   work: (
-    graphql: (query: string, variables?: object) => Promise<Result>
+    graphql: (
+      query: string,
+      variables?: object,
+      whole?: boolean
+    ) => Promise<Result>
   ) => Promise<void>
 ) {
   const port = await freePort()
@@ -211,7 +220,8 @@ async function withBackend(
   const url = `http://127.0.0.1:${port}/graphql`
   const graphql = async (
     query: string,
-    variables?: object
+    variables?: object,
+    whole = false
   ): Promise<Result> => {
     const response = await fetch(url, {
       method: "POST",
@@ -223,7 +233,7 @@ async function withBackend(
       errors?: { message: string }[]
     }
     if (errors?.length) return { error: errors[0].message }
-    return { ok: Object.values(data ?? {})[0] }
+    return { ok: whole ? data : Object.values(data ?? {})[0] }
   }
   try {
     for (let tries = 0; ; tries++) {

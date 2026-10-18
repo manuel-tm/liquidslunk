@@ -1,41 +1,23 @@
-import { useQuery } from "@apollo/client/react"
 import { useParams } from "react-router"
 
 import { FileGallery } from "@/components/file-gallery"
 import { PageHeader } from "@/components/page-header"
 import { QueryError } from "@/components/query-error"
 import { Skeleton } from "@/components/ui/skeleton"
-import { graphql } from "@/gql"
+import { idParam, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
-
-const ReleaseFilesQuery = graphql(`
-  query ReleaseFiles($id: ID!) {
-    release(id: $id) {
-      id
-      title
-      cover {
-        id
-        name
-      }
-      files {
-        note
-        file {
-          id
-          name
-          type
-        }
-      }
-    }
-  }
-`)
 
 /** `/releases/:id/files`: the cover, then the linked files (slunk's design §7.6). */
 export function ReleaseFiles() {
   const { id = "" } = useParams()
-  const { data, error } = useQuery(ReleaseFilesQuery, { variables: { id } })
+  const releaseId = idParam(id)
+  const { data: release, error } = useCommand(
+    "releaseFiles",
+    { id: releaseId ?? 0 },
+    { enabled: releaseId !== null }
+  )
 
-  if (data && !data.release) return <NotFound />
-  const release = data?.release
+  if (releaseId === null || release === null) return <NotFound />
 
   return (
     <>

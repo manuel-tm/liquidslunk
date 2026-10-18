@@ -1,10 +1,11 @@
-//! Labels, with their alternate names and logos.
+//! Labels, with their alternate names and logos, and the label's page.
 
 use serde::{Deserialize, Serialize};
 use slunk::catalog as domain;
 use specta::Type;
 use tauri::AppHandle;
 
+use super::releases::{self, ReleaseFiltersArgs, ReleasePage, ReleasesArgs};
 use super::{IdArgs, OptionsArgs, PageArgs, SetPictureArgs, files_by_id};
 use crate::commands::media::{File, FileRef};
 use crate::commands::on_library;
@@ -280,4 +281,79 @@ fn with_names(
             label: label.into(),
         })
         .collect())
+}
+
+/// The label's page: its logo and names, and its releases.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct LabelView {
+    pub id: i64,
+    pub name: String,
+    pub name_language: Option<String>,
+    pub alternate_names: Vec<LabelName>,
+    /// The logo
+    pub picture: Option<FileRef>,
+    /// What keeps it from being deleted, in words
+    pub blockers: Vec<String>,
+    pub releases: ReleasePage,
+}
+
+#[derive(Debug, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct LabelPageArgs {
+    pub id: i64,
+    #[serde(default)]
+    #[specta(optional)]
+    pub page: Option<i64>,
+    #[serde(default)]
+    #[specta(optional)]
+    pub per_page: Option<i64>,
+    /// `title`, `released` or `id`, with `-` in front for descending
+    #[serde(default)]
+    #[specta(optional)]
+    pub sort: Option<String>,
+}
+
+/// The label's page, or null for an unknown id.
+#[tauri::command]
+#[specta::specta]
+pub async fn label_page(
+    app: AppHandle,
+    args: LabelPageArgs,
+) -> Result<Option<LabelView>, CommandError> {
+    on_library(app, move |library| page(library, args)).await
+}
+
+pub fn page(library: &Library, args: LabelPageArgs) -> Result<Option<LabelView>, CommandError> {
+    let catalog = &library.catalog;
+    let Some(label) = catalog.get_label(args.id)? else {
+        return Ok(None);
+    };
+    let releases = releases::list(
+        library,
+        ReleasesArgs {
+            page: args.page,
+            per_page: args.per_page,
+            sort: args.sort,
+            filters: ReleaseFiltersArgs {
+                label: Some(label.id),
+                ..ReleaseFiltersArgs::default()
+            },
+        },
+    )?;
+    Ok(Some(LabelView {
+        alternate_names: catalog
+            .label_names_of(&[label.id])?
+            .remove(&label.id)
+            .unwrap_or_default()
+            .into_iter()
+            .map(LabelName::from)
+            .collect(),
+        blockers: catalog.label_blockers(label.id)?,
+        picture: label.picture.map(|id| FileRef { id }),
+        id: label.id,
+        name: label.name,
+        name_language: label.name_language,
+        releases,
+    }))
 }

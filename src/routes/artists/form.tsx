@@ -150,10 +150,7 @@ function Form({
         keepOldName: keep,
         // Pickers' ids are strings, for the forms that still send GraphQL
         pictureId: picture ? Number(picture.id) : null,
-        files: fileLinksInput(links).map((link) => ({
-          ...link,
-          fileId: Number(link.fileId),
-        })),
+        files: fileLinksInput(links),
       }
       return id === undefined
         ? call("createArtist", input)

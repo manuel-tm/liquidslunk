@@ -4,7 +4,7 @@ import { Cover } from "@/components/cover"
 import { openFile } from "@/lib/files"
 
 type LinkedFile = {
-  file: { id: string; name: string; type: string }
+  file: { id: number | string; name: string; type: string }
   note?: string | null
 }
 
@@ -18,7 +18,7 @@ export function FileGallery({
   primaryLabel,
   links,
 }: {
-  primary: { id: string; name: string } | null | undefined
+  primary: { id: number | string; name: string } | null | undefined
   primaryLabel: string
   links: LinkedFile[]
 }) {

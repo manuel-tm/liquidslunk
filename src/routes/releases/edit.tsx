@@ -1,4 +1,3 @@
-import { useQuery } from "@apollo/client/react"
 import { useNavigate, useParams } from "react-router"
 import { toast } from "sonner"
 
@@ -7,8 +6,8 @@ import { QueryError } from "@/components/query-error"
 import { TabLinks } from "@/components/tab-links"
 import { Skeleton } from "@/components/ui/skeleton"
 import { alternateTitleRow } from "@/components/alternate-titles-editor"
-import { graphql } from "@/gql"
 import { creditedOption } from "@/lib/credited"
+import { idParam, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
 import {
   EMPTY_DETAILS,
@@ -19,56 +18,6 @@ import { ReleaseFilesForm } from "@/routes/releases/forms/files"
 import { ReleaseTagsForm } from "@/routes/releases/forms/tags"
 import { ReleaseTracksForm } from "@/routes/releases/forms/tracks"
 
-const ReleaseTitleQuery = graphql(`
-  query ReleaseTitle($id: ID!) {
-    release(id: $id) {
-      id
-      title
-    }
-  }
-`)
-
-const ReleaseDetailsQuery = graphql(`
-  query ReleaseDetails($id: ID!) {
-    release(id: $id) {
-      id
-      title
-      titleLanguage
-      alternateTitles {
-        title
-        language
-        printed
-      }
-      released
-      variousArtists
-      catalogNumber
-      artists {
-        artist {
-          id
-          name
-          nameLanguage
-        }
-        creditedAs {
-          name
-          language
-        }
-      }
-      labels {
-        id
-        name
-      }
-      formats {
-        id
-        name
-      }
-      media {
-        id
-        name
-      }
-    }
-  }
-`)
-
 export type EditTab = "details" | "tracks" | "files" | "credits" | "tags"
 
 /**
@@ -78,11 +27,12 @@ export type EditTab = "details" | "tracks" | "files" | "credits" | "tags"
 export function ReleaseEdit({ tab }: { tab: EditTab }) {
   const { id = "" } = useParams()
   const navigate = useNavigate()
-  // The tab's own query loads the title; this reads it from the cache
-  const { data } = useQuery(ReleaseTitleQuery, {
-    variables: { id },
-    fetchPolicy: "cache-only",
-  })
+  const releaseId = idParam(id)
+  const { data: header } = useCommand(
+    "releaseHeader",
+    { id: releaseId ?? 0 },
+    { enabled: releaseId !== null }
+  )
   const base = `/releases/${id}/update`
   const saved = () => {
     toast.success("Saved")
@@ -95,7 +45,8 @@ export function ReleaseEdit({ tab }: { tab: EditTab }) {
         crumbs={[
           { label: "Releases", to: "/releases" },
           {
-            label: data?.release ? `${data.release.title} (${id})` : id,
+            label: header ? `${header.title} (${id})` : id,
+            lang: header?.titleLanguage,
             to: `/releases/${id}`,
           },
           { label: "Update" },
@@ -138,17 +89,20 @@ export function DetailsTab({
   offerSplit?: boolean
   onSaved: () => void
 }) {
-  const { data, error } = useQuery(ReleaseDetailsQuery, {
-    variables: { id },
-    fetchPolicy: "network-only",
-  })
+  const releaseId = idParam(id)
+  // A form starts from fresh data (design §7.2)
+  const { data: release, error } = useCommand(
+    "release",
+    { id: releaseId ?? 0 },
+    { fresh: true, enabled: releaseId !== null }
+  )
+  if (releaseId === null || release === null) return <NotFound />
   if (error) return <QueryError error={error} title="Can't load the release" />
-  if (!data) return <Skeleton className="h-96 w-full max-w-2xl" />
-  if (!data.release) return <NotFound />
-  const release = data.release
+  if (!release) return <Skeleton className="h-96 w-full max-w-2xl" />
   return (
     <ReleaseDetailsForm
-      releaseId={id}
+      key={release.id}
+      releaseId={release.id}
       submitLabel={submitLabel}
       offerSplit={offerSplit}
       initial={{
@@ -159,14 +113,20 @@ export function DetailsTab({
         variousArtists: release.variousArtists,
         catalogNumber: release.catalogNumber ?? "",
         artists: release.artists.map(creditedOption),
-        labels: release.labels,
-        formats: release.formats,
-        media: release.media,
+        // Options' ids are strings, as the pickers' are
+        labels: release.labels.map(option),
+        formats: release.formats.map(option),
+        media: release.media.map(option),
       }}
       onSaved={onSaved}
     />
   )
 }
+
+const option = ({ id, name }: { id: number; name: string }) => ({
+  id: String(id),
+  name,
+})
 
 /** `/releases/create`: only the details. The edit tabs add the rest. */
 export function ReleaseCreate() {

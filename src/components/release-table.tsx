@@ -17,11 +17,11 @@ import type { CreditedLink } from "@/lib/credited"
 import type { AlternateTitle } from "@/lib/titles"
 import { formatDateTime, formatReleased } from "@/lib/format"
 
-type Named = { id: string; name: string }
+type Named = { id: number; name: string }
 
-/** A release, with whichever fields the page asked for. */
+/** A release, with whichever fields the page's command returns. */
 export type ReleaseRow = {
-  id: string
+  id: number
   title: string
   titleLanguage?: string | null
   alternateTitles?: AlternateTitle[]
@@ -30,7 +30,7 @@ export type ReleaseRow = {
   variousArtists?: boolean
   insertedAt?: number
   updatedAt?: number
-  cover?: { id: string } | null
+  cover?: { id: number } | null
   /** As credited */
   artists?: CreditedLink[]
   formats?: Named[]
@@ -71,8 +71,8 @@ const SORTABLE = new Set<ReleaseColumn>(["title", "released"])
 
 /** Checkboxes on the rows, for a bulk edit. */
 export type Selection = {
-  selected: Set<string>
-  onChange: (ids: string[], selected: boolean) => void
+  selected: Set<number>
+  onChange: (ids: number[], selected: boolean) => void
 }
 
 /**

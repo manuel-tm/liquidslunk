@@ -17,6 +17,11 @@ export type Step = {
    * a picker's command returns a list, and its GraphQL query a page
    */
   fromGraphql?: (data: unknown) => unknown
+  /**
+   * GraphQL returns every root field, as an object, for `fromGraphql` to
+   * map: the release list asks for its filters' names beside the page
+   */
+  whole?: boolean
 }
 
 export type Phase = {

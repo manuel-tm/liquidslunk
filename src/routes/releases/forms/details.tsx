@@ -1,4 +1,4 @@
-import { useMutation } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 
 import {
@@ -23,9 +23,9 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
-import { graphql } from "@/gql"
 import { creditedInput } from "@/lib/credited"
 import { textProps } from "@/lib/languages"
+import { call } from "@/lib/query"
 
 export type DetailsValues = {
   title: string
@@ -53,26 +53,6 @@ export const EMPTY_DETAILS: DetailsValues = {
   media: [],
 }
 
-const CreateRelease = graphql(`
-  mutation CreateRelease($input: ReleaseInput!) {
-    createRelease(input: $input) {
-      id
-    }
-  }
-`)
-
-const UpdateRelease = graphql(`
-  mutation UpdateRelease($id: ID!, $input: ReleaseInput!) {
-    updateRelease(id: $id, input: $input) {
-      id
-      title
-      released
-      catalogNumber
-      variousArtists
-    }
-  }
-`)
-
 /**
  * A release's details (slunk's design §7.6): title, artists, various artists,
  * date, formats, media, labels and catalog number. Without `releaseId`, it
@@ -88,41 +68,43 @@ export function ReleaseDetailsForm({
   typedArtists,
   onSaved,
 }: {
-  releaseId?: string
+  releaseId?: number
   initial: DetailsValues
   submitLabel?: string
   offerSplit?: boolean
   typedArtists?: string[]
-  onSaved: (id: string) => void
+  onSaved: (id: number) => void
 }) {
   const [values, setValues] = useState(initial)
   const set = (changes: Partial<DetailsValues>) =>
     setValues((v) => ({ ...v, ...changes }))
-  const [create, created] = useMutation(CreateRelease)
-  const [update, updated] = useMutation(UpdateRelease)
-  const error = created.error ?? updated.error
+  const save = useMutation({
+    mutationFn: () => {
+      const input = {
+        title: values.title,
+        titleLanguage: values.titleLanguage,
+        alternateTitles: alternateTitlesInput(values.alternateTitles),
+        released: values.released.trim() || null,
+        variousArtists: values.variousArtists,
+        catalogNumber: values.catalogNumber.trim() || null,
+        artists: creditedInput(values.artists),
+        // Options' ids are strings, as the pickers' are
+        labelIds: values.labels.map((l) => Number(l.id)),
+        formatIds: values.formats.map((f) => Number(f.id)),
+        mediumIds: values.media.map((m) => Number(m.id)),
+      }
+      return releaseId === undefined
+        ? call("createRelease", input)
+        : call("updateRelease", { id: releaseId, ...input })
+    },
+  })
 
   return (
     <form
       onSubmit={async (event) => {
         event.preventDefault()
-        const input = {
-          title: values.title,
-          titleLanguage: values.titleLanguage,
-          alternateTitles: alternateTitlesInput(values.alternateTitles),
-          released: values.released.trim() || null,
-          variousArtists: values.variousArtists,
-          catalogNumber: values.catalogNumber.trim() || null,
-          artists: creditedInput(values.artists),
-          labelIds: values.labels.map((l) => l.id),
-          formatIds: values.formats.map((f) => f.id),
-          mediumIds: values.media.map((m) => m.id),
-        }
         try {
-          const saved = releaseId
-            ? (await update({ variables: { id: releaseId, input } })).data!
-                .updateRelease
-            : (await create({ variables: { input } })).data!.createRelease
+          const saved = await save.mutateAsync()
           onSaved(saved.id)
         } catch {
           // The form shows the error
@@ -130,7 +112,7 @@ export function ReleaseDetailsForm({
       }}
     >
       <FieldGroup className="max-w-2xl">
-        {error && <QueryError error={error} title="Can't save" />}
+        {save.error && <QueryError error={save.error} title="Can't save" />}
         <Field>
           <FieldLabel htmlFor="title">Title</FieldLabel>
           <div className="grid grid-cols-[1fr_14rem] gap-2">
@@ -261,8 +243,7 @@ export function ReleaseDetailsForm({
           <Button
             type="submit"
             disabled={
-              created.loading ||
-              updated.loading ||
+              save.isPending ||
               !alternateTitlesValid(values.title, values.alternateTitles)
             }
           >

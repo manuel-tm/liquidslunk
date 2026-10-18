@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { PauseIcon, PlayIcon } from "lucide-react"
 import { type ReactNode, useRef, useState } from "react"
 import { Link, useParams } from "react-router"
@@ -14,172 +14,22 @@ import { TagValues } from "@/components/tag-values"
 import { AlternateTitleLines, Title } from "@/components/titles"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { graphql } from "@/gql"
-import type { ReleaseQuery } from "@/gql/graphql"
+import type { FileRefInput, ReleaseView } from "@/bindings"
 import { formatDuration, formatReleased } from "@/lib/format"
-import { fileUrl } from "@/lib/query"
+import { call, fileUrl, idParam, queryClient, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
 
-const ReleaseQueryDocument = graphql(`
-  query Release($id: ID!) {
-    release(id: $id) {
-      id
-      title
-      titleLanguage
-      alternateTitles {
-        title
-        language
-        printed
-      }
-      released
-      catalogNumber
-      variousArtists
-      fileCount
-      durationMs
-      blockers
-      cover {
-        id
-      }
-      artists {
-        artist {
-          id
-          name
-          nameLanguage
-          alternateNames {
-            name
-            language
-          }
-        }
-        creditedAs {
-          name
-          language
-        }
-      }
-      labels {
-        id
-        name
-        nameLanguage
-      }
-      formats {
-        id
-        name
-      }
-      media {
-        id
-        name
-      }
-      credits {
-        role
-        artists {
-          artist {
-            id
-            name
-            nameLanguage
-          }
-          creditedAs {
-            name
-            language
-          }
-        }
-      }
-      tags {
-        tag {
-          id
-          type
-          name
-        }
-        values
-      }
-      discTitles {
-        cdNumber
-        title
-        language
-        alternateTitles {
-          title
-          language
-          printed
-        }
-      }
-      tracks {
-        id
-        title
-        titleLanguage
-        alternateTitles {
-          title
-          language
-          printed
-        }
-        durationMs
-        cdNumber
-        trackNumber
-        file {
-          id
-          path
-        }
-        artists {
-          artist {
-            id
-            name
-            nameLanguage
-            alternateNames {
-              name
-              language
-            }
-          }
-          creditedAs {
-            name
-            language
-          }
-        }
-        features {
-          artist {
-            id
-            name
-            nameLanguage
-          }
-          creditedAs {
-            name
-            language
-          }
-        }
-        credits {
-          role
-          artists {
-            artist {
-              id
-              name
-              nameLanguage
-            }
-            creditedAs {
-              name
-              language
-            }
-          }
-        }
-      }
-    }
-  }
-`)
+type Release = ReleaseView
 
-const SetReleaseCover = graphql(`
-  mutation SetReleaseCover($id: ID!, $cover: FileRefInput!) {
-    setReleaseCover(id: $id, cover: $cover) {
-      id
-      fileCount
-      cover {
-        id
-      }
-    }
-  }
-`)
-
-const DeleteRelease = graphql(`
-  mutation DeleteRelease($id: ID!) {
-    deleteRelease(id: $id)
-  }
-`)
-
-type Release = NonNullable<ReleaseQuery["release"]>
+/** The queries of one release, which a delete removes. */
+const RELEASE_QUERIES = [
+  "releasePage",
+  "releaseHeader",
+  "release",
+  "releaseFiles",
+  "releaseCredits",
+  "releaseTags",
+]
 
 // The browser remembers whether credits (slunk's design §7.6) and alternate titles
 // (slunk's 3_alternate_names.md §7.3) are hidden
@@ -209,11 +59,17 @@ function useRemembered(key: string) {
 /** `/releases/:id`, laid out like a Discogs release page (slunk's design §7.6). */
 export function ReleasePage() {
   const { id = "" } = useParams()
-  const { data, error } = useQuery(ReleaseQueryDocument, { variables: { id } })
-  const [deleteRelease] = useMutation(DeleteRelease, { variables: { id } })
+  const releaseId = idParam(id)
+  const { data: release, error } = useCommand(
+    "releasePage",
+    { id: releaseId ?? 0 },
+    { enabled: releaseId !== null }
+  )
+  const deleteRelease = useMutation({
+    mutationFn: (id: number) => call("deleteRelease", { id }),
+  })
 
-  if (data && !data.release) return <NotFound />
-  const release = data?.release
+  if (releaseId === null || release === null) return <NotFound />
 
   return (
     <>
@@ -235,8 +91,15 @@ export function ReleasePage() {
               name={release.title}
               blockers={release.blockers}
               detail="Its artists, labels, formats, media, credits, tags and file links go with it. Its files stay registered."
-              onDelete={() => deleteRelease()}
+              onDelete={() => deleteRelease.mutateAsync(release.id)}
               then="/releases"
+              afterDelete={() => {
+                for (const name of RELEASE_QUERIES) {
+                  queryClient.removeQueries({
+                    queryKey: [name, { id: release.id }],
+                  })
+                }
+              }}
             />
           </>
         )}
@@ -266,8 +129,11 @@ export function ReleasePage() {
 }
 
 function Heading({ release }: { release: Release }) {
-  const [setCover] = useMutation(SetReleaseCover)
-  const filterLinks = (items: { id: string; name: string }[], filter: string) =>
+  const setCover = useMutation({
+    mutationFn: (cover: FileRefInput) =>
+      call("setReleaseCover", { id: release.id, cover }),
+  })
+  const filterLinks = (items: { id: number; name: string }[], filter: string) =>
     items.map((item, index) => (
       <span key={item.id}>
         {index > 0 && ", "}
@@ -310,9 +176,7 @@ function Heading({ release }: { release: Release }) {
           noun="cover"
           // A cover usually sits with the tracks
           folder={commonFolder(release.tracks.map((track) => track.file.path))}
-          onChoose={(cover) =>
-            setCover({ variables: { id: release.id, cover } })
-          }
+          onChoose={(cover) => setCover.mutateAsync(cover)}
         />
         <Link to={`/releases/${release.id}/files`} className="hover:underline">
           Files ({release.fileCount})
@@ -358,7 +222,7 @@ function Heading({ release }: { release: Release }) {
 function Tracklist({ release }: { release: Release }) {
   const [hideCredits, toggleCredits] = useRemembered(HIDE_CREDITS)
   const [hideTitles, toggleTitles] = useRemembered(HIDE_TITLES)
-  const [playing, setPlaying] = useState<string | null>(null)
+  const [playing, setPlaying] = useState<number | null>(null)
   const audio = useRef<HTMLAudioElement>(null)
   const discs = [...new Set(release.tracks.map((track) => track.cdNumber))]
   const titles = new Map(

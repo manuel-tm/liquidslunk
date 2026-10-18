@@ -116,6 +116,23 @@ pub fn insert(conn: &Connection, table: Table, values: &NamedValues) -> Result<N
     )?)
 }
 
+/// The artists or labels of these ids that exist, in no particular order.
+pub fn get_many(conn: &Connection, table: Table, ids: &[i64]) -> Result<Vec<Named>> {
+    let mut found = Vec::new();
+    for chunk in chunks(ids) {
+        let sql = format!(
+            r#"select {COLUMNS} from "{}" where "id" in ({})"#,
+            table.table(),
+            placeholders(chunk.len())
+        );
+        let mut statement = conn.prepare(&sql)?;
+        for row in statement.query_map(params_from_iter(chunk), named)? {
+            found.push(row?);
+        }
+    }
+    Ok(found)
+}
+
 /// Changes the name, its language and the picture, and sets `updated_at`.
 /// `None` if there's no such row.
 pub fn update(

@@ -1,4 +1,3 @@
-import { useQuery } from "@apollo/client/react"
 import { useMutation } from "@tanstack/react-query"
 import { useParams } from "react-router"
 
@@ -13,76 +12,26 @@ import { QueryError } from "@/components/query-error"
 import { ReleaseTable } from "@/components/release-table"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { FileRefInput } from "@/bindings"
-import { graphql } from "@/gql"
 import { useListParams } from "@/hooks/use-list-params"
 import { textProps } from "@/lib/languages"
-import { call, queryClient } from "@/lib/query"
+import { call, idParam, queryClient, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
-
-const LabelQuery = graphql(`
-  query Label($id: ID!, $page: Int!, $perPage: Int!, $sort: String) {
-    label(id: $id) {
-      id
-      name
-      nameLanguage
-      alternateNames {
-        name
-        language
-      }
-      picture {
-        id
-      }
-      blockers
-    }
-    releases(label: $id, page: $page, perPage: $perPage, sort: $sort) {
-      total
-      items {
-        id
-        title
-        titleLanguage
-        alternateTitles {
-          title
-          language
-          printed
-        }
-        released
-        catalogNumber
-        cover {
-          id
-        }
-        artists {
-          artist {
-            id
-            name
-            nameLanguage
-          }
-          creditedAs {
-            name
-            language
-          }
-        }
-        formats {
-          id
-          name
-        }
-      }
-    }
-  }
-`)
 
 /** `/labels/:id`: the logo and name, then the label's releases (slunk's design §7.8). */
 export function LabelRead() {
   const { id = "" } = useParams()
+  const labelId = idParam(id)
   const list = useListParams()
-  const { data, error } = useQuery(LabelQuery, {
-    variables: {
-      id,
+  const { data: label, error } = useCommand(
+    "labelPage",
+    {
+      id: labelId ?? 0,
       page: list.page,
       perPage: PER_PAGE,
       sort: list.sort ?? "released",
     },
-  })
-  // Its reads are GraphQL's until phase 4, but its writes are commands
+    { enabled: labelId !== null }
+  )
   const deleteLabel = useMutation({
     mutationFn: (labelId: number) => call("deleteLabel", { id: labelId }),
   })
@@ -91,8 +40,7 @@ export function LabelRead() {
       call("setLabelPicture", { id, picture }),
   })
 
-  if (data && !data.label) return <NotFound />
-  const label = data?.label
+  if (labelId === null || label === null) return <NotFound />
 
   return (
     <>
@@ -113,13 +61,15 @@ export function LabelRead() {
             <DeleteButton
               name={label.name}
               blockers={label.blockers}
-              onDelete={() => deleteLabel.mutateAsync(Number(label.id))}
+              onDelete={() => deleteLabel.mutateAsync(label.id)}
               then="/labels"
-              afterDelete={() =>
-                queryClient.removeQueries({
-                  queryKey: ["label", { id: Number(label.id) }],
-                })
-              }
+              afterDelete={() => {
+                for (const name of ["label", "labelPage"]) {
+                  queryClient.removeQueries({
+                    queryKey: [name, { id: label.id }],
+                  })
+                }
+              }}
             />
           </>
         )}
@@ -127,7 +77,7 @@ export function LabelRead() {
       <div className="flex flex-col gap-4 p-4">
         {error ? (
           <QueryError error={error} title="Can't load the label" />
-        ) : !label || !data ? (
+        ) : !label ? (
           <Skeleton className="h-64 w-full" />
         ) : (
           <>
@@ -138,7 +88,7 @@ export function LabelRead() {
                 className="size-24"
                 noun="logo"
                 onChoose={(picture) =>
-                  setPicture.mutateAsync({ id: Number(label.id), picture })
+                  setPicture.mutateAsync({ id: label.id, picture })
                 }
               />
               <div className="flex flex-col gap-2">
@@ -155,12 +105,12 @@ export function LabelRead() {
               <Pager
                 page={list.page}
                 perPage={PER_PAGE}
-                total={data.releases.total}
+                total={label.releases.total}
                 onPage={(page) => list.update({ page })}
               />
             </div>
             <ReleaseTable
-              releases={data.releases.items}
+              releases={label.releases.items}
               columns={[
                 "cover",
                 "title",

@@ -84,6 +84,29 @@ pub fn get(conn: &Connection, kind: ListKind, id: i64) -> Result<Option<ListItem
         .optional()?)
 }
 
+/// The rows of these ids that exist, in no particular order.
+pub fn get_many(conn: &Connection, kind: ListKind, ids: &[i64]) -> Result<Vec<ListItem>> {
+    let mut found = Vec::new();
+    for chunk in chunks(ids) {
+        let sql = format!(
+            r#"select "id", "name" from "{}" where "id" in ({})"#,
+            table(kind),
+            placeholders(chunk.len())
+        );
+        let mut statement = conn.prepare(&sql)?;
+        for row in statement.query_map(params_from_iter(chunk), |row| {
+            Ok(ListItem {
+                kind,
+                id: row.get(0)?,
+                name: row.get(1)?,
+            })
+        })? {
+            found.push(row?);
+        }
+    }
+    Ok(found)
+}
+
 pub fn insert(conn: &Connection, kind: ListKind, name: &str) -> Result<ListItem> {
     let sql = format!(
         r#"insert into "{}" ("name") values (?) returning "id", "name""#,

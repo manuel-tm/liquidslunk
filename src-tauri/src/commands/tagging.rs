@@ -252,6 +252,73 @@ impl From<TagValuesInput> for domain::TagValuesInput {
     }
 }
 
+/// A release or track list filter on one tag. Text takes `equals` or
+/// `contains`; numbers and dates take `equals`, or `min` and `max`.
+#[derive(Debug, Clone, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TagFilterInput {
+    #[serde(rename = "type")]
+    pub kind: TagType,
+    pub tag_id: i64,
+    /// The value, ignoring case for text. A date covers its whole year,
+    /// month or day (`2006`, `2006-01`, `2006-01-10`).
+    #[serde(default)]
+    #[specta(optional)]
+    pub equals: Option<String>,
+    /// Text only: part of the value, ignoring case
+    #[serde(default)]
+    #[specta(optional)]
+    pub contains: Option<String>,
+    /// Number or date, included. A date starts on its first day.
+    #[serde(default)]
+    #[specta(optional)]
+    pub min: Option<String>,
+    /// Number or date, included. A date runs to its last day: `2006`
+    /// includes Dec 31, 2006.
+    #[serde(default)]
+    #[specta(optional)]
+    pub max: Option<String>,
+}
+
+impl From<TagFilterInput> for domain::TagFilterInput {
+    fn from(input: TagFilterInput) -> Self {
+        domain::TagFilterInput {
+            kind: input.kind.into(),
+            tag_id: input.tag_id,
+            equals: input.equals,
+            contains: input.contains,
+            min: input.min,
+            max: input.max,
+        }
+    }
+}
+
+/// A tag and a value, to set on many releases.
+#[derive(Debug, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SetTagOnReleasesArgs {
+    /// Releases that aren't there are skipped.
+    pub ids: Vec<i64>,
+    #[serde(rename = "type")]
+    pub kind: TagType,
+    pub tag_id: i64,
+    pub value: String,
+}
+
+/// A tag, and a value to remove from many releases, or none to remove them
+/// all.
+#[derive(Debug, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveTagFromReleasesArgs {
+    pub ids: Vec<i64>,
+    #[serde(rename = "type")]
+    pub kind: TagType,
+    pub tag_id: i64,
+    #[serde(default)]
+    #[specta(optional)]
+    pub value: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SetReleaseTagsArgs {
@@ -492,8 +559,56 @@ pub fn set_on_release(
     owned(library, TagOwner::Release, args.id)
 }
 
+/// Sets a tag on many releases at once: a single-value tag's value is
+/// replaced, and a multi-value tag gets the value added. Returns how many
+/// releases changed.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_tag_on_releases(
+    app: AppHandle,
+    args: SetTagOnReleasesArgs,
+) -> Result<i64, CommandError> {
+    on_library(app, move |library| set_on_releases(library, args)).await
+}
+
+pub fn set_on_releases(library: &Library, args: SetTagOnReleasesArgs) -> Result<i64, CommandError> {
+    Ok(library.tagging.set_tag_on_releases(
+        &args.ids,
+        args.kind.into(),
+        args.tag_id,
+        &args.value,
+    )?)
+}
+
+/// Removes a tag from many releases at once: one of its values, or all of
+/// them when `value` is left out. Returns how many releases changed.
+#[tauri::command]
+#[specta::specta]
+pub async fn remove_tag_from_releases(
+    app: AppHandle,
+    args: RemoveTagFromReleasesArgs,
+) -> Result<i64, CommandError> {
+    on_library(app, move |library| remove_from_releases(library, args)).await
+}
+
+pub fn remove_from_releases(
+    library: &Library,
+    args: RemoveTagFromReleasesArgs,
+) -> Result<i64, CommandError> {
+    Ok(library.tagging.remove_tag_from_releases(
+        &args.ids,
+        args.kind.into(),
+        args.tag_id,
+        args.value.as_deref(),
+    )?)
+}
+
 /// An owner's tags, with their definitions, and their values as text.
-fn owned(library: &Library, owner: TagOwner, id: i64) -> Result<Vec<TagValues>, CommandError> {
+pub(crate) fn owned(
+    library: &Library,
+    owner: TagOwner,
+    id: i64,
+) -> Result<Vec<TagValues>, CommandError> {
     let owned: Vec<OwnerTag> = library
         .tagging
         .tags_of(owner, &[id])?

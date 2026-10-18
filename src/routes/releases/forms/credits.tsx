@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 
 import {
@@ -10,61 +10,11 @@ import {
 import { QueryError } from "@/components/query-error"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { graphql } from "@/gql"
 import { type CreditedLink, creditedOption } from "@/lib/credited"
+import { call, idParam, useCommand } from "@/lib/query"
+import { NotFound } from "@/routes/not-found"
 
-const ReleaseCreditsFormQuery = graphql(`
-  query ReleaseCreditsForm($id: ID!) {
-    release(id: $id) {
-      id
-      title
-      credits {
-        role
-        artists {
-          artist {
-            id
-            name
-            nameLanguage
-          }
-          creditedAs {
-            name
-            language
-          }
-        }
-      }
-      tracks {
-        id
-        cdNumber
-        trackNumber
-        title
-        credits {
-          role
-          artists {
-            artist {
-              id
-              name
-              nameLanguage
-            }
-            creditedAs {
-              name
-              language
-            }
-          }
-        }
-      }
-    }
-  }
-`)
-
-const SetReleaseCredits = graphql(`
-  mutation SetReleaseCredits($id: ID!, $input: ReleaseCreditsInput!) {
-    setReleaseCredits(id: $id, input: $input) {
-      id
-    }
-  }
-`)
-
-type Track = { id: string; label: string; credits: CreditLine[] }
+type Track = { id: number; label: string; credits: CreditLine[] }
 
 /** The release's credit lines, then each track's. */
 export function ReleaseCreditsForm({
@@ -72,23 +22,29 @@ export function ReleaseCreditsForm({
   submitLabel = "Save",
   onSaved,
 }: {
+  /** From the URL */
   releaseId: string
   submitLabel?: string
   onSaved: () => void
 }) {
-  const { data, error } = useQuery(ReleaseCreditsFormQuery, {
-    variables: { id: releaseId },
-    fetchPolicy: "network-only",
-  })
+  const id = idParam(releaseId)
+  // A form starts from fresh data (design §7.2)
+  const { data: release, error } = useCommand(
+    "releaseCredits",
+    { id: id ?? 0 },
+    { fresh: true, enabled: id !== null }
+  )
 
+  if (id === null || release === null) return <NotFound />
   if (error) return <QueryError error={error} title="Can't load the credits" />
-  if (!data?.release) return <Skeleton className="h-64 w-full" />
-  const discs = new Set(data.release.tracks.map((t) => t.cdNumber)).size
+  if (!release) return <Skeleton className="h-64 w-full" />
+  const discs = new Set(release.tracks.map((t) => t.cdNumber)).size
   return (
     <Form
-      releaseId={releaseId}
-      initialCredits={editable(data.release.credits)}
-      initialTracks={data.release.tracks.map((track) => ({
+      key={release.id}
+      releaseId={release.id}
+      initialCredits={editable(release.credits)}
+      initialTracks={release.tracks.map((track) => ({
         id: track.id,
         label: `${discs > 1 ? `${track.cdNumber}-` : ""}${track.trackNumber}. ${track.title}`,
         credits: editable(track.credits),
@@ -106,7 +62,7 @@ function Form({
   submitLabel,
   onSaved,
 }: {
-  releaseId: string
+  releaseId: number
   initialCredits: CreditLine[]
   initialTracks: Track[]
   submitLabel: string
@@ -114,7 +70,17 @@ function Form({
 }) {
   const [credits, setCredits] = useState(initialCredits)
   const [tracks, setTracks] = useState(initialTracks)
-  const [save, { loading, error }] = useMutation(SetReleaseCredits)
+  const save = useMutation({
+    mutationFn: () =>
+      call("setReleaseCredits", {
+        id: releaseId,
+        credits: creditsInput(credits),
+        tracks: tracks.map((t) => ({
+          trackId: t.id,
+          credits: creditsInput(t.credits),
+        })),
+      }),
+  })
   const valid =
     creditsValid(credits) && tracks.every((t) => creditsValid(t.credits))
 
@@ -124,25 +90,16 @@ function Form({
       onSubmit={async (event) => {
         event.preventDefault()
         try {
-          await save({
-            variables: {
-              id: releaseId,
-              input: {
-                credits: creditsInput(credits),
-                tracks: tracks.map((t) => ({
-                  trackId: t.id,
-                  credits: creditsInput(t.credits),
-                })),
-              },
-            },
-          })
+          await save.mutateAsync()
           onSaved()
         } catch {
           // The form shows the error
         }
       }}
     >
-      {error && <QueryError error={error} title="Can't save the credits" />}
+      {save.error && (
+        <QueryError error={save.error} title="Can't save the credits" />
+      )}
       <section className="flex flex-col gap-2">
         <h2 className="font-heading text-sm font-semibold">Release</h2>
         <CreditsEditor credits={credits} onChange={setCredits} />
@@ -163,7 +120,7 @@ function Form({
         </section>
       ))}
       <div>
-        <Button type="submit" disabled={loading || !valid}>
+        <Button type="submit" disabled={save.isPending || !valid}>
           {submitLabel}
         </Button>
       </div>

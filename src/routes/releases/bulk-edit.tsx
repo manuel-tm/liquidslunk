@@ -1,4 +1,4 @@
-import { useMutation } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -21,29 +21,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
-import { graphql } from "@/gql"
-
-const SetTagOnReleases = graphql(`
-  mutation SetTagOnReleases(
-    $ids: [ID!]!
-    $type: TagType!
-    $tagId: ID!
-    $value: String!
-  ) {
-    setTagOnReleases(ids: $ids, type: $type, tagId: $tagId, value: $value)
-  }
-`)
-
-const RemoveTagFromReleases = graphql(`
-  mutation RemoveTagFromReleases(
-    $ids: [ID!]!
-    $type: TagType!
-    $tagId: ID!
-    $value: String
-  ) {
-    removeTagFromReleases(ids: $ids, type: $type, tagId: $tagId, value: $value)
-  }
-`)
+import { call } from "@/lib/query"
 
 const releases = (n: number) => `${n} release${n === 1 ? "" : "s"}`
 
@@ -58,7 +36,7 @@ export function BulkEditBar({
   onSelectAll,
   onClear,
 }: {
-  selected: string[]
+  selected: number[]
   /** How many releases match the list's filters */
   total: number
   selectingAll: boolean
@@ -95,24 +73,28 @@ function BulkTagDialog({
   ids,
 }: {
   mode: "set" | "remove"
-  ids: string[]
+  ids: number[]
 }) {
   const [open, setOpen] = useState(false)
   const [tag, setTag] = useState<TagOption | null>(null)
   const [value, setValue] = useState("")
-  // The list shows what changed once it's fetched again
-  const options = { refetchQueries: ["Releases"] }
-  const [setOn, setting] = useMutation(SetTagOnReleases, options)
-  const [removeFrom, removing] = useMutation(RemoveTagFromReleases, options)
-  const { loading, error } = mode === "set" ? setting : removing
   const setMode = mode === "set"
+  // The list shows what changed once it's fetched again, as every query
+  // does after a mutation
+  const change = useMutation({
+    mutationFn: (tag: TagOption) => {
+      const args = { ids, type: tag.type, tagId: Number(tag.tagId) }
+      return setMode
+        ? call("setTagOnReleases", { ...args, value })
+        : call("removeTagFromReleases", { ...args, value: value || null })
+    },
+  })
 
   function close() {
     setOpen(false)
     setTag(null)
     setValue("")
-    setting.reset()
-    removing.reset()
+    change.reset()
   }
 
   return (
@@ -129,16 +111,8 @@ function BulkTagDialog({
           onSubmit={async (event) => {
             event.preventDefault()
             if (!tag) return
-            const variables = { ids, type: tag.type, tagId: tag.tagId }
             try {
-              const changed = setMode
-                ? (await setOn({ variables: { ...variables, value } })).data!
-                    .setTagOnReleases
-                : (
-                    await removeFrom({
-                      variables: { ...variables, value: value || null },
-                    })
-                  ).data!.removeTagFromReleases
+              const changed = await change.mutateAsync(tag)
               toast.success(
                 changed === 0
                   ? "Nothing to change"
@@ -163,7 +137,9 @@ function BulkTagDialog({
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
-            {error && <QueryError error={error} title="Can't change them" />}
+            {change.error && (
+              <QueryError error={change.error} title="Can't change them" />
+            )}
             <Field>
               <FieldLabel htmlFor={`bulk-${mode}-tag`}>Tag</FieldLabel>
               <TagPicker
@@ -199,7 +175,7 @@ function BulkTagDialog({
             <Button
               type="submit"
               variant={setMode ? "default" : "destructive"}
-              disabled={loading || !tag || (setMode && !value.trim())}
+              disabled={change.isPending || !tag || (setMode && !value.trim())}
             >
               {setMode ? "Set" : "Remove"}
             </Button>

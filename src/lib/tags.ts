@@ -1,5 +1,4 @@
-import type { Tag, TagArgs, TagType } from "@/bindings"
-import type { TagFilterInput } from "@/gql/graphql"
+import type { Tag, TagArgs, TagFilterInput, TagType } from "@/bindings"
 import { formatReleased } from "@/lib/format"
 
 export const TAG_TYPES: TagType[] = ["text", "number", "date"]
@@ -74,9 +73,16 @@ export function tagFiltersOf(params: URLSearchParams): TagFilter[] {
   })
 }
 
-/** A filter as the lists' GraphQL takes it. */
+/**
+ * A filter as the `releases` command takes it. The track list's GraphQL
+ * takes it too: its ids can be numbers.
+ */
 export function tagFilterInput(filter: TagFilter): TagFilterInput {
-  return { type: filter.type, tagId: filter.tagId, [filter.op]: filter.value }
+  return {
+    type: filter.type,
+    tagId: Number(filter.tagId),
+    [filter.op]: filter.value,
+  }
 }
 
 /** "Genre = Rock", "Genre contains ro", "Score ≥ 8", "Bought ≤ 2023". */

@@ -4,7 +4,7 @@ import { Link } from "react-router"
 import type { CreditedLink } from "@/lib/credited"
 import { textProps } from "@/lib/languages"
 
-type Named = { id: string; name: string; nameLanguage?: string | null }
+type Named = { id: number | string; name: string; nameLanguage?: string | null }
 
 /**
  * Names that link to their pages, joined with commas: "A", "A, B", "A, B, C"
@@ -19,7 +19,7 @@ export function Names({
   to,
 }: {
   items: (Named | CreditedLink)[]
-  to: (id: string) => string
+  to: (id: number | string) => string
 }) {
   return (
     <>
@@ -77,5 +77,5 @@ export function CreditedAsNote({
   )
 }
 
-export const artistUrl = (id: string) => `/artists/${id}`
-export const labelUrl = (id: string) => `/labels/${id}`
+export const artistUrl = (id: number | string) => `/artists/${id}`
+export const labelUrl = (id: number | string) => `/labels/${id}`

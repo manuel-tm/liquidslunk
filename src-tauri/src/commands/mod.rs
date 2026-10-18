@@ -54,6 +54,10 @@ pub fn builder() -> Builder<Wry> {
             catalog::artists::update_artist,
             catalog::artists::set_artist_picture,
             catalog::artists::delete_artist,
+            catalog::artists::artist_header,
+            catalog::artists::artist_releases,
+            catalog::artists::artist_appearances,
+            catalog::artists::artist_credits,
             catalog::labels::labels,
             catalog::labels::label,
             catalog::labels::label_options,
@@ -61,6 +65,23 @@ pub fn builder() -> Builder<Wry> {
             catalog::labels::update_label,
             catalog::labels::set_label_picture,
             catalog::labels::delete_label,
+            catalog::labels::label_page,
+            catalog::releases::releases,
+            catalog::releases::release_ids,
+            catalog::releases::release_page,
+            catalog::releases::release_header,
+            catalog::releases::release,
+            catalog::releases::release_files,
+            catalog::releases::release_credits,
+            catalog::releases::release_options,
+            catalog::releases::create_release,
+            catalog::releases::update_release,
+            catalog::releases::delete_release,
+            catalog::releases::set_release_cover,
+            catalog::releases::set_release_files,
+            catalog::releases::set_release_credits,
+            catalog::releases::credit_roles,
+            catalog::releases::catalog_totals,
             catalog::languages,
             tagging::tags,
             tagging::tag,
@@ -73,6 +94,8 @@ pub fn builder() -> Builder<Wry> {
             tagging::delete_tag,
             tagging::release_tags,
             tagging::set_release_tags,
+            tagging::set_tag_on_releases,
+            tagging::remove_tag_from_releases,
         ])
         // Ids are i64. SQLite's stay far below 2^53, so they're numbers.
         .dangerously_cast_bigints_to_number()
@@ -120,6 +143,10 @@ mod tests {
         );
         assert!(
             bindings.contains("setReleaseTags: (args: SetReleaseTagsArgs)"),
+            "{bindings}"
+        );
+        assert!(
+            bindings.contains("updateRelease: (args: UpdateReleaseArgs)"),
             "{bindings}"
         );
         if let Ok(copy) = std::env::var("LIQUIDSLUNK_BINDINGS_COPY") {

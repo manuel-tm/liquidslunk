@@ -1,12 +1,10 @@
 // A picker for each kind of row, searching the backend as the user types.
-// Each one owns its query, so it stays typed; they share the Picker view.
-import { useQuery } from "@apollo/client/react"
+// Each one owns its command, so it stays typed; they share the Picker view.
 import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 
 import { type Option, Picker, type PickerProps } from "@/components/picker"
 import { NewTagDialog } from "@/components/tag-fields"
-import { graphql } from "@/gql"
 import type { FileType, ListKind, TagType } from "@/bindings"
 import { useDebounced } from "@/hooks/use-debounced"
 import { matchedName } from "@/lib/names"
@@ -162,46 +160,33 @@ export function ListItemPicker({
   )
 }
 
-const CreditRoleOptions = graphql(`
-  query CreditRoleOptions($q: String) {
-    creditRoles(q: $q)
-  }
-`)
-
 /** Roles in use, the most used first, matching what was typed. */
 export function useCreditRoles(query: string, skip = false) {
   const q = useDebounced(query)
-  const { data } = useQuery(CreditRoleOptions, { variables: { q }, skip })
-  return data?.creditRoles ?? []
+  const { data } = useCommand("creditRoles", { q }, { enabled: !skip })
+  // A disabled query still gives what's cached for its key
+  return skip ? [] : (data ?? [])
 }
 
-const ReleaseOptions = graphql(`
-  query ReleaseOptions($q: String, $perPage: Int!) {
-    releases(q: $q, perPage: $perPage, sort: "title") {
-      items {
-        id
-        name: title
-        image: cover {
-          id
-        }
-      }
-    }
-  }
-`)
-
+/**
+ * A release, searched by title. Its options' ids are strings, like the
+ * other pickers', for the forms that still send GraphQL.
+ */
 export function ReleasePicker(props: PickerProps) {
   const [query, setQuery] = useState("")
   const q = useDebounced(query)
-  const { data } = useQuery(ReleaseOptions, {
-    variables: { q, perPage: LIMIT },
-  })
+  const { data } = useCommand("releaseOptions", { q })
   return (
     <Picker
       {...props}
       noun="release"
       query={query}
       onQuery={setQuery}
-      options={data?.releases.items ?? []}
+      options={(data ?? []).map((release) => ({
+        id: String(release.id),
+        name: release.title,
+        image: release.cover,
+      }))}
     />
   )
 }

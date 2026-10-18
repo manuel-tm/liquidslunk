@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 
 import { Cover } from "@/components/cover"
@@ -18,40 +18,8 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Skeleton } from "@/components/ui/skeleton"
-import { graphql } from "@/gql"
-
-const ReleaseFilesFormQuery = graphql(`
-  query ReleaseFilesForm($id: ID!) {
-    release(id: $id) {
-      id
-      title
-      cover {
-        id
-        name: path
-      }
-      files {
-        note
-        file {
-          id
-          name: path
-          type
-        }
-      }
-    }
-  }
-`)
-
-export const SetReleaseFiles = graphql(`
-  mutation SetReleaseFiles($id: ID!, $input: ReleaseFilesInput!) {
-    setReleaseFiles(id: $id, input: $input) {
-      id
-      fileCount
-      cover {
-        id
-      }
-    }
-  }
-`)
+import { call, idParam, useCommand } from "@/lib/query"
+import { NotFound } from "@/routes/not-found"
 
 /**
  * A release's cover, chosen from its linked images or any registered image,
@@ -61,22 +29,33 @@ export function ReleaseFilesForm({
   releaseId,
   onSaved,
 }: {
+  /** From the URL */
   releaseId: string
   onSaved: () => void
 }) {
-  const { data, error } = useQuery(ReleaseFilesFormQuery, {
-    variables: { id: releaseId },
-    fetchPolicy: "network-only",
-  })
+  const id = idParam(releaseId)
+  // A form starts from fresh data (design §7.2)
+  const { data: release, error } = useCommand(
+    "releaseFiles",
+    { id: id ?? 0 },
+    { fresh: true, enabled: id !== null }
+  )
 
+  if (id === null || release === null) return <NotFound />
   if (error) return <QueryError error={error} title="Can't load the files" />
-  if (!data?.release) return <Skeleton className="h-64 w-full" />
+  if (!release) return <Skeleton className="h-64 w-full" />
+  // Options' ids are strings, as the pickers' are
   return (
     <Form
-      releaseId={releaseId}
-      initialCover={data.release.cover ?? null}
-      initialLinks={data.release.files.map((link) => ({
-        file: { id: link.file.id, name: link.file.name },
+      key={release.id}
+      releaseId={release.id}
+      initialCover={
+        release.cover
+          ? { id: String(release.cover.id), name: release.cover.path }
+          : null
+      }
+      initialLinks={release.files.map((link) => ({
+        file: { id: String(link.file.id), name: link.file.path },
         note: link.note ?? "",
         type: link.file.type,
       }))}
@@ -91,14 +70,21 @@ function Form({
   initialLinks,
   onSaved,
 }: {
-  releaseId: string
+  releaseId: number
   initialCover: Option | null
   initialLinks: (FileLinkRow & { type: string })[]
   onSaved: () => void
 }) {
   const [cover, setCover] = useState(initialCover)
   const [links, setLinks] = useState<FileLinkRow[]>(initialLinks)
-  const [save, { loading, error }] = useMutation(SetReleaseFiles)
+  const save = useMutation({
+    mutationFn: () =>
+      call("setReleaseFiles", {
+        id: releaseId,
+        cover: cover ? { fileId: Number(cover.id) } : null,
+        files: fileLinksInput(links),
+      }),
+  })
   const linkedImages = initialLinks.filter(
     (link) =>
       link.type === "image" && links.some((l) => l.file.id === link.file.id)
@@ -109,15 +95,7 @@ function Form({
       onSubmit={async (event) => {
         event.preventDefault()
         try {
-          await save({
-            variables: {
-              id: releaseId,
-              input: {
-                cover: cover ? { fileId: cover.id } : null,
-                files: fileLinksInput(links),
-              },
-            },
-          })
+          await save.mutateAsync()
           onSaved()
         } catch {
           // The form shows the error
@@ -125,7 +103,9 @@ function Form({
       }}
     >
       <FieldGroup className="max-w-3xl">
-        {error && <QueryError error={error} title="Can't save the files" />}
+        {save.error && (
+          <QueryError error={save.error} title="Can't save the files" />
+        )}
         <Field>
           <FieldLabel htmlFor="cover">Cover</FieldLabel>
           <div className="flex items-start gap-4">
@@ -165,7 +145,7 @@ function Form({
           <FileLinksEditor links={links} onChange={setLinks} />
         </Field>
         <div>
-          <Button type="submit" disabled={loading}>
+          <Button type="submit" disabled={save.isPending}>
             Save
           </Button>
         </div>

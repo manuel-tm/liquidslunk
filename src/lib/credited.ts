@@ -2,26 +2,30 @@
 // alternate name printed on the release, track or credit line, if any.
 import type { Option } from "@/components/picker"
 
-/** An artist as credited, as queries return it. */
+/** An artist as credited, as commands and queries return it. */
 export type CreditedLink = {
-  artist: { id: string; name: string; nameLanguage?: string | null }
+  artist: { id: number | string; name: string; nameLanguage?: string | null }
   creditedAs?: { name: string; language?: string | null } | null
 }
 
 /** A credited artist as an editor's option: `creditedAs` is the name printed. */
 export function creditedOption(link: CreditedLink): Option {
   return {
-    id: link.artist.id,
+    // A string, as pickers' options' ids are
+    id: String(link.artist.id),
     name: link.artist.name,
     lang: link.artist.nameLanguage,
     creditedAs: link.creditedAs?.name ?? null,
   }
 }
 
-/** Options as the API's `CreditedArtistInput`s. */
+/**
+ * Options as `CreditedArtistInput`s, for commands. The track form's GraphQL
+ * takes them too: its ids can be numbers.
+ */
 export function creditedInput(options: Option[]) {
   return options.map((option) => ({
-    artistId: option.id,
+    artistId: Number(option.id),
     creditedAs: option.creditedAs ?? null,
   }))
 }

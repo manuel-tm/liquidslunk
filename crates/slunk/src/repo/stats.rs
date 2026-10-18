@@ -3,6 +3,30 @@
 use rusqlite::Connection;
 
 use crate::Result;
+use crate::catalog::Totals;
+
+/// How many releases, artists, tracks and labels there are, and the tracks'
+/// playing time.
+pub fn totals(conn: &Connection) -> Result<Totals> {
+    Ok(conn.query_row(
+        "select
+           (select count(*) from releases) as releases,
+           (select count(*) from artists) as artists,
+           (select count(*) from tracks) as tracks,
+           (select count(*) from labels) as labels,
+           (select coalesce(sum(duration_ms), 0) from tracks) as durationMs",
+        [],
+        |row| {
+            Ok(Totals {
+                releases: row.get(0)?,
+                artists: row.get(1)?,
+                tracks: row.get(2)?,
+                labels: row.get(3)?,
+                duration_ms: row.get(4)?,
+            })
+        },
+    )?)
+}
 
 /// Language tags in use on names and titles, the most used first.
 pub fn languages(conn: &Connection) -> Result<Vec<String>> {

@@ -129,6 +129,32 @@ export const commands = {
 	 */
 	deleteArtist: (args: IdArgs) => typedError<number, CommandError>(__TAURI_INVOKE("delete_artist", { args })),
 	/**
+	 *  What every tab of the artist page shows above it, or null for an unknown
+	 *  id.
+	 */
+	artistHeader: (args: IdArgs) => typedError<{
+	id: number,
+	name: string,
+	nameLanguage: string | null,
+	alternateNames: ArtistName[],
+	picture: FileRef | null,
+	/**  What keeps it from being deleted, in words */
+	blockers: string[],
+	counts: ArtistCounts,
+} | null, CommandError>(__TAURI_INVOKE("artist_header", { args })),
+	/**
+	 *  The releases the artist is a release artist on, and how many have each
+	 *  format.
+	 */
+	artistReleases: (args: ArtistReleasesArgs) => typedError<ArtistReleases, CommandError>(__TAURI_INVOKE("artist_releases", { args })),
+	/**
+	 *  Releases where the artist performs or is featured on tracks, without
+	 *  being a release artist, with those tracks.
+	 */
+	artistAppearances: (args: IdArgs) => typedError<Appearance[], CommandError>(__TAURI_INVOKE("artist_appearances", { args })),
+	/**  The credit lines the artist is on. */
+	artistCredits: (args: IdArgs) => typedError<ArtistCredit[], CommandError>(__TAURI_INVOKE("artist_credits", { args })),
+	/**
 	 *  Labels, with their alternate names. `q` matches part of the main name or
 	 *  of an alternate name.
 	 */
@@ -156,6 +182,126 @@ export const commands = {
 	 *  while the label is on a release.
 	 */
 	deleteLabel: (args: IdArgs) => typedError<number, CommandError>(__TAURI_INVOKE("delete_label", { args })),
+	/**  The label's page, or null for an unknown id. */
+	labelPage: (args: LabelPageArgs) => typedError<{
+	id: number,
+	name: string,
+	nameLanguage: string | null,
+	alternateNames: LabelName[],
+	/**  The logo */
+	picture: FileRef | null,
+	/**  What keeps it from being deleted, in words */
+	blockers: string[],
+	releases: ReleasePage,
+} | null, CommandError>(__TAURI_INVOKE("label_page", { args })),
+	/**
+	 *  Releases, with the filters' names. The filters combine: `format` and
+	 *  `medium` give "EPs on vinyl".
+	 */
+	releases: (args: ReleasesArgs) => typedError<ReleasePage, CommandError>(__TAURI_INVOKE("releases", { args })),
+	/**
+	 *  Every release the same search and filters as `releases` match, newest
+	 *  first: selecting them all for a bulk edit.
+	 */
+	releaseIds: (args: ReleaseFiltersArgs) => typedError<number[], CommandError>(__TAURI_INVOKE("release_ids", { args })),
+	/**  The release page, or null for an unknown id. */
+	releasePage: (args: IdArgs) => typedError<{
+	id: number,
+	title: string,
+	titleLanguage: string | null,
+	alternateTitles: AlternateTitle[],
+	released: string | null,
+	catalogNumber: string | null,
+	variousArtists: boolean,
+	/**  The cover and the linked files */
+	fileCount: number,
+	/**  The tracks' total playing time, or null with no durations */
+	durationMs: number | null,
+	blockers: string[],
+	cover: FileRef | null,
+	/**  As credited, each with its alternate names */
+	artists: NamedCreditedArtist[],
+	labels: LabelRef[],
+	formats: NamedItem[],
+	media: NamedItem[],
+	credits: Credit[],
+	/**  By tag name */
+	tags: TagValues[],
+	/**  By disc number. Only discs with a title are listed. */
+	discTitles: DiscTitle[],
+	/**  In order: disc, then number */
+	tracks: ReleaseTrack[],
+} | null, CommandError>(__TAURI_INVOKE("release_page", { args })),
+	/**  A release's title, for the edit tabs' header, or null for an unknown id. */
+	releaseHeader: (args: IdArgs) => typedError<{
+	id: number,
+	title: string,
+	titleLanguage: string | null,
+} | null, CommandError>(__TAURI_INVOKE("release_header", { args })),
+	/**  A release, as its Details tab edits it, or null for an unknown id. */
+	release: (args: IdArgs) => typedError<{
+	id: number,
+	title: string,
+	titleLanguage: string | null,
+	alternateTitles: AlternateTitle[],
+	released: string | null,
+	variousArtists: boolean,
+	catalogNumber: string | null,
+	artists: CreditedArtist[],
+	labels: LabelRef[],
+	formats: NamedItem[],
+	media: NamedItem[],
+} | null, CommandError>(__TAURI_INVOKE("release", { args })),
+	/**  A release's cover and linked files, or null for an unknown id. */
+	releaseFiles: (args: IdArgs) => typedError<{
+	id: number,
+	title: string,
+	cover: File | null,
+	files: FileLink[],
+} | null, CommandError>(__TAURI_INVOKE("release_files", { args })),
+	/**  A release's credit lines and its tracks', or null for an unknown id. */
+	releaseCredits: (args: IdArgs) => typedError<{
+	id: number,
+	title: string,
+	credits: Credit[],
+	tracks: TrackCredits[],
+} | null, CommandError>(__TAURI_INVOKE("release_credits", { args })),
+	/**  The first releases with `q` in a title, by title, for a picker. */
+	releaseOptions: (args: OptionsArgs) => typedError<ReleaseOption[], CommandError>(__TAURI_INVOKE("release_options", { args })),
+	createRelease: (args: ReleaseInput) => typedError<Release, CommandError>(__TAURI_INVOKE("create_release", { args })),
+	/**
+	 *  Saves the details: title, date, artists, labels, formats, media, catalog
+	 *  number.
+	 */
+	updateRelease: (args: UpdateReleaseArgs) => typedError<Release, CommandError>(__TAURI_INVOKE("update_release", { args })),
+	/**
+	 *  Deletes a release, and returns its id. It fails while the release has
+	 *  tracks.
+	 */
+	deleteRelease: (args: IdArgs) => typedError<number, CommandError>(__TAURI_INVOKE("delete_release", { args })),
+	/**
+	 *  Sets only the cover, keeping the file links. A file given by path is
+	 *  registered first, in the same transaction.
+	 */
+	setReleaseCover: (args: SetReleaseCoverArgs) => typedError<Release, CommandError>(__TAURI_INVOKE("set_release_cover", { args })),
+	/**
+	 *  Sets the cover and replaces the file links. Files given by path are
+	 *  registered first.
+	 */
+	setReleaseFiles: (args: SetReleaseFilesArgs) => typedError<Release, CommandError>(__TAURI_INVOKE("set_release_files", { args })),
+	/**  Replaces the release's credit lines and its tracks'. */
+	setReleaseCredits: (args: SetReleaseCreditsArgs) => typedError<Release, CommandError>(__TAURI_INVOKE("set_release_credits", { args })),
+	/**
+	 *  Roles in use on releases and tracks, for suggestions: the first 20 with
+	 *  `q` in them, ignoring case, the most used first. Each spelling is its own
+	 *  suggestion, so "Mixed By" and "Mixed by" are both offered.
+	 */
+	creditRoles: (args: OptionsArgs) => typedError<string[], CommandError>(__TAURI_INVOKE("credit_roles", { args })),
+	/**
+	 *  How many releases, artists, tracks and labels there are, and the tracks'
+	 *  playing time.
+	 */
+	catalogTotals: () => typedError<CatalogTotals, CommandError>(__TAURI_INVOKE("catalog_totals")),
 	/**
 	 *  Language tags in use on names and titles, the most used first, for the
 	 *  language picker.
@@ -211,9 +357,59 @@ export const commands = {
 	releaseTags: (args: IdArgs) => typedError<TagValues[] | null, CommandError>(__TAURI_INVOKE("release_tags", { args })),
 	/**  Replaces every tag value on the release, and returns its tags. */
 	setReleaseTags: (args: SetReleaseTagsArgs) => typedError<TagValues[], CommandError>(__TAURI_INVOKE("set_release_tags", { args })),
+	/**
+	 *  Sets a tag on many releases at once: a single-value tag's value is
+	 *  replaced, and a multi-value tag gets the value added. Returns how many
+	 *  releases changed.
+	 */
+	setTagOnReleases: (args: SetTagOnReleasesArgs) => typedError<number, CommandError>(__TAURI_INVOKE("set_tag_on_releases", { args })),
+	/**
+	 *  Removes a tag from many releases at once: one of its values, or all of
+	 *  them when `value` is left out. Returns how many releases changed.
+	 */
+	removeTagFromReleases: (args: RemoveTagFromReleasesArgs) => typedError<number, CommandError>(__TAURI_INVOKE("remove_tag_from_releases", { args })),
 };
 
 /* Types */
+/**
+ *  A title besides the main one, of a release, a track or a disc (slunk's
+ *  3_alternate_names.md §4.2).
+ */
+export type AlternateTitle = {
+	title: string,
+	/**  A BCP 47 tag. Null when it isn't known. */
+	language: string | null,
+	/**
+	 *  On the release as published. False for a title added here, like a
+	 *  translation.
+	 */
+	printed: boolean,
+};
+
+/**  An alternate title to save. */
+export type AlternateTitleInput = {
+	title: string,
+	/**  A BCP 47 tag, stored in canonical form. Blank means unknown. */
+	language?: string | null,
+	/**  On the release as published. Default true. */
+	printed?: boolean | null,
+};
+
+/**  A release the artist is on as a track artist only, with those tracks. */
+export type Appearance = {
+	release: ReleaseSummary,
+	tracks: AppearanceTrack[],
+};
+
+/**  A track the artist performs or is featured on. */
+export type AppearanceTrack = {
+	id: number,
+	title: string,
+	titleLanguage: string | null,
+	artists: CreditedArtist[],
+	features: CreditedArtist[],
+};
+
 export type Artist = {
 	id: number,
 	/**  The main name */
@@ -231,6 +427,29 @@ export type Artist = {
 	updatedAt: number,
 };
 
+/**  The artist page's tabs, counted. */
+export type ArtistCounts = {
+	releases: number,
+	appearances: number,
+	credits: number,
+	/**  The picture, and the linked files */
+	files: number,
+};
+
+/**  A credit line the artist is on. */
+export type ArtistCredit = {
+	/**  As printed */
+	role: string,
+	/**
+	 *  The name the artist is credited with on the line, when it isn't the
+	 *  main name
+	 */
+	creditedAs: NameRef | null,
+	release: CreditRelease,
+	/**  Null for a line on the release itself */
+	track: CreditTrack | null,
+};
+
 /**  An artist, as its form edits it. */
 export type ArtistDetails = {
 	id: number,
@@ -244,6 +463,18 @@ export type ArtistDetails = {
 	alternateNames: UsedArtistName[],
 	picture: File | null,
 	files: FileLink[],
+};
+
+/**  What every tab of the artist page shows above it. */
+export type ArtistHeader = {
+	id: number,
+	name: string,
+	nameLanguage: string | null,
+	alternateNames: ArtistName[],
+	picture: FileRef | null,
+	/**  What keeps it from being deleted, in words */
+	blockers: string[],
+	counts: ArtistCounts,
 };
 
 /**  An artist to save. */
@@ -310,6 +541,39 @@ export type ArtistPage = {
 	total: number,
 };
 
+/**  An artist a link names. */
+export type ArtistRef = {
+	id: number,
+	/**  The main name */
+	name: string,
+	nameLanguage: string | null,
+};
+
+/**  The artist's releases, and how many have each format. */
+export type ArtistReleases = {
+	formatCounts: FormatCount[],
+	releases: ReleasePage,
+};
+
+export type ArtistReleasesArgs = {
+	id: number,
+	page?: number | null,
+	perPage?: number | null,
+	/**  `title`, `released` or `id`, with `-` in front for descending */
+	sort?: string | null,
+	q?: string | null,
+	format?: number | null,
+};
+
+export type CatalogTotals = {
+	releases: number,
+	artists: number,
+	tracks: number,
+	labels: number,
+	/**  The tracks' playing time */
+	durationMs: number,
+};
+
 export type CommandError = {
 	kind: ErrorKind,
 	message: string,
@@ -329,6 +593,65 @@ export type CreateTagArgs = {
 export type Created = { type: "created"; library: LibraryInfo; migration: MigrationReport } | 
 /**  The folder has a library already: the frontend offers to open it. */
 { type: "exists"; path: string };
+
+/**
+ *  A credit line: a role, as printed, and the artists who hold it, in
+ *  order.
+ */
+export type Credit = {
+	role: string,
+	artists: CreditedArtist[],
+};
+
+/**  A credit line: a role, as printed, and its artists, in order. */
+export type CreditInput = {
+	role: string,
+	artists: CreditedArtistInput[],
+};
+
+/**  The release of a credit line. */
+export type CreditRelease = {
+	id: number,
+	title: string,
+	titleLanguage: string | null,
+	released: string | null,
+};
+
+/**  The track of a credit line. */
+export type CreditTrack = {
+	id: number,
+	title: string,
+	titleLanguage: string | null,
+};
+
+/**
+ *  An artist as credited on a release, a track or a credit line (slunk's
+ *  3_alternate_names.md §4.2).
+ */
+export type CreditedArtist = {
+	artist: ArtistRef,
+	/**  The name printed, when it isn't the artist's main name */
+	creditedAs: NameRef | null,
+};
+
+/**
+ *  An artist as credited: `creditedAs` is the name printed. Blank, or the
+ *  artist's main name, means the main name; a name the artist doesn't have
+ *  yet is added to its alternate names.
+ */
+export type CreditedArtistInput = {
+	artistId: number,
+	creditedAs?: string | null,
+};
+
+/**  A disc's own title, as printed. */
+export type DiscTitle = {
+	cdNumber: number,
+	title: string,
+	/**  Null: the release's title language */
+	language: string | null,
+	alternateTitles: AlternateTitle[],
+};
 
 /**  What went wrong, for the frontend to act on. */
 export type ErrorKind = 
@@ -495,6 +818,12 @@ export type FolderFilesArgs = {
 	path: string,
 };
 
+/**  How many of the artist's releases have a format. */
+export type FormatCount = {
+	format: NamedItem,
+	count: number,
+};
+
 export type IdArgs = {
 	id: number,
 };
@@ -559,6 +888,34 @@ export type LabelNameInput = {
 export type LabelPage = {
 	items: LabelListItem[],
 	total: number,
+};
+
+export type LabelPageArgs = {
+	id: number,
+	page?: number | null,
+	perPage?: number | null,
+	/**  `title`, `released` or `id`, with `-` in front for descending */
+	sort?: string | null,
+};
+
+/**  A label, by name. */
+export type LabelRef = {
+	id: number,
+	name: string,
+	nameLanguage: string | null,
+};
+
+/**  The label's page: its logo and names, and its releases. */
+export type LabelView = {
+	id: number,
+	name: string,
+	nameLanguage: string | null,
+	alternateNames: LabelName[],
+	/**  The logo */
+	picture: FileRef | null,
+	/**  What keeps it from being deleted, in words */
+	blockers: string[],
+	releases: ReleasePage,
 };
 
 /**  A library, as the frontend shows it. */
@@ -630,6 +987,33 @@ export type MigrationReport = {
 	removed: string[],
 };
 
+/**  A name, and its language. */
+export type NameRef = {
+	name: string,
+	language: string | null,
+};
+
+/**
+ *  An artist a link names, with its other names, in order, for a page that
+ *  shows a title's artists in the title's language (slunk's
+ *  3_alternate_names.md §7.2).
+ */
+export type NamedArtistRef = {
+	alternateNames: NameRef[],
+} & ArtistRef;
+
+/**  An artist as credited, with its alternate names. */
+export type NamedCreditedArtist = {
+	artist: NamedArtistRef,
+	creditedAs: NameRef | null,
+};
+
+/**  A release format or medium, by name. */
+export type NamedItem = {
+	id: number,
+	name: string,
+};
+
 /**  What opening a library reports while it works. */
 export type OpenProgress = 
 /**  It has migrations pending, so it's being backed up and upgraded. */
@@ -676,6 +1060,219 @@ export type RegisterFilesArgs = {
 	paths: string[],
 };
 
+/**  A release, as a save returns it. */
+export type Release = {
+	id: number,
+	/**  The main title */
+	title: string,
+	/**
+	 *  The main title's language, and its discs' and tracks' unless they
+	 *  have their own: a BCP 47 tag. Null when it isn't known.
+	 */
+	titleLanguage: string | null,
+	/**  With only its known parts: `2006`, `2006-01` or `2006-01-10` */
+	released: string | null,
+	catalogNumber: string | null,
+	/**
+	 *  Each track names its own performers: compilations, soundtracks, cast
+	 *  recordings.
+	 */
+	variousArtists: boolean,
+	cover: FileRef | null,
+	/**  Epoch seconds */
+	insertedAt: number,
+	/**  Epoch seconds */
+	updatedAt: number,
+};
+
+/**  A release's credit lines and its tracks', as the Credits tab edits them. */
+export type ReleaseCredits = {
+	id: number,
+	title: string,
+	credits: Credit[],
+	tracks: TrackCredits[],
+};
+
+/**  A release, as its Details tab edits it. */
+export type ReleaseDetails = {
+	id: number,
+	title: string,
+	titleLanguage: string | null,
+	alternateTitles: AlternateTitle[],
+	released: string | null,
+	variousArtists: boolean,
+	catalogNumber: string | null,
+	artists: CreditedArtist[],
+	labels: LabelRef[],
+	formats: NamedItem[],
+	media: NamedItem[],
+};
+
+/**  A release's cover and linked files: its files page and its Files tab. */
+export type ReleaseFiles = {
+	id: number,
+	title: string,
+	cover: File | null,
+	files: FileLink[],
+};
+
+/**  A release list's search and filters. They all have to match. */
+export type ReleaseFiltersArgs = {
+	/**  Part of the title or of an alternate title, ignoring case */
+	q?: string | null,
+	format?: number | null,
+	medium?: number | null,
+	label?: number | null,
+	/**  Releases the artist is a release artist on */
+	artist?: number | null,
+	/**  Every filter has to match: Genre is Rock and Score is 8 or more. */
+	tags?: TagFilterInput[],
+};
+
+/**  A release's title, for the edit tabs' header. */
+export type ReleaseHeader = {
+	id: number,
+	title: string,
+	titleLanguage: string | null,
+};
+
+/**  A release's details, to save. */
+export type ReleaseInput = {
+	title: string,
+	/**
+	 *  A BCP 47 tag, stored in canonical form. Blank means unknown. Left
+	 *  out, an update keeps it as it is.
+	 */
+	titleLanguage?: string | null,
+	/**
+	 *  Replaces the alternate titles, in order. Left out, they stay as they
+	 *  are, except one that's now the main title.
+	 */
+	alternateTitles?: AlternateTitleInput[] | null,
+	/**  `2006`, `2006-01` or `2006-01-10`. Blank means unknown. */
+	released?: string | null,
+	catalogNumber?: string | null,
+	/**  Default false */
+	variousArtists?: boolean,
+	artists: CreditedArtistInput[],
+	labelIds?: number[],
+	formatIds?: number[],
+	mediumIds?: number[],
+};
+
+/**
+ *  A release in a list: the release list, an artist's or a label's
+ *  releases, the dashboard's newest.
+ */
+export type ReleaseListItem = {
+	alternateTitles: AlternateTitle[],
+	/**  Who the release is by, in order, as credited */
+	artists: CreditedArtist[],
+	formats: NamedItem[],
+	media: NamedItem[],
+	labels: LabelRef[],
+} & Release;
+
+/**  A release in the release picker. */
+export type ReleaseOption = {
+	id: number,
+	title: string,
+	cover: FileRef | null,
+};
+
+/**
+ *  A page of releases, and the names of the filters it was asked for, for
+ *  their pickers. A filter that wasn't asked for, or isn't there, is null.
+ */
+export type ReleasePage = {
+	items: ReleaseListItem[],
+	total: number,
+	filterFormat: NamedItem | null,
+	filterMedium: NamedItem | null,
+	filterLabel: NamedItem | null,
+};
+
+/**  A release, as a row of the artist's appearances. */
+export type ReleaseSummary = {
+	id: number,
+	title: string,
+	titleLanguage: string | null,
+	released: string | null,
+	cover: FileRef | null,
+	artists: CreditedArtist[],
+};
+
+/**  A track, as the release page shows it. */
+export type ReleaseTrack = {
+	id: number,
+	title: string,
+	/**  Null: the release's */
+	titleLanguage: string | null,
+	alternateTitles: AlternateTitle[],
+	/**  Null when it can't be read */
+	durationMs: number | null,
+	cdNumber: number,
+	trackNumber: number,
+	file: TrackFile,
+	/**  Its own performers, without features, each with its alternate names */
+	artists: NamedCreditedArtist[],
+	/**  Guests, shown as "(feat. …)" */
+	features: CreditedArtist[],
+	credits: Credit[],
+};
+
+/**  The release page: everything it shows. */
+export type ReleaseView = {
+	id: number,
+	title: string,
+	titleLanguage: string | null,
+	alternateTitles: AlternateTitle[],
+	released: string | null,
+	catalogNumber: string | null,
+	variousArtists: boolean,
+	/**  The cover and the linked files */
+	fileCount: number,
+	/**  The tracks' total playing time, or null with no durations */
+	durationMs: number | null,
+	blockers: string[],
+	cover: FileRef | null,
+	/**  As credited, each with its alternate names */
+	artists: NamedCreditedArtist[],
+	labels: LabelRef[],
+	formats: NamedItem[],
+	media: NamedItem[],
+	credits: Credit[],
+	/**  By tag name */
+	tags: TagValues[],
+	/**  By disc number. Only discs with a title are listed. */
+	discTitles: DiscTitle[],
+	/**  In order: disc, then number */
+	tracks: ReleaseTrack[],
+};
+
+export type ReleasesArgs = {
+	/**  From 1. Default 1. */
+	page?: number | null,
+	/**  Default 50, at most 200 */
+	perPage?: number | null,
+	/**
+	 *  `title`, `released` (undated last) or `id`, with `-` in front for
+	 *  descending. Default `-id`, newest first.
+	 */
+	sort?: string | null,
+} & ReleaseFiltersArgs;
+
+/**
+ *  A tag, and a value to remove from many releases, or none to remove them
+ *  all.
+ */
+export type RemoveTagFromReleasesArgs = {
+	ids: number[],
+	type: TagType,
+	tagId: number,
+	value?: string | null,
+};
+
 export type RenameListItemArgs = {
 	kind: ListKind,
 	id: number,
@@ -698,6 +1295,32 @@ export type SetPictureArgs = {
 	picture: FileRefInput,
 };
 
+/**  Sets only the cover. */
+export type SetReleaseCoverArgs = {
+	id: number,
+	/**  A file given by path is registered first, in the same transaction. */
+	cover: FileRefInput,
+};
+
+export type SetReleaseCreditsArgs = {
+	id: number,
+	/**  The release's lines, in order */
+	credits: CreditInput[],
+	/**  Its tracks' lines. A track left out keeps its own. */
+	tracks?: TrackCreditsInput[],
+};
+
+export type SetReleaseFilesArgs = {
+	id: number,
+	/**  Null: no cover */
+	cover?: FileRefInput | null,
+	/**
+	 *  Replaces the file links, in order. Files given by path are registered
+	 *  first.
+	 */
+	files: FileLinkInput[],
+};
+
 export type SetReleaseTagsArgs = {
 	id: number,
 	/**
@@ -705,6 +1328,15 @@ export type SetReleaseTagsArgs = {
 	 *  is removed.
 	 */
 	tags: TagValuesInput[],
+};
+
+/**  A tag and a value, to set on many releases. */
+export type SetTagOnReleasesArgs = {
+	/**  Releases that aren't there are skipped. */
+	ids: number[],
+	type: TagType,
+	tagId: number,
+	value: string,
 };
 
 export type Subfolder = {
@@ -746,6 +1378,29 @@ export type TagDetails = {
 	/**  The first 20 tracks with several values */
 	multiValueTracks: TitledPage,
 } & Tag;
+
+/**
+ *  A release or track list filter on one tag. Text takes `equals` or
+ *  `contains`; numbers and dates take `equals`, or `min` and `max`.
+ */
+export type TagFilterInput = {
+	type: TagType,
+	tagId: number,
+	/**
+	 *  The value, ignoring case for text. A date covers its whole year,
+	 *  month or day (`2006`, `2006-01`, `2006-01-10`).
+	 */
+	equals?: string | null,
+	/**  Text only: part of the value, ignoring case */
+	contains?: string | null,
+	/**  Number or date, included. A date starts on its first day. */
+	min?: string | null,
+	/**
+	 *  Number or date, included. A date runs to its last day: `2006`
+	 *  includes Dec 31, 2006.
+	 */
+	max?: string | null,
+};
 
 export type TagInput = {
 	/**  Unique across types, ignoring case */
@@ -835,6 +1490,26 @@ export type TitledPage = {
 	total: number,
 };
 
+/**  A track's credit lines, as the Credits tab edits them. */
+export type TrackCredits = {
+	id: number,
+	cdNumber: number,
+	trackNumber: number,
+	title: string,
+	credits: Credit[],
+};
+
+export type TrackCreditsInput = {
+	trackId: number,
+	credits: CreditInput[],
+};
+
+/**  A track's audio file. */
+export type TrackFile = {
+	id: number,
+	path: string,
+};
+
 export type UpdateArtistArgs = {
 	id: number,
 } & ArtistInput;
@@ -852,6 +1527,10 @@ export type UpdateFileArgs = {
 export type UpdateLabelArgs = {
 	id: number,
 } & LabelInput;
+
+export type UpdateReleaseArgs = {
+	id: number,
+} & ReleaseInput;
 
 export type UpdateTagArgs = {
 	/**  The type can't change */

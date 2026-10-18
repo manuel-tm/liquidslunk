@@ -1,5 +1,3 @@
-import { useQuery } from "@apollo/client/react"
-import { CircleAlertIcon } from "lucide-react"
 import type { ReactNode } from "react"
 import { Link } from "react-router"
 
@@ -7,8 +5,6 @@ import { Cover } from "@/components/cover"
 import { artistUrl, Names } from "@/components/names"
 import { PageHeader } from "@/components/page-header"
 import { QueryError } from "@/components/query-error"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
 import {
   Card,
   CardContent,
@@ -18,50 +14,17 @@ import {
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Title } from "@/components/titles"
-import { graphql } from "@/gql"
 import { formatDuration } from "@/lib/format"
 import { useCommand } from "@/lib/query"
 
-const DashboardQuery = graphql(`
-  query Dashboard {
-    catalogTotals {
-      releases
-      artists
-      tracks
-      labels
-      durationMs
-    }
-    newest: releases(perPage: 12) {
-      items {
-        id
-        title
-        titleLanguage
-        cover {
-          id
-        }
-        artists {
-          artist {
-            id
-            name
-            nameLanguage
-          }
-          creditedAs {
-            name
-            language
-          }
-        }
-      }
-    }
-  }
-`)
-
 /**
  * `/` (slunk's design §7.5): the library's status, numbers that are cheap to
- * compute, and the latest additions. The status and the file counts come
- * from commands, the rest from slunk's backend until phase 4.
+ * compute, and the latest additions.
  */
 export function Dashboard() {
-  const { data, error } = useQuery(DashboardQuery)
+  const totals = useCommand("catalogTotals")
+  const newest = useCommand("releases", { perPage: 12 })
+  const error = totals.error ?? newest.error
   const status = useCommand("libraryStatus")
   const library = status.data?.library
   const fileCounts = useCommand("fileCounts").data
@@ -94,57 +57,28 @@ export function Dashboard() {
                 <dd className="font-mono break-all">
                   {library.migration ?? "No migrations applied"}
                 </dd>
-                <dt className="text-muted-foreground">slunk's backend</dt>
-                <dd>
-                  {error ? (
-                    <Badge variant="destructive">Unreachable</Badge>
-                  ) : data ? (
-                    <Badge variant="secondary">Connected</Badge>
-                  ) : (
-                    <Badge variant="outline">Connecting…</Badge>
-                  )}
-                </dd>
               </dl>
-            )}
-            {error && (
-              <Alert variant="destructive">
-                <CircleAlertIcon />
-                <AlertTitle>Can't reach slunk's backend</AlertTitle>
-                <AlertDescription>
-                  {error.message}. It serves the pages not ported yet. In a
-                  debug build, the app starts it when a library opens, and its
-                  output is in the terminal.
-                </AlertDescription>
-              </Alert>
             )}
           </CardContent>
         </Card>
-        {data && (
+        {error && <QueryError error={error} title="Can't load the catalog" />}
+        {totals.data && newest.data && (
           <>
             <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-6">
               <Total
                 title="Releases"
                 to="/releases"
-                value={data.catalogTotals.releases}
+                value={totals.data.releases}
               />
               <Total
                 title="Artists"
                 to="/artists"
-                value={data.catalogTotals.artists}
+                value={totals.data.artists}
               />
-              <Total
-                title="Tracks"
-                to="/tracks"
-                value={data.catalogTotals.tracks}
-              >
-                {formatDuration(data.catalogTotals.durationMs) || "0:00"}{" "}
-                playing time
+              <Total title="Tracks" to="/tracks" value={totals.data.tracks}>
+                {formatDuration(totals.data.durationMs) || "0:00"} playing time
               </Total>
-              <Total
-                title="Labels"
-                to="/labels"
-                value={data.catalogTotals.labels}
-              />
+              <Total title="Labels" to="/labels" value={totals.data.labels} />
               <Total title="Files" to="/files" value={fileCounts?.total} />
               <Total
                 title="Unused files"
@@ -159,7 +93,7 @@ export function Dashboard() {
                 <CardTitle>Newest releases</CardTitle>
               </CardHeader>
               <CardContent>
-                {data.newest.items.length === 0 ? (
+                {newest.data.items.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
                     No releases yet.{" "}
                     <Link
@@ -172,7 +106,7 @@ export function Dashboard() {
                   </p>
                 ) : (
                   <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-4">
-                    {data.newest.items.map((release) => (
+                    {newest.data.items.map((release) => (
                       <div
                         key={release.id}
                         className="flex flex-col gap-1 text-xs"

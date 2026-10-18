@@ -65,10 +65,13 @@ export function FileLinksEditor({
   )
 }
 
-/** The rows as the API's FileLinkInput. */
+/**
+ * The rows as `FileLinkInput`s, for commands. The track form's GraphQL takes
+ * them too: its ids can be numbers.
+ */
 export function fileLinksInput(links: FileLinkRow[]) {
   return links.map((link) => ({
-    fileId: link.file.id,
+    fileId: Number(link.file.id),
     note: link.note.trim() || null,
   }))
 }

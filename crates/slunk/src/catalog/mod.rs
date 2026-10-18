@@ -1,11 +1,15 @@
 //! The catalog context: what the user catalogs (slunk's design §6). Ported so
-//! far (phase 2): artists and labels, with their alternate names, pictures
-//! and logos, and an artist's file links; the two lists the user manages,
-//! release formats and release media; and the languages in use.
+//! far: artists and labels, with their alternate names, pictures and logos,
+//! and an artist's file links; the two lists the user manages, release
+//! formats and release media; the languages in use (phase 2); and releases,
+//! with their credits, and what the release pages read of their tracks
+//! (phase 4).
 //!
 //! - `names`: saving alternate names, and the links credited with them.
-//! - `repository`: the records `repo::named`, `repo::artists`,
-//!   `repo::labels`, `repo::lists` and `repo::stats` store.
+//! - `releases`: releases, their links, cover, file links and credits.
+//! - `credited`: artists as credited, and credit lines as they're saved.
+//! - `titles`: alternate titles as they're saved.
+//! - `repository`: the records the repositories store.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -17,12 +21,17 @@ use crate::paging::{ListArgs, Page, paging_of, search_of, sort_of};
 use crate::repo::named::Table;
 use crate::repo::store::Store;
 use crate::repo::{artists, file_links, labels, lists, named, stats};
+use crate::tagging::TagFilter;
 use crate::text::{clean_or_none, clean_text};
 use crate::{Error, Result};
 
+mod credited;
 mod names;
+mod releases;
 pub mod repository;
+mod titles;
 
+pub use releases::released;
 pub use repository::*;
 
 /// A file by id, or by a path to register first.
@@ -74,6 +83,70 @@ pub struct LabelInput {
     pub alternate_names: Option<Vec<AlternateNameInput>>,
 }
 
+/// An artist as credited (slunk's 3_alternate_names.md §6): `credited_as` is
+/// the name printed. Blank, or the artist's main name, means the main name.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CreditedArtistInput {
+    pub artist_id: i64,
+    pub credited_as: Option<String>,
+}
+
+/// A credit line: a role as printed, and its artists in order.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CreditInput {
+    pub role: String,
+    pub artists: Vec<CreditedArtistInput>,
+}
+
+/// A track's credit lines, saved with its release's.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TrackCreditsInput {
+    pub track_id: i64,
+    pub credits: Vec<CreditInput>,
+}
+
+/// An alternate title (slunk's 3_alternate_names.md §6).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AlternateTitleInput {
+    pub title: String,
+    /// A BCP 47 tag. Blank means unknown.
+    pub language: Option<String>,
+    /// On the release as published. True when left out.
+    pub printed: Option<bool>,
+}
+
+/// A release's details.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ReleaseInput {
+    pub title: String,
+    /// Left out (`None`), an update keeps it as it is. `Some(None)` is
+    /// unknown.
+    pub title_language: Option<Option<String>>,
+    /// Replaces the alternate titles. Left out, they stay as they are,
+    /// except one that's now the main title.
+    pub alternate_titles: Option<Vec<AlternateTitleInput>>,
+    /// `2006`, `2006-01` or `2006-01-10`. Blank means unknown.
+    pub released: Option<String>,
+    pub catalog_number: Option<String>,
+    pub various_artists: bool,
+    pub artists: Vec<CreditedArtistInput>,
+    pub label_ids: Vec<i64>,
+    pub format_ids: Vec<i64>,
+    pub medium_ids: Vec<i64>,
+}
+
+/// A release list's filters besides its search. The tag filters are checked
+/// already (`tagging::tag_filters`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ReleaseFilterArgs {
+    pub format: Option<i64>,
+    pub medium: Option<i64>,
+    pub label: Option<i64>,
+    /// Releases the artist is a release artist on
+    pub artist: Option<i64>,
+    pub tags: Vec<TagFilter>,
+}
+
 pub struct Catalog {
     store: Arc<Store>,
     media: Arc<Media>,
@@ -94,6 +167,11 @@ impl Catalog {
 
     pub fn get_list_item(&self, kind: ListKind, id: i64) -> Result<Option<ListItem>> {
         lists::get(&self.store.conn(), kind, id)
+    }
+
+    /// The rows of these ids that exist, in no particular order.
+    pub fn list_items_by_ids(&self, kind: ListKind, ids: &[i64]) -> Result<Vec<ListItem>> {
+        lists::get_many(&self.store.conn(), kind, ids)
     }
 
     /// How many releases have each format or medium.
@@ -148,6 +226,43 @@ impl Catalog {
 
     pub fn get_artist(&self, id: i64) -> Result<Option<Artist>> {
         named::get(&self.store.conn(), Table::Artists, id)
+    }
+
+    /// The artists of these ids that exist, in no particular order.
+    pub fn artists_by_ids(&self, ids: &[i64]) -> Result<Vec<Artist>> {
+        named::get_many(&self.store.conn(), Table::Artists, ids)
+    }
+
+    /// Artists' alternate names, by their ids, in no particular order: the
+    /// names links are credited with.
+    pub fn artist_names_by_ids(&self, ids: &[i64]) -> Result<Vec<AlternateName>> {
+        artists::alternate_names_by_ids(&self.store.conn(), ids)
+    }
+
+    /// Releases where the artist performs or is featured on tracks, without
+    /// being a release artist, with those tracks, in order.
+    pub fn artist_appearances(&self, id: i64) -> Result<Vec<Appearance>> {
+        let mut appearances: Vec<Appearance> = Vec::new();
+        for (release_id, track_id) in artists::appearances(&self.store.conn(), id)? {
+            match appearances.last_mut() {
+                Some(last) if last.release_id == release_id => last.track_ids.push(track_id),
+                _ => appearances.push(Appearance {
+                    release_id,
+                    track_ids: vec![track_id],
+                }),
+            }
+        }
+        Ok(appearances)
+    }
+
+    /// The credit lines the artist is on: the releases', then the tracks'.
+    pub fn artist_credits(&self, id: i64) -> Result<Vec<ArtistCredit>> {
+        artists::credits(&self.store.conn(), id)
+    }
+
+    /// How many of the artist's releases have each format.
+    pub fn artist_format_counts(&self, id: i64) -> Result<Vec<FormatCount>> {
+        artists::format_counts(&self.store.conn(), id)
     }
 
     /// Creates an artist with its alternate names and file links,
@@ -251,6 +366,11 @@ impl Catalog {
 
     pub fn get_label(&self, id: i64) -> Result<Option<Label>> {
         named::get(&self.store.conn(), Table::Labels, id)
+    }
+
+    /// The labels of these ids that exist, in no particular order.
+    pub fn labels_by_ids(&self, ids: &[i64]) -> Result<Vec<Label>> {
+        named::get_many(&self.store.conn(), Table::Labels, ids)
     }
 
     pub fn create_label(&self, input: &LabelInput) -> Result<Label> {

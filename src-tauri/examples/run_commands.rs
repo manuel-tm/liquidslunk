@@ -11,7 +11,7 @@
 
 use std::path::Path;
 
-use liquidslunk_lib::commands::catalog::{self, artists, labels, lists};
+use liquidslunk_lib::commands::catalog::{self, artists, labels, lists, releases};
 use liquidslunk_lib::commands::{media, tagging};
 use liquidslunk_lib::error::CommandError;
 use liquidslunk_lib::library::Library;
@@ -73,6 +73,10 @@ fn run(library: &Library, command: &str, args: Value) -> Result<Value, CommandEr
         "updateArtist" => json(artists::update(library, parse(args)?)?),
         "setArtistPicture" => json(artists::set_picture(library, parse(args)?)?),
         "deleteArtist" => json(artists::delete(library, parse(args)?)?),
+        "artistHeader" => json(artists::header(library, parse(args)?)?),
+        "artistReleases" => json(artists::releases_of(library, parse(args)?)?),
+        "artistAppearances" => json(artists::appearances(library, parse(args)?)?),
+        "artistCredits" => json(artists::credits(library, parse(args)?)?),
         "labels" => json(labels::list(library, parse(args)?)?),
         "label" => json(labels::details(library, parse(args)?)?),
         "labelOptions" => json(labels::options(library, parse(args)?)?),
@@ -80,6 +84,23 @@ fn run(library: &Library, command: &str, args: Value) -> Result<Value, CommandEr
         "updateLabel" => json(labels::update(library, parse(args)?)?),
         "setLabelPicture" => json(labels::set_picture(library, parse(args)?)?),
         "deleteLabel" => json(labels::delete(library, parse(args)?)?),
+        "labelPage" => json(labels::page(library, parse(args)?)?),
+        "releases" => json(releases::list(library, parse(args)?)?),
+        "releaseIds" => json(releases::ids(library, parse(args)?)?),
+        "releasePage" => json(releases::page(library, parse(args)?)?),
+        "releaseHeader" => json(releases::header(library, parse(args)?)?),
+        "release" => json(releases::details(library, parse(args)?)?),
+        "releaseFiles" => json(releases::files(library, parse(args)?)?),
+        "releaseCredits" => json(releases::credits(library, parse(args)?)?),
+        "releaseOptions" => json(releases::options(library, parse(args)?)?),
+        "createRelease" => json(releases::create(library, parse(args)?)?),
+        "updateRelease" => json(releases::update(library, parse(args)?)?),
+        "deleteRelease" => json(releases::delete(library, parse(args)?)?),
+        "setReleaseCover" => json(releases::set_cover(library, parse(args)?)?),
+        "setReleaseFiles" => json(releases::set_files(library, parse(args)?)?),
+        "setReleaseCredits" => json(releases::set_credits(library, parse(args)?)?),
+        "creditRoles" => json(releases::roles(library, parse(args)?)?),
+        "catalogTotals" => json(releases::totals(library)?),
         "languages" => json(catalog::in_use(library)?),
         "tags" => json(tagging::list(library, parse(args)?)?),
         "tag" => json(tagging::details(library, parse(args)?)?),
@@ -92,6 +113,8 @@ fn run(library: &Library, command: &str, args: Value) -> Result<Value, CommandEr
         "deleteTag" => json(tagging::delete(library, parse(args)?)?),
         "releaseTags" => json(tagging::of_release(library, parse(args)?)?),
         "setReleaseTags" => json(tagging::set_on_release(library, parse(args)?)?),
+        "setTagOnReleases" => json(tagging::set_on_releases(library, parse(args)?)?),
+        "removeTagFromReleases" => json(tagging::remove_from_releases(library, parse(args)?)?),
         _ => return Err(CommandError::invalid(format!("No command {command}"))),
     };
     Ok(value)

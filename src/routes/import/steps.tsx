@@ -1,4 +1,5 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { CheckIcon, CircleAlertIcon } from "lucide-react"
 import { type ReactNode, useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router"
@@ -26,6 +27,7 @@ import { shownName } from "@/lib/credited"
 import type { ImportFilesQuery } from "@/gql/graphql"
 import { formatSize } from "@/lib/format"
 import { offeredNames, pickedArtists, unpicked } from "@/lib/import"
+import { call } from "@/lib/query"
 import { cn } from "@/lib/utils"
 import { DetailsTab } from "@/routes/releases/edit"
 import { ReleaseCreditsForm } from "@/routes/releases/forms/credits"
@@ -33,7 +35,6 @@ import {
   EMPTY_DETAILS,
   ReleaseDetailsForm,
 } from "@/routes/releases/forms/details"
-import { SetReleaseFiles } from "@/routes/releases/forms/files"
 import { ReleaseTagsForm } from "@/routes/releases/forms/tags"
 import { ReleaseTracksForm } from "@/routes/releases/forms/tracks"
 
@@ -48,7 +49,11 @@ const STEPS = [
 type Step = (typeof STEPS)[number]
 
 /** The step's route, keeping `?folder=` (slunk's design §7.9). */
-function stepUrl(step: Step, id: string | undefined, folder: string | null) {
+function stepUrl(
+  step: Step,
+  id: number | string | undefined,
+  folder: string | null
+) {
   const query = folder === null ? "" : `?${new URLSearchParams({ folder })}`
   if (step === "Folder")
     return `/import?${new URLSearchParams({ path: folder ?? "" })}`
@@ -423,7 +428,22 @@ function FolderFilesForm({
   const kept = release.files.filter(
     (link) => !rows.some((row) => row.path === link.file.path)
   )
-  const [save, { loading, error }] = useMutation(SetReleaseFiles)
+  // The folder's files come from GraphQL until phase 5, and are saved with
+  // a command: GraphQL's ids are strings
+  const save = useMutation({
+    mutationFn: (input: {
+      cover: { fileId?: string; path?: string } | null
+      files: { fileId?: string; path?: string; note?: string | null }[]
+    }) =>
+      call("setReleaseFiles", {
+        id: Number(releaseId),
+        cover: input.cover && fileRef(input.cover),
+        files: input.files.map((link) => ({
+          ...fileRef(link),
+          note: link.note,
+        })),
+      }),
+  })
   const edit = (path: string, changes: Partial<FolderFileRow>) =>
     setRows((current) =>
       current.map((row) => (row.path === path ? { ...row, ...changes } : row))
@@ -438,34 +458,27 @@ function FolderFilesForm({
           release.cover && release.cover.path === cover ? release.cover : null
         const coverRow = rows.find((row) => row.path === cover)
         try {
-          await save({
-            variables: {
-              id: releaseId,
-              input: {
-                cover: outside
-                  ? { fileId: outside.id }
-                  : coverRow
-                    ? coverRow.fileId
-                      ? { fileId: coverRow.fileId }
-                      : { path: coverRow.path }
-                    : null,
-                files: [
-                  ...kept.map((link) => ({
-                    fileId: link.file.id,
-                    note: link.note,
-                  })),
-                  ...rows
-                    // The cover is the primary image, not a file link too
-                    .filter((row) => row.linked && row.path !== cover)
-                    .map((row) => ({
-                      ...(row.fileId
-                        ? { fileId: row.fileId }
-                        : { path: row.path }),
-                      note: row.note.trim() || null,
-                    })),
-                ],
-              },
-            },
+          await save.mutateAsync({
+            cover: outside
+              ? { fileId: outside.id }
+              : coverRow
+                ? coverRow.fileId
+                  ? { fileId: coverRow.fileId }
+                  : { path: coverRow.path }
+                : null,
+            files: [
+              ...kept.map((link) => ({
+                fileId: link.file.id,
+                note: link.note,
+              })),
+              ...rows
+                // The cover is the primary image, not a file link too
+                .filter((row) => row.linked && row.path !== cover)
+                .map((row) => ({
+                  ...(row.fileId ? { fileId: row.fileId } : { path: row.path }),
+                  note: row.note.trim() || null,
+                })),
+            ],
           })
           onSaved()
         } catch {
@@ -473,7 +486,9 @@ function FolderFilesForm({
         }
       }}
     >
-      {error && <QueryError error={error} title="Can't save the files" />}
+      {save.error && (
+        <QueryError error={save.error} title="Can't save the files" />
+      )}
       {rows.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           The folder has no images or other files. Continue to the credits.
@@ -541,7 +556,7 @@ function FolderFilesForm({
         </label>
       )}
       <div>
-        <Button type="submit" disabled={loading}>
+        <Button type="submit" disabled={save.isPending}>
           Save and continue
         </Button>
       </div>
@@ -581,4 +596,9 @@ export function ImportTags() {
       />
     </ImportFrame>
   )
+}
+
+/** A file by id or by path, as a command takes it. */
+function fileRef({ fileId, path }: { fileId?: string; path?: string }) {
+  return fileId ? { fileId: Number(fileId) } : { path }
 }

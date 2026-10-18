@@ -27,6 +27,17 @@ impl DatePrecision {
             DatePrecision::Day => "day",
         }
     }
+
+    /// The precision the database stores as "year", "month" or "day".
+    pub(crate) fn named(text: &str) -> Option<DatePrecision> {
+        [
+            DatePrecision::Year,
+            DatePrecision::Month,
+            DatePrecision::Day,
+        ]
+        .into_iter()
+        .find(|precision| precision.as_str() == text)
+    }
 }
 
 /// A date, at midnight UTC on its first day, and how much of it is known.

@@ -7,7 +7,7 @@ use rusqlite::{Connection, params, params_from_iter};
 
 use super::helpers::{chunks, placeholders};
 use crate::Result;
-use crate::catalog::{AlternateName, ArtistUsage};
+use crate::catalog::{AlternateName, ArtistCredit, ArtistUsage, FormatCount};
 
 /// Every table that links an artist to a release, a track or a credit line,
 /// each with the alternate name it's credited with.
@@ -144,4 +144,98 @@ pub fn usage(conn: &Connection, id: i64) -> Result<ArtistUsage> {
             })
         },
     )?)
+}
+
+/// Alternate names, by their ids, in no particular order.
+pub fn alternate_names_by_ids(conn: &Connection, ids: &[i64]) -> Result<Vec<AlternateName>> {
+    let mut found = Vec::new();
+    for chunk in chunks(ids) {
+        let sql = format!(
+            r#"select "id", "name", "language", "real_name", "note" from "artist_alternate_names"
+            where "id" in ({})"#,
+            placeholders(chunk.len())
+        );
+        let mut statement = conn.prepare(&sql)?;
+        for row in statement.query_map(params_from_iter(chunk), |row| {
+            Ok(AlternateName {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                language: row.get(2)?,
+                real_name: row.get::<_, i64>(3)? == 1,
+                note: row.get(4)?,
+            })
+        })? {
+            found.push(row?);
+        }
+    }
+    Ok(found)
+}
+
+/// The tracks, by release, where the artist performs or is featured without
+/// being a release artist: release and track ids, by release, disc and
+/// number.
+pub fn appearances(conn: &Connection, id: i64) -> Result<Vec<(i64, i64)>> {
+    let mut statement = conn.prepare(
+        "select t.release_id as releaseId, t.id as trackId
+         from artists_tracks a join tracks t on t.id = a.track_id
+         where a.artist_id = ?1
+           and not exists (
+             select 1 from artists_releases r
+             where r.release_id = t.release_id and r.artist_id = ?1
+           )
+         order by t.release_id, t.cd_number, t.track_number",
+    )?;
+    let rows = statement
+        .query_map([id], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
+/// A row per credit line the artist is on: the release's lines, then the
+/// tracks'.
+pub fn credits(conn: &Connection, id: i64) -> Result<Vec<ArtistCredit>> {
+    let mut statement = conn.prepare(
+        "select l.role, l.release_id as releaseId, null as trackId,
+           a.credited_name_id as creditedNameId
+         from artists_release_credits a
+         join release_credits l on l.id = a.credit_id
+         where a.artist_id = ?1
+         union all
+         select l.role, t.release_id, t.id, a.credited_name_id
+         from artists_track_credits a
+         join track_credits l on l.id = a.credit_id
+         join tracks t on t.id = l.track_id
+         where a.artist_id = ?1",
+    )?;
+    let rows = statement
+        .query_map([id], |row| {
+            Ok(ArtistCredit {
+                role: row.get(0)?,
+                release_id: row.get(1)?,
+                track_id: row.get(2)?,
+                credited_name_id: row.get(3)?,
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
+/// How many of the artist's releases have each format.
+pub fn format_counts(conn: &Connection, id: i64) -> Result<Vec<FormatCount>> {
+    let mut statement = conn.prepare(
+        "select f.format_id as formatId, count(*) as count
+         from release_formats_releases f
+         join artists_releases a on a.release_id = f.release_id
+         where a.artist_id = ?
+         group by f.format_id",
+    )?;
+    let rows = statement
+        .query_map([id], |row| {
+            Ok(FormatCount {
+                format_id: row.get(0)?,
+                count: row.get(1)?,
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
 }
