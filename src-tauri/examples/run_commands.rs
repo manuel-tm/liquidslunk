@@ -12,7 +12,7 @@
 use std::path::Path;
 
 use liquidslunk_lib::commands::catalog::{self, artists, labels, lists};
-use liquidslunk_lib::commands::media;
+use liquidslunk_lib::commands::{media, tagging};
 use liquidslunk_lib::error::CommandError;
 use liquidslunk_lib::library::Library;
 use serde::Deserialize;
@@ -81,6 +81,17 @@ fn run(library: &Library, command: &str, args: Value) -> Result<Value, CommandEr
         "setLabelPicture" => json(labels::set_picture(library, parse(args)?)?),
         "deleteLabel" => json(labels::delete(library, parse(args)?)?),
         "languages" => json(catalog::in_use(library)?),
+        "tags" => json(tagging::list(library, parse(args)?)?),
+        "tag" => json(tagging::details(library, parse(args)?)?),
+        "tagOptions" => json(tagging::options(library, parse(args)?)?),
+        "tagsByRef" => json(tagging::by_ref(library, parse(args)?)?),
+        "tagValues" => json(tagging::values(library, parse(args)?)?),
+        "tagValueOptions" => json(tagging::value_options(library, parse(args)?)?),
+        "createTag" => json(tagging::create(library, parse(args)?)?),
+        "updateTag" => json(tagging::update(library, parse(args)?)?),
+        "deleteTag" => json(tagging::delete(library, parse(args)?)?),
+        "releaseTags" => json(tagging::of_release(library, parse(args)?)?),
+        "setReleaseTags" => json(tagging::set_on_release(library, parse(args)?)?),
         _ => return Err(CommandError::invalid(format!("No command {command}"))),
     };
     Ok(value)

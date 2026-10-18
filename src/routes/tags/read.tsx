@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { Link, useParams } from "react-router"
 
 import { ButtonLink } from "@/components/button-link"
@@ -17,77 +17,51 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { graphql } from "@/gql"
-import type { TagType } from "@/gql/graphql"
+import type { TagType } from "@/bindings"
 import { useListParams } from "@/hooks/use-list-params"
+import { call, idParam, queryClient, useCommand } from "@/lib/query"
 import { isTagType, TAG_TYPE_LABELS, tagValueUrl } from "@/lib/tags"
 import { NotFound } from "@/routes/not-found"
-
-const TagQueryDocument = graphql(`
-  query Tag(
-    $type: TagType!
-    $id: ID!
-    $page: Int!
-    $perPage: Int!
-    $q: String
-  ) {
-    tag(type: $type, id: $id) {
-      __typename
-      id
-      type
-      name
-      multiple
-      releaseCount
-      trackCount
-      blockers
-      ... on TextTag {
-        values(page: $page, perPage: $perPage, q: $q) {
-          total
-          items {
-            value
-            releases
-            tracks
-          }
-        }
-      }
-    }
-  }
-`)
-
-const DeleteTag = graphql(`
-  mutation DeleteTag($type: TagType!, $id: ID!) {
-    deleteTag(type: $type, id: $id)
-  }
-`)
 
 /** `/tags/:type/:id`: the type is in the route, since ids repeat across types. */
 export function TagRead() {
   const { type, id = "" } = useParams()
-  if (!isTagType(type)) return <NotFound />
-  return <Tag type={type} id={id} />
+  const tagId = idParam(id)
+  if (!isTagType(type) || tagId === null) return <NotFound />
+  return <Tag type={type} id={tagId} />
 }
 
 /**
  * A tag definition and how many releases and tracks have it (slunk's design §7.8). A
  * text tag also lists its values, with links to what has each.
  */
-function Tag({ type, id }: { type: TagType; id: string }) {
+function Tag({ type, id }: { type: TagType; id: number }) {
   const list = useListParams()
-  const { data, error } = useQuery(TagQueryDocument, {
-    variables: { type, id, page: list.page, perPage: PER_PAGE, q: list.q },
+  const { data: tag, error } = useCommand("tag", { type, id })
+  // Only text tags list their values
+  const valuesQuery = useCommand(
+    "tagValues",
+    { id, page: list.page, perPage: PER_PAGE, q: list.q },
+    { enabled: type === "text" }
+  )
+  const deleteTag = useMutation({
+    mutationFn: () => call("deleteTag", { type, id }),
   })
-  const [deleteTag] = useMutation(DeleteTag, { variables: { type, id } })
 
-  if (data && !data.tag) return <NotFound />
-  const tag = data?.tag
+  if (tag === null) return <NotFound />
   const base = `/tags/${type}/${id}`
+  // A disabled query still gives what's cached for its key, and a number or
+  // date tag's id can be a text tag's
+  const text = type === "text"
+  const values = text ? valuesQuery.data : undefined
+  const failed = error ?? (text ? valuesQuery.error : null)
 
   return (
     <>
       <PageHeader
         crumbs={[
           { label: "Tags", to: "/tags" },
-          { label: tag ? `${tag.name} (${tag.id})` : id },
+          { label: tag ? `${tag.name} (${tag.id})` : String(id) },
         ]}
       >
         {tag && (
@@ -98,16 +72,19 @@ function Tag({ type, id }: { type: TagType; id: string }) {
             <DeleteButton
               name={`the tag ${tag.name}`}
               blockers={tag.blockers}
-              onDelete={() => deleteTag()}
+              onDelete={() => deleteTag.mutateAsync()}
               then="/tags"
+              afterDelete={() =>
+                queryClient.removeQueries({ queryKey: ["tag", { type, id }] })
+              }
             />
           </>
         )}
       </PageHeader>
       <div className="flex flex-col gap-6 p-4 text-xs">
-        {error ? (
-          <QueryError error={error} title="Can't load the tag" />
-        ) : !tag ? (
+        {failed ? (
+          <QueryError error={failed} title="Can't load the tag" />
+        ) : !tag || (text && !values) ? (
           <Skeleton className="h-32 w-64" />
         ) : (
           <>
@@ -130,7 +107,7 @@ function Tag({ type, id }: { type: TagType; id: string }) {
                 <dd className="tabular-nums">{tag.trackCount}</dd>
               </dl>
             </div>
-            {tag.__typename === "TextTag" && (
+            {values && (
               <section className="flex flex-col gap-2">
                 <h2 className="font-heading text-base font-semibold">Values</h2>
                 <div className="flex flex-wrap items-center gap-4">
@@ -143,12 +120,12 @@ function Tag({ type, id }: { type: TagType; id: string }) {
                     <Pager
                       page={list.page}
                       perPage={PER_PAGE}
-                      total={tag.values.total}
+                      total={values.total}
                       onPage={(page) => list.update({ page })}
                     />
                   </div>
                 </div>
-                {tag.values.total === 0 ? (
+                {values.total === 0 ? (
                   <p className="text-muted-foreground">
                     {list.q
                       ? "Nothing matches."
@@ -168,7 +145,7 @@ function Tag({ type, id }: { type: TagType; id: string }) {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {tag.values.items.map(({ value, releases, tracks }) => (
+                      {values.items.map(({ value, releases, tracks }) => (
                         <TableRow key={value}>
                           <TableCell>{value}</TableCell>
                           <TableCell className="text-right tabular-nums">

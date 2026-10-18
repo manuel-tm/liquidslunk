@@ -18,31 +18,39 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useCommand } from "@/lib/query"
 import {
   describeTagFilter,
   type TagFilter,
   tagFilterKey,
   type TagFilterOp,
+  tagFilterRefs,
+  tagNames,
 } from "@/lib/tags"
 
 const TEXT_OPS = { equals: "is", contains: "contains" }
 
 /**
  * A list's tag filters (slunk's design §7.6), on releases or tracks: a chip for
- * each, and a button that adds one. They all have to match.
+ * each, and a button that adds one. They all have to match. The chips name
+ * their tags with `tagsByRef`.
  */
 export function TagFilters({
   filters,
-  names,
   onAdd,
   onRemove,
 }: {
   filters: TagFilter[]
-  /** Tag names by `type:id` */
-  names: Map<string, string>
   onAdd: (params: [string, string][]) => void
   onRemove: (filter: TagFilter) => void
 }) {
+  const refs = tagFilterRefs(filters)
+  const { data: tags } = useCommand(
+    "tagsByRef",
+    { refs },
+    { enabled: refs.length > 0 }
+  )
+  const names = tagNames(tags)
   return (
     <>
       {filters.map((filter) => {

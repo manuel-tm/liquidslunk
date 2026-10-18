@@ -7,12 +7,7 @@ import { LabelPicker, ListItemPicker } from "@/components/pickers"
 import { ReleaseTable } from "@/components/release-table"
 import { graphql } from "@/gql"
 import { useListParams } from "@/hooks/use-list-params"
-import {
-  tagFilterInput,
-  tagFilterRefs,
-  tagFiltersOf,
-  tagNames,
-} from "@/lib/tags"
+import { tagFilterInput, tagFiltersOf } from "@/lib/tags"
 import { TagFilters } from "@/components/tag-filters"
 import { BulkEditBar } from "@/routes/releases/bulk-edit"
 
@@ -32,8 +27,6 @@ const ReleasesQuery = graphql(`
     $withMedium: Boolean!
     $withLabel: Boolean!
     $tags: [TagFilterInput!]!
-    $tagRefs: [TagRefInput!]!
-    $withTags: Boolean!
   ) {
     releases(
       page: $page
@@ -103,11 +96,6 @@ const ReleasesQuery = graphql(`
       id
       name
     }
-    filterTags: tagsByRef(refs: $tagRefs) @include(if: $withTags) {
-      id
-      type
-      name
-    }
   }
 `)
 
@@ -140,7 +128,6 @@ export function ReleaseList() {
   const medium = list.params.get("medium")
   const label = list.params.get("label")
   const tagFilters = tagFiltersOf(list.params)
-  const tagRefs = tagFilterRefs(tagFilters)
   const { data, error } = useQuery(ReleasesQuery, {
     variables: {
       page: list.page,
@@ -157,8 +144,6 @@ export function ReleaseList() {
       withMedium: medium !== null,
       withLabel: label !== null,
       tags: tagFilters.map(tagFilterInput),
-      tagRefs,
-      withTags: tagRefs.length > 0,
     },
   })
   const client = useApolloClient()
@@ -232,7 +217,6 @@ export function ReleaseList() {
           </div>
           <TagFilters
             filters={tagFilters}
-            names={tagNames(data?.filterTags)}
             onAdd={list.append}
             onRemove={(filter) => list.remove(filter.key, filter.value)}
           />

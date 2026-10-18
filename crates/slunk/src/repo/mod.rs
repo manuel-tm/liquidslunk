@@ -17,6 +17,7 @@ pub mod named;
 pub mod rebuild_table;
 pub mod stats;
 pub mod store;
+pub mod tags;
 
 /// An SQL identifier, quoted, as Kysely quotes table and column names.
 pub(crate) fn quote(name: &str) -> String {

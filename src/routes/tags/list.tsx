@@ -1,4 +1,3 @@
-import { useQuery } from "@apollo/client/react"
 import { PlusIcon } from "lucide-react"
 import { Link } from "react-router"
 
@@ -22,53 +21,30 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { graphql } from "@/gql"
-import type { TagsQuery } from "@/gql/graphql"
+import type { TagPage, TagType } from "@/bindings"
 import { useListParams } from "@/hooks/use-list-params"
+import { useCommand } from "@/lib/query"
 import { TAG_TYPE_LABELS, TAG_TYPES } from "@/lib/tags"
 
 // Definitions are few, so each table shows them all, up to the API's page
 // limit
 const PER_TYPE = 200
 
-const TagsQueryDocument = graphql(`
-  query Tags($q: String, $sort: String, $perPage: Int!) {
-    text: tags(type: text, q: $q, sort: $sort, perPage: $perPage) {
-      total
-      items {
-        id
-        type
-        name
-        multiple
-      }
-    }
-    number: tags(type: number, q: $q, sort: $sort, perPage: $perPage) {
-      total
-      items {
-        id
-        type
-        name
-        multiple
-      }
-    }
-    date: tags(type: date, q: $q, sort: $sort, perPage: $perPage) {
-      total
-      items {
-        id
-        type
-        name
-        multiple
-      }
-    }
-  }
-`)
-
 /** `/tags`: a table per type (slunk's design §7.8). */
 export function TagList() {
   const list = useListParams()
-  const { data, error } = useQuery(TagsQueryDocument, {
-    variables: { q: list.q, sort: list.sort, perPage: PER_TYPE },
-  })
+  const args = { q: list.q, sort: list.sort, perPage: PER_TYPE }
+  const pages = {
+    text: useCommand("tags", { type: "text", ...args }),
+    number: useCommand("tags", { type: "number", ...args }),
+    date: useCommand("tags", { type: "date", ...args }),
+  }
+  const error = TAG_TYPES.map((type) => pages[type].error).find(Boolean)
+  const data = TAG_TYPES.every((type) => pages[type].data)
+    ? (Object.fromEntries(
+        TAG_TYPES.map((type) => [type, pages[type].data])
+      ) as Record<TagType, TagPage>)
+    : undefined
   const none = data && TAG_TYPES.every((type) => data[type].total === 0)
 
   return (
@@ -123,7 +99,7 @@ function TagTable({
   onSort,
 }: {
   title: string
-  page: TagsQuery["text"]
+  page: TagPage
   sort: string | null
   onSort: (sort: string | null) => void
 }) {

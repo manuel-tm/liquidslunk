@@ -2,7 +2,7 @@ import type { ComponentProps } from "react"
 
 import { useTagValues } from "@/components/pickers"
 import { Input } from "@/components/ui/input"
-import type { TagType } from "@/gql/graphql"
+import type { TagType } from "@/bindings"
 import { TAG_PLACEHOLDERS } from "@/lib/tags"
 
 /**

@@ -161,6 +161,56 @@ export const commands = {
 	 *  language picker.
 	 */
 	languages: () => typedError<string[], CommandError>(__TAURI_INVOKE("languages")),
+	/**  Tag definitions of one type, or of every type when `type` is left out. */
+	tags: (args: TagsArgs) => typedError<TagPage, CommandError>(__TAURI_INVOKE("tags", { args })),
+	/**  A tag, with what its page and its form show, or null for an unknown id. */
+	tag: (args: TagArgs) => typedError<({
+	/**  How many releases have a value */
+	releaseCount: number,
+	/**  How many tracks have a value */
+	trackCount: number,
+	blockers: string[],
+	/**
+	 *  The first 20 releases with several values, which keep the tag from
+	 *  being single-value
+	 */
+	multiValueReleases: TitledPage,
+	/**  The first 20 tracks with several values */
+	multiValueTracks: TitledPage,
+}) & (Tag) | null, CommandError>(__TAURI_INVOKE("tag", { args })),
+	/**  The first tags of any type with `q` in their name, by name, for a picker. */
+	tagOptions: (args: OptionsArgs) => typedError<Tag[], CommandError>(__TAURI_INVOKE("tag_options", { args })),
+	/**
+	 *  These tags, in the same order, leaving out any that don't exist. A list
+	 *  names its tag filters with it.
+	 */
+	tagsByRef: (args: TagsByRefArgs) => typedError<Tag[], CommandError>(__TAURI_INVOKE("tags_by_ref", { args })),
+	/**
+	 *  A text tag's values, with how many releases and tracks have each, the
+	 *  most used first. Values that differ only in case count as one.
+	 */
+	tagValues: (args: TagValueListArgs) => typedError<TagValuePage, CommandError>(__TAURI_INVOKE("tag_values", { args })),
+	/**
+	 *  A text tag's first values with `q` in them, the most used first, for a
+	 *  picker.
+	 */
+	tagValueOptions: (args: TagValueOptionsArgs) => typedError<string[], CommandError>(__TAURI_INVOKE("tag_value_options", { args })),
+	/**  Tag names are unique across types, ignoring case. */
+	createTag: (args: CreateTagArgs) => typedError<Tag, CommandError>(__TAURI_INVOKE("create_tag", { args })),
+	/**
+	 *  Switching to single-value fails while a release or track has several
+	 *  values.
+	 */
+	updateTag: (args: UpdateTagArgs) => typedError<Tag, CommandError>(__TAURI_INVOKE("update_tag", { args })),
+	/**
+	 *  Deletes a tag, and returns its id. It fails while any release or track
+	 *  has a value.
+	 */
+	deleteTag: (args: TagArgs) => typedError<number, CommandError>(__TAURI_INVOKE("delete_tag", { args })),
+	/**  A release's tags, by tag name, or null for an unknown release. */
+	releaseTags: (args: IdArgs) => typedError<TagValues[] | null, CommandError>(__TAURI_INVOKE("release_tags", { args })),
+	/**  Replaces every tag value on the release, and returns its tags. */
+	setReleaseTags: (args: SetReleaseTagsArgs) => typedError<TagValues[], CommandError>(__TAURI_INVOKE("set_release_tags", { args })),
 };
 
 /* Types */
@@ -270,6 +320,10 @@ export type CreateListItemArgs = {
 	/**  Unique in its list, ignoring case */
 	name: string,
 };
+
+export type CreateTagArgs = {
+	type: TagType,
+} & TagInput;
 
 /**  What creating a library did. */
 export type Created = { type: "created"; library: LibraryInfo; migration: MigrationReport } | 
@@ -644,11 +698,141 @@ export type SetPictureArgs = {
 	picture: FileRefInput,
 };
 
+export type SetReleaseTagsArgs = {
+	id: number,
+	/**
+	 *  Every tag the release has. A tag left out, or with only blank values,
+	 *  is removed.
+	 */
+	tags: TagValuesInput[],
+};
+
 export type Subfolder = {
 	name: string,
 	path: string,
 	/**  Whether it, or a folder inside it, holds registered files */
 	hasRegisteredFiles: boolean,
+};
+
+/**  A tag definition, like Genre or Score. */
+export type Tag = {
+	id: number,
+	type: TagType,
+	name: string,
+	/**  Several values per release or track, or at most one */
+	multiple: boolean,
+};
+
+export type TagArgs = {
+	type: TagType,
+	id: number,
+};
+
+/**
+ *  A tag, how many releases and tracks have it, and what keeps it from being
+ *  deleted or made single-value.
+ */
+export type TagDetails = {
+	/**  How many releases have a value */
+	releaseCount: number,
+	/**  How many tracks have a value */
+	trackCount: number,
+	blockers: string[],
+	/**
+	 *  The first 20 releases with several values, which keep the tag from
+	 *  being single-value
+	 */
+	multiValueReleases: TitledPage,
+	/**  The first 20 tracks with several values */
+	multiValueTracks: TitledPage,
+} & Tag;
+
+export type TagInput = {
+	/**  Unique across types, ignoring case */
+	name: string,
+	multiple?: boolean,
+};
+
+export type TagPage = {
+	items: Tag[],
+	total: number,
+};
+
+export type TagType = "text" | 
+/**  A real number */
+"number" | 
+/**  A day, without a time */
+"date";
+
+/**  A text tag's value, and how many releases and tracks have it. */
+export type TagValueCount = {
+	value: string,
+	releases: number,
+	tracks: number,
+};
+
+/**  A page of a text tag's values. */
+export type TagValueListArgs = {
+	/**  A text tag */
+	id: number,
+	page?: number | null,
+	perPage?: number | null,
+	/**  Part of the value, ignoring case */
+	q?: string | null,
+};
+
+export type TagValueOptionsArgs = {
+	/**  A text tag */
+	id: number,
+	q?: string | null,
+};
+
+export type TagValuePage = {
+	items: TagValueCount[],
+	total: number,
+};
+
+/**
+ *  A tag set on a release or track, with its values: one for a single-value
+ *  tag.
+ */
+export type TagValues = {
+	tag: Tag,
+	/**
+	 *  As text: `Rock`, `8.5`, or a date as `2006-01-10`. In the order they
+	 *  were set.
+	 */
+	values: string[],
+};
+
+/**
+ *  A tag's values on a release or track, as typed: a number like `8.5`, a
+ *  date as `2006`, `2006-01` or `2006-01-10`. Blank values are left out.
+ */
+export type TagValuesInput = {
+	type: TagType,
+	tagId: number,
+	values: string[],
+};
+
+export type TagsArgs = {
+	/**  Every type's tags when it's left out */
+	type?: TagType | null,
+} & PageArgs;
+
+export type TagsByRefArgs = {
+	refs: TagArgs[],
+};
+
+/**  A release or track, by its title. */
+export type Titled = {
+	id: number,
+	title: string,
+};
+
+export type TitledPage = {
+	items: Titled[],
+	total: number,
 };
 
 export type UpdateArtistArgs = {
@@ -668,6 +852,12 @@ export type UpdateFileArgs = {
 export type UpdateLabelArgs = {
 	id: number,
 } & LabelInput;
+
+export type UpdateTagArgs = {
+	/**  The type can't change */
+	type: TagType,
+	id: number,
+} & TagInput;
 
 /**  An alternate name, with the links credited with it. */
 export type UsedArtistName = {

@@ -24,7 +24,7 @@ pub mod labels;
 pub mod lists;
 
 /// Pickers offer the first 20 matches (slunk's design §7.3).
-const OPTIONS: i64 = 20;
+pub(crate) const OPTIONS: i64 = 20;
 
 /// A page of a list: artists, labels, formats or media.
 #[derive(Debug, Default, Deserialize, Type)]
@@ -66,7 +66,7 @@ pub struct OptionsArgs {
 }
 
 impl OptionsArgs {
-    fn list(self) -> ListArgs {
+    pub(crate) fn list(self) -> ListArgs {
         ListArgs {
             per_page: Some(OPTIONS),
             sort: Some("name".into()),

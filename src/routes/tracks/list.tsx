@@ -17,12 +17,7 @@ import { ListedAlternateTitle, Title } from "@/components/titles"
 import { graphql } from "@/gql"
 import { TagFilters } from "@/components/tag-filters"
 import { useListParams } from "@/hooks/use-list-params"
-import {
-  tagFilterInput,
-  tagFilterRefs,
-  tagFiltersOf,
-  tagNames,
-} from "@/lib/tags"
+import { tagFilterInput, tagFiltersOf } from "@/lib/tags"
 import { formatDateTime, formatDuration } from "@/lib/format"
 
 const TracksQuery = graphql(`
@@ -35,8 +30,6 @@ const TracksQuery = graphql(`
     $releaseId: ID!
     $withRelease: Boolean!
     $tags: [TagFilterInput!]!
-    $tagRefs: [TagRefInput!]!
-    $withTags: Boolean!
   ) {
     tracks(
       page: $page
@@ -87,11 +80,6 @@ const TracksQuery = graphql(`
       id
       name: title
     }
-    filterTags: tagsByRef(refs: $tagRefs) @include(if: $withTags) {
-      id
-      type
-      name
-    }
   }
 `)
 
@@ -100,7 +88,6 @@ export function TrackList() {
   const list = useListParams()
   const release = list.params.get("release")
   const tagFilters = tagFiltersOf(list.params)
-  const tagRefs = tagFilterRefs(tagFilters)
   const { data, error } = useQuery(TracksQuery, {
     variables: {
       page: list.page,
@@ -111,8 +98,6 @@ export function TrackList() {
       releaseId: release ?? "",
       withRelease: release !== null,
       tags: tagFilters.map(tagFilterInput),
-      tagRefs,
-      withTags: tagRefs.length > 0,
     },
   })
 
@@ -135,7 +120,6 @@ export function TrackList() {
           </div>
           <TagFilters
             filters={tagFilters}
-            names={tagNames(data?.filterTags)}
             onAdd={list.append}
             onRemove={(filter) => list.remove(filter.key, filter.value)}
           />

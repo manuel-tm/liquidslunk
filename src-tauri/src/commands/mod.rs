@@ -18,6 +18,7 @@ use crate::library::{Libraries, Library};
 pub mod catalog;
 pub mod library;
 pub mod media;
+pub mod tagging;
 
 /// Every command, for the invoke handler and the bindings.
 pub fn builder() -> Builder<Wry> {
@@ -61,6 +62,17 @@ pub fn builder() -> Builder<Wry> {
             catalog::labels::set_label_picture,
             catalog::labels::delete_label,
             catalog::languages,
+            tagging::tags,
+            tagging::tag,
+            tagging::tag_options,
+            tagging::tags_by_ref,
+            tagging::tag_values,
+            tagging::tag_value_options,
+            tagging::create_tag,
+            tagging::update_tag,
+            tagging::delete_tag,
+            tagging::release_tags,
+            tagging::set_release_tags,
         ])
         // Ids are i64. SQLite's stay far below 2^53, so they're numbers.
         .dangerously_cast_bigints_to_number()
@@ -104,6 +116,10 @@ mod tests {
         );
         assert!(
             bindings.contains("updateArtist: (args: UpdateArtistArgs)"),
+            "{bindings}"
+        );
+        assert!(
+            bindings.contains("setReleaseTags: (args: SetReleaseTagsArgs)"),
             "{bindings}"
         );
         if let Ok(copy) = std::env::var("LIQUIDSLUNK_BINDINGS_COPY") {

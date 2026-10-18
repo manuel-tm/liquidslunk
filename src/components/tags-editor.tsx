@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import type { TagType, TagValuesInput } from "@/gql/graphql"
+import type { TagType, TagValuesInput } from "@/bindings"
 import { TAG_PLACEHOLDERS, TAG_TYPE_LABELS, tagValueKey } from "@/lib/tags"
 
 /** A tag being edited, with its values as typed. */
@@ -23,18 +23,21 @@ export type TagRow = { tag: TagOption; values: string[] }
 /** Rows from a release's or track's `tags`. */
 export function tagRows(
   tags: {
-    tag: { id: string; type: TagType; name: string; multiple: boolean }
+    tag: { id: number | string; type: TagType; name: string; multiple: boolean }
     values: string[]
   }[]
 ): TagRow[] {
   return tags.map(({ tag, values }) => ({ tag: tagOption(tag), values }))
 }
 
-/** Rows as the API takes them. */
+/**
+ * Rows as `setReleaseTags` takes them. The track form's GraphQL takes them
+ * too: its ids can be numbers.
+ */
 export function tagValuesInput(rows: TagRow[]): TagValuesInput[] {
   return rows.map(({ tag, values }) => ({
     type: tag.type,
-    tagId: tag.tagId,
+    tagId: Number(tag.tagId),
     values,
   }))
 }

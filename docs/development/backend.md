@@ -6,8 +6,9 @@ The backend is Rust, built into the app. It's being ported from slunk's Node bac
 - **Phase 0:** the database connection, the migration runner with its backups, slunk's eight migrations, and their parity tests; the database commands, in `crates/slunk-cli`; the app: commands typed by tauri-specta, their error, the settings, opening, creating, switching and closing libraries, the file protocol, and opening files; and the sidecar, slunk's backend, which still serves every route not ported yet, in debug builds.
 - **Phase 1:** the media context: registered files, the library on disk, file links, and reading audio files; lists' paging; and the write parity script.
 - **Phase 2:** the catalog context's artists and labels, with their alternate names, pictures and logos, and an artist's file links; release formats and release media; and language tags.
+- **Phase 3:** the tagging context: tag definitions, their values on releases and tracks, list filters and bulk edits; and dates.
 
-The rest of slunk's catalog context (releases, tracks, credits, the import's suggestions), its tagging context and its library check aren't ported yet, nor the media context's part of the library check (`checkFiles`, `relinkFiles`, `rehashFiles`). Their rules are in slunk's backend doc, `legacy/docs/development/backend.md`, and a rule moves here only once Rust does it, with a test.
+The rest of slunk's catalog context (releases, tracks, credits, the import's suggestions) and its library check aren't ported yet, nor the media context's part of the library check (`checkFiles`, `relinkFiles`, `rehashFiles`). Their rules are in slunk's backend doc, `legacy/docs/development/backend.md`, and a rule moves here only once Rust does it, with a test.
 
 ## Stack
 
@@ -43,6 +44,7 @@ crates/slunk/                the domain and its database, with no Tauri dependen
   src/text.rs                text as it's saved: NFC, trimmed as JavaScript trims
   src/paging.rs              a list's page, sort and search
   src/languages.rs           language tags as they're saved, as Node's Intl gave them
+  src/dates.rs               dates as they're typed, stored and shown
   src/media/                 the media context
     mod.rs                   Media: registering, browsing, updating, deleting
     library.rs               the library on disk, read-only
@@ -54,6 +56,10 @@ crates/slunk/                the domain and its database, with no Tauri dependen
     mod.rs                   Catalog: lists, artists, labels, pictures, deletes
     names.rs                 alternate names, and the links credited with them
     repository.rs            the records the catalog stores
+  src/tagging/               the tagging context
+    mod.rs                   Tagging: definitions, values, filters, bulk edits
+    values.rs                values as they're typed and shown
+    repository.rs            the records the tagging context stores
   src/repo/
     connection.rs            opening SQLite with the connection settings
     store.rs                 the one connection, and transactions
@@ -67,6 +73,7 @@ crates/slunk/                the domain and its database, with no Tauri dependen
     labels.rs                the releases a label is on
     lists.rs                 release formats and release media
     stats.rs                 the languages in use
+    tags.rs                  tag definitions, their values, and list filters
     helpers.rs               chunked in (…) lists, grouping, sea-query's values
     migrations/              one module per migration, listed in mod.rs
   tests/parity.rs            the migrations, checked against slunk's
@@ -74,6 +81,7 @@ crates/slunk/                the domain and its database, with no Tauri dependen
   tests/audio.rs             durations and tags, checked against slunk's
   tests/catalog.rs           the catalog context's rules
   tests/languages.rs         language tags, checked against Node's
+  tests/tagging.rs           the tagging context's rules
   tests/fixtures/parity/     what slunk's runner made, and the script that made it
   tests/fixtures/audio/      audio files, what slunk read from them, and the
                              script that made both
@@ -100,7 +108,7 @@ legacy/slunk-be/             slunk's backend, run as the sidecar
 
 `crates/slunk` doesn't depend on Tauri, so its tests run with a plain `cargo test`, and the CLI uses it directly. Its repositories are plain functions over a `&Connection`, and a `Transaction` is one.
 
-**Contexts** are structs, like slunk's context factories, wired once when a library opens (`Library::new()` in `src-tauri/src/library.rs`), as slunk's `server.ts` wired them: `Media::new(store, library)` takes the store and the library on disk, and `Catalog::new(store, media)` the store and the media context, which it registers files with. The library holds the media context in an `Arc`, which both share. Commands call contexts, and contexts call repositories.
+**Contexts** are structs, like slunk's context factories, wired once when a library opens (`Library::new()` in `src-tauri/src/library.rs`), as slunk's `server.ts` wired them: `Media::new(store, library)` takes the store and the library on disk, `Catalog::new(store, media)` the store and the media context, which it registers files with, and `Tagging::new(store)` the store. The library holds the media context in an `Arc`, which both share. Commands call contexts, and contexts call repositories.
 
 **The store** (`repo/store.rs`) holds the library's one connection, behind a mutex. `store.conn()` takes it. `store.transaction(|tx| …)` runs a closure in a transaction, started with `BEGIN IMMEDIATE`, since slunk's backend writes the same database until phase 6. A context that writes inside another's transaction takes the `tx`, as `Media::insert_prepared(tx, prepared)` does, so there's no nesting. A context reads files before taking the connection, never while holding it: `prepare_files()` looks up what's registered, lets go of the connection, then reads and hashes the rest.
 
@@ -206,6 +214,49 @@ node crates/slunk/tests/fixtures/languages/generate.ts
 ```
 
 `script_language()` gives the language a name's script gives away, for a name added as it was credited: kana are `ja`, and Hangul `ko`. Han characters could be Chinese or Japanese, so they give none. Nothing calls it yet.
+
+## The tagging context
+
+`crates/slunk/src/tagging/` holds tag definitions and their values on releases and tracks (slunk's design §4.3 Tags). Each type, `text`, `number` or `date`, has its own definition table, so the same id exists once per type, and every function takes the type with the id. Each type also has a value table per owner, release or track (`release_text_tags`, `track_text_tags`, …). Releases and tracks share the definitions, so one Genre tag works on both. `repo/tags.rs` serves all of them. Each rule here has a test in `tests/tagging.rs`, or next to its code, and the write parity script checks them against slunk's backend.
+
+- **Listing** shows one type's tags, or every type's together. It sorts by `name`, ignoring case, or by `id`, and ties go text, number, date. The search matches part of the name. Another sort is refused: "Tags can't be sorted by multiple".
+- **Names** are cleaned like other text, and unique across types, ignoring case. Each type's table enforces its own names ("There's already one with that name, ignoring case"), and the context checks the other two types when a tag is created or renamed: "There's already a number tag named Score". A blank name is the database's CHECK.
+- **Single or multiple.** Switching a tag to single-value fails while a release or track has several values, and says how many do: "1 release and 1 track have several values for this tag. Leave one value on each before making it single-value." `multi_value_owners()` lists them. The database refuses it too. An unknown id is `NotFound`: "There's no number tag 12".
+- **Deleting** a tag fails while any release or track has a value: "The tag is set on 2 releases and 1 track". `tag_blockers()` says it ahead of time: "Set on 2 releases and 1 track". An unknown id deletes nothing, as in slunk.
+- **Values** are typed as text and stored by type. One that can't be read names its tag: "Score: Not a number: abc".
+  - Text is cleaned (NFC, trimmed).
+  - A number is like `8`, `-3.25`, `.5` or `1e3`, as slunk's pattern and JavaScript's `Number()` read it, and must be finite.
+  - A date is `2006`, `2006-01` or `2006-01-10`, stored at midnight UTC on the first unknown day ([Dates](#dates)). There's no precision, so it comes back as a full day: `2006-01-01`.
+
+  They're shown as text (`format_value()`): a date as `2006-01-10`, and a number as JavaScript's `String()` writes it, with the fewest digits that read back as the same number: `8.5`, `1000`, `1e+21`, `1e-7`. Of two candidates as close, JavaScript takes the even one, which Rust's shortest form doesn't always do, so `format_number()` rounds the exact value to that many digits instead. It agreed with Node on 700,000 numbers while porting.
+- **A release's or track's values** are saved all at once (`set_tags()`, or `Tagging::set_tags_with()` inside another context's transaction), replacing the old ones:
+  - blank values are left out, so a tag with none is removed;
+  - a value given twice, ignoring case for text, is kept once, as first spelled;
+  - values keep the order they were given in, and a tag given twice gets one list;
+  - a single-value tag with two values is refused ("Score takes one value"), after every value has been read;
+  - an unknown tag is `NotFound` ("There's no text tag 12"), and `set_tags()` says so of a release or track that isn't there too ("There's no release 12").
+
+  They're read back grouped by tag, by tag name ignoring case, then text, number, date (`tags_of()`).
+- **Text values** are counted for a tag's page (`tag_values()`): each value with how many releases and tracks have it, the most used first, then by value. "Rock" and "rock" count as one, since values compare ignoring case. The search matches part of the value.
+- **List filters** (`tag_filters()`), for releases and tracks, are checked and turned into ranges:
+  - text: `equals` or `contains`, ignoring case: "A text tag filter takes a value, or part of one";
+  - numbers and dates: `equals`, or `min` and `max`, both included: "A number tag filter takes a value, or a range";
+  - a date covers its whole year, month or day, so `equals: "2024"` is all of 2024, and `max: "2024-03"` runs through March 31.
+
+  `repo::tags::tag_matches()` makes each one a sea-query condition, `releases.id in (select release_id …)` (or `tracks.id`) over the value table, which uses its `(tag_id, value)` index. Several filters must all match, even on the same tag. Nothing calls them yet: the release and track lists still filter through slunk's backend.
+- **Bulk edits** change one tag on many releases at once, in one transaction, and return how many releases changed. No command calls them yet: the bulk edits still go through slunk's backend.
+  - `set_tag_on_releases()`: a single-value tag gets the value instead of its old one, and a multi-value tag gets it added. Releases that have it already, ignoring case, are left alone. A blank value: "Type a value to set".
+  - `remove_tag_from_releases()`: removes one value, or every value of the tag when none is given.
+  - Ids of releases that don't exist are skipped.
+
+### Dates
+
+`dates.rs` reads a date as the user types it, `2006`, `2006-01` or `2006-01-10`: epoch seconds at midnight UTC on its first day, and how much of it is known. slunk worked dates out with JavaScript's `Date.UTC()`, and `dates.rs` does it with whole days, refusing what slunk refused:
+- anything else: "Not a date: 06. Write it as 2006, 2006-01 or 2006-01-10.";
+- a day that doesn't exist: "There's no such date: 2006-02-30";
+- a year before 100, which `Date.UTC()` read as 1900 to 1999: "There's no such date: 0099".
+
+`last_day()` is the last day of a date's year, month or day, for a filter's range, and `format_date()` writes a date's known parts as `toISOString()` writes them: `2006`, `2006-01` or `2006-01-10`.
 
 ## The database
 
@@ -326,7 +377,8 @@ The frontend calls the backend through Tauri commands, in `src-tauri/src/command
   - `lists.rs`: `list_items`, `list_item`, `list_item_options`, `create_list_item`, `rename_list_item` and `delete_list_item`, each with a `kind`;
   - `artists.rs`: `artists`, `artist`, `artist_options`, `artist_names`, `create_artist`, `update_artist`, `set_artist_picture` and `delete_artist`;
   - `labels.rs`: `labels`, `label`, `label_options`, `create_label`, `update_label`, `set_label_picture` and `delete_label`;
-  - `mod.rs`: `languages`, and what they share.
+  - `mod.rs`: `languages`, and what they share;
+- `tagging.rs` ([The tagging context](#the-tagging-context)): `tags`, `tag`, `tag_options`, `tags_by_ref`, `tag_values`, `tag_value_options`, `create_tag`, `update_tag` and `delete_tag`, which name a tag by its `type` and id, and a release's tags, `release_tags` and `set_release_tags`.
 
 Their conventions:
 - **Async.** Every command is `async`, and does its database and disk work on Tokio's blocking pool, with `blocking()`, or `on_library()` for one that needs the open library, which is `noLibrary` without one. A command that isn't `async` runs on the main thread, and freezes the window while it works.
@@ -402,7 +454,7 @@ The app's CSP allows `slunk:` and `http://slunk.localhost` in `img-src` and `med
 3. It runs the steps through slunk's backend, on a free port, and through `src-tauri/examples/run_commands.rs`, which opens the other library without the app and calls the commands' functions with the same JSON arguments.
 4. It compares results with ids as numbers, since GraphQL's are strings, and each library's folder replaced. Where a command returns something else than its GraphQL query, the step's `fromGraphql` maps one to the other: a picker's command returns a list, and its query a page.
 
-Each phase adds its steps in a module of `scripts/write-parity/` (`media.ts` is phase 1's, `catalog.ts` phase 2's), lists it in `PHASES`, and adds its commands to `run_commands.rs`. The steps run in order, on the same library, so a phase's steps start where the earlier phases' left it. A step that fails says so, with its message, even when both sides fail alike. `KEEP=1` keeps the temporary folder when they differ. It needs `npm install --prefix legacy/slunk-be`, and runs until phase 6, which deletes slunk's backend.
+Each phase adds its steps in a module of `scripts/write-parity/` (`media.ts` is phase 1's, `catalog.ts` phase 2's, `tagging.ts` phase 3's), lists it in `PHASES`, and adds its commands to `run_commands.rs`. The steps run in order, on the same library, so a phase's steps start where the earlier phases' left it. Every phase's `prepare` runs before any steps, so it mustn't add rows that earlier phases' steps would count or whose ids they'd take: phase 3's tags the track phase 1's made, and registers no file. A step that fails says so, with its message, even when both sides fail alike. `KEEP=1` keeps the temporary folder when they differ. It needs `npm install --prefix legacy/slunk-be`, and runs until phase 6, which deletes slunk's backend.
 
 ## The sidecar
 

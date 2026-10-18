@@ -1,4 +1,4 @@
-import { useMutation } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 
 import { QueryError } from "@/components/query-error"
@@ -27,8 +27,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { graphql } from "@/gql"
-import type { TagType } from "@/gql/graphql"
+import type { Tag, TagType } from "@/bindings"
+import { call } from "@/lib/query"
 import { TAG_TYPE_LABELS, TAG_TYPES } from "@/lib/tags"
 
 export type TagFieldValues = { type: TagType; name: string; multiple: boolean }
@@ -106,24 +106,6 @@ export function TagFields({
   )
 }
 
-export const CreateTag = graphql(`
-  mutation CreateTag($type: TagType!, $input: TagInput!) {
-    createTag(type: $type, input: $input) {
-      id
-      type
-      name
-      multiple
-    }
-  }
-`)
-
-export type CreatedTag = {
-  id: string
-  type: TagType
-  name: string
-  multiple: boolean
-}
-
 /**
  * Creates a tag from a picker, where a name alone isn't enough: it asks for
  * the type, and single or multiple. Closing it creates nothing.
@@ -134,14 +116,16 @@ export function NewTagDialog({
 }: {
   name: string
   /** The new tag, or null when cancelled */
-  onDone: (tag: CreatedTag | null) => void
+  onDone: (tag: Tag | null) => void
 }) {
   const [values, setValues] = useState<TagFieldValues>({
     type: "text",
     name,
     multiple: false,
   })
-  const [create, { loading, error }] = useMutation(CreateTag)
+  const create = useMutation({
+    mutationFn: () => call("createTag", values),
+  })
 
   return (
     <Dialog open onOpenChange={(open) => !open && onDone(null)}>
@@ -154,13 +138,7 @@ export function NewTagDialog({
             // the form that opened it
             event.stopPropagation()
             try {
-              const { data } = await create({
-                variables: {
-                  type: values.type,
-                  input: { name: values.name, multiple: values.multiple },
-                },
-              })
-              onDone(data!.createTag)
+              onDone(await create.mutateAsync())
             } catch {
               // The dialog shows the error
             }
@@ -173,7 +151,9 @@ export function NewTagDialog({
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
-            {error && <QueryError error={error} title="Can't create the tag" />}
+            {create.error && (
+              <QueryError error={create.error} title="Can't create the tag" />
+            )}
             <TagFields
               values={values}
               onChange={(changes) => setValues((v) => ({ ...v, ...changes }))}
@@ -187,7 +167,7 @@ export function NewTagDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={create.isPending}>
               Create tag
             </Button>
           </DialogFooter>

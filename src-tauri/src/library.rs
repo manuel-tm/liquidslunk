@@ -14,6 +14,7 @@ use slunk::media::Media;
 use slunk::repo::connection::{self, DATABASE_FILE};
 use slunk::repo::migrator;
 use slunk::repo::store::Store;
+use slunk::tagging::Tagging;
 use specta::Type;
 
 use crate::error::CommandError;
@@ -31,6 +32,7 @@ pub struct Library {
     pub store: Arc<Store>,
     pub media: Arc<Media>,
     pub catalog: Catalog,
+    pub tagging: Tagging,
 }
 
 impl Library {
@@ -43,6 +45,7 @@ impl Library {
             db: db.to_path_buf(),
             folder: folder_of(db),
             catalog: Catalog::new(store.clone(), media.clone()),
+            tagging: Tagging::new(store.clone()),
             media,
             store,
         }

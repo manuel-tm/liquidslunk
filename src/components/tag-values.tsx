@@ -1,6 +1,6 @@
 import { Link } from "react-router"
 
-import type { TagType } from "@/gql/graphql"
+import type { TagType } from "@/bindings"
 import { formatTagValue, tagValueUrl } from "@/lib/tags"
 
 /**
@@ -14,7 +14,7 @@ export function TagValues({
   list = "/releases",
 }: {
   type: TagType
-  tagId: string
+  tagId: number | string
   values: string[]
   list?: "/releases" | "/tracks"
 }) {

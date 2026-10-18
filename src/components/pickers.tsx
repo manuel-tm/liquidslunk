@@ -5,10 +5,9 @@ import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 
 import { type Option, Picker, type PickerProps } from "@/components/picker"
-import { type CreatedTag, NewTagDialog } from "@/components/tag-fields"
+import { NewTagDialog } from "@/components/tag-fields"
 import { graphql } from "@/gql"
-import type { FileType, ListKind } from "@/bindings"
-import type { TagType } from "@/gql/graphql"
+import type { FileType, ListKind, TagType } from "@/bindings"
 import { useDebounced } from "@/hooks/use-debounced"
 import { matchedName } from "@/lib/names"
 import { call, useCommand } from "@/lib/query"
@@ -243,30 +242,23 @@ export function FilePicker({
   )
 }
 
-const TagOptions = graphql(`
-  query TagOptions($q: String, $perPage: Int!) {
-    tags(q: $q, perPage: $perPage, sort: "name") {
-      items {
-        id
-        type
-        name
-        multiple
-      }
-    }
-  }
-`)
-
 /** A tag of any type. Ids repeat across types, so the option's id has both. */
 export type TagOption = Option & {
+  /** A string, as the other pickers' ids are, for the forms that still send GraphQL */
   tagId: string
   type: TagType
   multiple: boolean
 }
 
-export function tagOption(tag: CreatedTag): TagOption {
+export function tagOption(tag: {
+  id: number | string
+  type: TagType
+  name: string
+  multiple: boolean
+}): TagOption {
   return {
     id: `${tag.type}:${tag.id}`,
-    tagId: tag.id,
+    tagId: String(tag.id),
     type: tag.type,
     name: tag.name,
     multiple: tag.multiple,
@@ -283,7 +275,7 @@ export function TagPicker({
 }: PickerProps<TagOption> & { creatable?: boolean }) {
   const [query, setQuery] = useState("")
   const q = useDebounced(query)
-  const { data } = useQuery(TagOptions, { variables: { q, perPage: LIMIT } })
+  const { data } = useCommand("tagOptions", { q })
   const [creating, setCreating] = useState<{
     name: string
     resolve: (tag: TagOption | null) => void
@@ -296,7 +288,7 @@ export function TagPicker({
         noun="tag"
         query={query}
         onQuery={setQuery}
-        options={data?.tags.items.map(tagOption) ?? []}
+        options={data?.map(tagOption) ?? []}
         onCreate={
           creatable
             ? (name) => new Promise((resolve) => setCreating({ name, resolve }))
@@ -316,33 +308,16 @@ export function TagPicker({
   )
 }
 
-const TagValueOptions = graphql(`
-  query TagValueOptions($id: ID!, $q: String, $perPage: Int!) {
-    tag(type: text, id: $id) {
-      __typename
-      id
-      ... on TextTag {
-        values(q: $q, perPage: $perPage) {
-          items {
-            value
-          }
-        }
-      }
-    }
-  }
-`)
-
 /** A text tag's values, the most used first, matching what was typed. */
 export function useTagValues(tagId: string, query: string, skip = false) {
   const q = useDebounced(query)
-  const { data } = useQuery(TagValueOptions, {
-    variables: { id: tagId, q, perPage: LIMIT },
-    skip,
-  })
-  const tag = data?.tag
-  return tag?.__typename === "TextTag"
-    ? tag.values.items.map((item) => item.value)
-    : []
+  const { data } = useCommand(
+    "tagValueOptions",
+    { id: Number(tagId), q },
+    { enabled: !skip }
+  )
+  // A disabled query still gives what's cached for its key
+  return skip ? [] : (data ?? [])
 }
 
 /**

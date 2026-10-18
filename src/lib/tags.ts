@@ -1,4 +1,5 @@
-import type { TagFilterInput, TagRefInput, TagType } from "@/gql/graphql"
+import type { Tag, TagArgs, TagType } from "@/bindings"
+import type { TagFilterInput } from "@/gql/graphql"
 import { formatReleased } from "@/lib/format"
 
 export const TAG_TYPES: TagType[] = ["text", "number", "date"]
@@ -47,7 +48,11 @@ export type TagFilter = {
 
 const FILTER_KEY = /^(text|number|date)\.(\d+)(?:\.(contains|min|max))?$/
 
-export function tagFilterKey(type: TagType, tagId: string, op: TagFilterOp) {
+export function tagFilterKey(
+  type: TagType,
+  tagId: number | string,
+  op: TagFilterOp
+) {
   return op === "equals" ? `${type}.${tagId}` : `${type}.${tagId}.${op}`
 }
 
@@ -69,7 +74,7 @@ export function tagFiltersOf(params: URLSearchParams): TagFilter[] {
   })
 }
 
-/** A filter as the API takes it. */
+/** A filter as the lists' GraphQL takes it. */
 export function tagFilterInput(filter: TagFilter): TagFilterInput {
   return { type: filter.type, tagId: filter.tagId, [filter.op]: filter.value }
 }
@@ -85,24 +90,25 @@ export function describeTagFilter(name: string, filter: TagFilter): string {
 }
 
 /** The tags a list's filters name, once each, for `tagsByRef`. */
-export function tagFilterRefs(filters: TagFilter[]): TagRefInput[] {
+export function tagFilterRefs(filters: TagFilter[]): TagArgs[] {
   const refs = new Map(
-    filters.map((f) => [`${f.type}:${f.tagId}`, { type: f.type, id: f.tagId }])
+    filters.map((f) => [
+      `${f.type}:${f.tagId}`,
+      { type: f.type, id: Number(f.tagId) },
+    ])
   )
   return [...refs.values()]
 }
 
 /** Tag names by `type:id`, from `tagsByRef`. */
-export function tagNames(
-  tags: { id: string; type: TagType; name: string }[] | undefined
-): Map<string, string> {
+export function tagNames(tags: Tag[] | undefined): Map<string, string> {
   return new Map((tags ?? []).map((t) => [`${t.type}:${t.id}`, t.name]))
 }
 
 /** A list filtered to what has this value: releases, or tracks. */
 export function tagValueUrl(
   type: TagType,
-  tagId: string,
+  tagId: number | string,
   value: string,
   list: "/releases" | "/tracks" = "/releases"
 ) {

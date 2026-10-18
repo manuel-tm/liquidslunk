@@ -34,8 +34,9 @@ import { isDeepStrictEqual } from "node:util"
 
 import { catalog } from "./catalog.ts"
 import { type Phase, media } from "./media.ts"
+import { tagging } from "./tagging.ts"
 
-const PHASES: Phase[] = [media, catalog]
+const PHASES: Phase[] = [media, catalog, tagging]
 
 // Copies keep their files' times and their symlinks
 const COPY = {

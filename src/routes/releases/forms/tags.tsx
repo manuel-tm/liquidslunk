@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 
 import { QueryError } from "@/components/query-error"
@@ -10,42 +10,8 @@ import {
 } from "@/components/tags-editor"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { graphql } from "@/gql"
+import { call, idParam, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
-
-const ReleaseTagsFormQuery = graphql(`
-  query ReleaseTagsForm($id: ID!) {
-    release(id: $id) {
-      id
-      tags {
-        tag {
-          id
-          type
-          name
-          multiple
-        }
-        values
-      }
-    }
-  }
-`)
-
-const SetReleaseTags = graphql(`
-  mutation SetReleaseTags($id: ID!, $tags: [TagValuesInput!]!) {
-    setReleaseTags(id: $id, tags: $tags) {
-      id
-      tags {
-        tag {
-          id
-          type
-          name
-          multiple
-        }
-        values
-      }
-    }
-  }
-`)
 
 /** A release's Tags tab (slunk's design §7.6), which the import's last step reuses. */
 export function ReleaseTagsForm({
@@ -53,22 +19,27 @@ export function ReleaseTagsForm({
   submitLabel = "Save",
   onSaved,
 }: {
+  /** From the URL */
   releaseId: string
   submitLabel?: string
   onSaved: () => void
 }) {
-  const { data, error } = useQuery(ReleaseTagsFormQuery, {
-    variables: { id: releaseId },
-    fetchPolicy: "network-only",
-  })
+  const id = idParam(releaseId)
+  // A form starts from fresh data (design §7.2)
+  const { data: tags, error } = useCommand(
+    "releaseTags",
+    { id: id ?? 0 },
+    { fresh: true, enabled: id !== null }
+  )
 
+  if (id === null || tags === null) return <NotFound />
   if (error) return <QueryError error={error} title="Can't load the tags" />
-  if (!data) return <Skeleton className="h-64 w-full max-w-2xl" />
-  if (!data.release) return <NotFound />
+  if (!tags) return <Skeleton className="h-64 w-full max-w-2xl" />
   return (
     <Form
-      releaseId={releaseId}
-      initial={tagRows(data.release.tags)}
+      key={id}
+      releaseId={id}
+      initial={tagRows(tags)}
       submitLabel={submitLabel}
       onSaved={onSaved}
     />
@@ -81,13 +52,16 @@ function Form({
   submitLabel,
   onSaved,
 }: {
-  releaseId: string
+  releaseId: number
   initial: TagRow[]
   submitLabel: string
   onSaved: () => void
 }) {
   const [rows, setRows] = useState(initial)
-  const [save, { loading, error }] = useMutation(SetReleaseTags)
+  const save = useMutation({
+    mutationFn: () =>
+      call("setReleaseTags", { id: releaseId, tags: tagValuesInput(rows) }),
+  })
 
   return (
     <form
@@ -95,19 +69,19 @@ function Form({
       onSubmit={async (event) => {
         event.preventDefault()
         try {
-          await save({
-            variables: { id: releaseId, tags: tagValuesInput(rows) },
-          })
+          await save.mutateAsync()
           onSaved()
         } catch {
           // The form shows the error
         }
       }}
     >
-      {error && <QueryError error={error} title="Can't save the tags" />}
+      {save.error && (
+        <QueryError error={save.error} title="Can't save the tags" />
+      )}
       <TagsEditor rows={rows} onChange={setRows} />
       <div>
-        <Button type="submit" disabled={loading}>
+        <Button type="submit" disabled={save.isPending}>
           {submitLabel}
         </Button>
       </div>

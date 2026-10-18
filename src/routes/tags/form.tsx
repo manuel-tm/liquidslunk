@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { CircleAlertIcon } from "lucide-react"
 import { useState } from "react"
 import { Link, useNavigate, useParams } from "react-router"
@@ -6,57 +6,15 @@ import { Link, useNavigate, useParams } from "react-router"
 import { ButtonLink } from "@/components/button-link"
 import { PageHeader } from "@/components/page-header"
 import { QueryError } from "@/components/query-error"
-import {
-  CreateTag,
-  type TagFieldValues,
-  TagFields,
-} from "@/components/tag-fields"
+import { type TagFieldValues, TagFields } from "@/components/tag-fields"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { FieldGroup } from "@/components/ui/field"
 import { Skeleton } from "@/components/ui/skeleton"
-import { graphql } from "@/gql"
-import type { TagFormQuery } from "@/gql/graphql"
+import type { TagDetails } from "@/bindings"
+import { call, idParam, useCommand } from "@/lib/query"
 import { isTagType } from "@/lib/tags"
 import { NotFound } from "@/routes/not-found"
-
-const TagFormQueryDocument = graphql(`
-  query TagForm($type: TagType!, $id: ID!) {
-    tag(type: $type, id: $id) {
-      id
-      type
-      name
-      multiple
-      multiValueReleases(perPage: 20) {
-        total
-        items {
-          id
-          title
-        }
-      }
-      multiValueTracks(perPage: 20) {
-        total
-        items {
-          id
-          title
-        }
-      }
-    }
-  }
-`)
-
-const UpdateTag = graphql(`
-  mutation UpdateTag($type: TagType!, $id: ID!, $input: TagInput!) {
-    updateTag(type: $type, id: $id, input: $input) {
-      id
-      type
-      name
-      multiple
-    }
-  }
-`)
-
-type Tag = NonNullable<TagFormQuery["tag"]>
 
 /**
  * `/tags/create` and `/tags/:type/:id/update` (slunk's design §7.8): type (only
@@ -65,14 +23,17 @@ type Tag = NonNullable<TagFormQuery["tag"]>
 export function TagForm() {
   const { type, id } = useParams()
   const editing = id !== undefined
-  const { data, error } = useQuery(TagFormQueryDocument, {
-    variables: { type: isTagType(type) ? type : "text", id: id ?? "" },
-    skip: !editing || !isTagType(type),
-    fetchPolicy: "network-only",
-  })
+  const tagId = idParam(id)
+  // A form starts from fresh data (design §7.2)
+  const { data: tag, error } = useCommand(
+    "tag",
+    { type: isTagType(type) ? type : "text", id: tagId ?? 0 },
+    { fresh: true, enabled: editing && isTagType(type) && tagId !== null }
+  )
 
-  if (editing && (!isTagType(type) || (data && !data.tag))) return <NotFound />
-  const tag = data?.tag
+  if (editing && (!isTagType(type) || tagId === null || tag === null)) {
+    return <NotFound />
+  }
 
   return (
     <>
@@ -96,23 +57,32 @@ export function TagForm() {
         ) : editing && !tag ? (
           <Skeleton className="h-48 w-full" />
         ) : (
-          <Form tag={tag ?? undefined} />
+          // Keyed, so a form for another tag, or a new one, starts afresh
+          <Form
+            key={tag ? `${tag.type}:${tag.id}` : "new"}
+            tag={tag ?? undefined}
+          />
         )}
       </div>
     </>
   )
 }
 
-function Form({ tag }: { tag?: Tag }) {
+function Form({ tag }: { tag?: TagDetails }) {
   const navigate = useNavigate()
   const [values, setValues] = useState<TagFieldValues>({
     type: tag?.type ?? "text",
     name: tag?.name ?? "",
     multiple: tag?.multiple ?? false,
   })
-  const [create, created] = useMutation(CreateTag)
-  const [update, updated] = useMutation(UpdateTag)
-  const error = created.error ?? updated.error
+  const save = useMutation({
+    mutationFn: () => {
+      const input = { name: values.name, multiple: values.multiple }
+      return tag
+        ? call("updateTag", { type: tag.type, id: tag.id, ...input })
+        : call("createTag", { type: values.type, ...input })
+    },
+  })
   // Switching to single fails while these have several values (slunk's design §4.4)
   const switching = tag?.multiple && !values.multiple
   const blocking = !switching
@@ -137,16 +107,8 @@ function Form({ tag }: { tag?: Tag }) {
     <form
       onSubmit={async (event) => {
         event.preventDefault()
-        const input = { name: values.name, multiple: values.multiple }
         try {
-          const saved = tag
-            ? (
-                await update({
-                  variables: { type: tag.type, id: tag.id, input },
-                })
-              ).data!.updateTag
-            : (await create({ variables: { type: values.type, input } })).data!
-                .createTag
+          const saved = await save.mutateAsync()
           navigate(`/tags/${saved.type}/${saved.id}`)
         } catch {
           // The form shows the error
@@ -154,7 +116,7 @@ function Form({ tag }: { tag?: Tag }) {
       }}
     >
       <FieldGroup>
-        {error && <QueryError error={error} title="Can't save" />}
+        {save.error && <QueryError error={save.error} title="Can't save" />}
         <TagFields
           values={values}
           typeFixed={tag !== undefined}
@@ -186,7 +148,7 @@ function Form({ tag }: { tag?: Tag }) {
           </Alert>
         )}
         <div className="flex gap-2">
-          <Button type="submit" disabled={created.loading || updated.loading}>
+          <Button type="submit" disabled={save.isPending}>
             Save
           </Button>
           <ButtonLink
