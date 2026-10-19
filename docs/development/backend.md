@@ -514,7 +514,7 @@ Each failure is an `invalid` error, in words. An I/O or locking error adds that 
 - The content type comes from the extension, by mime_guess, except `audio/mp4` for `m4a`, as slunk's backend sent it.
 - Range requests get a 206 with `Content-Range`, so audio can seek. A response is a whole body in memory, so a range with no end (`bytes=0-`) gets 1 MB, and the media element asks for the rest as it plays. A request with no range gets the whole file.
 
-The app's CSP allows `slunk:` and `http://slunk.localhost` in `img-src` and `media-src`. A page's `fetch()` can't read them: they're for media elements.
+The app's CSP allows `slunk:` and `http://slunk.localhost` in `img-src` and `media-src`. A page's `fetch()` can't read them: they're for media elements. Scripts and workers come only from the app's own files, by `default-src 'self'`: the player's worker is one of them, bundled by Vite ([frontend.md](frontend.md#nearly-gapless)).
 
 ### The menu bar
 

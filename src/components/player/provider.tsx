@@ -30,7 +30,10 @@ import {
   type Repeat,
   restoredQueue,
   savedQueue,
+  upNext,
 } from "@/lib/queue"
+
+import { playerElements } from "./elements"
 
 // The browser remembers the volume, shuffle and repeat, for every library, as
 // it does the theme, and the queue per library, since ids belong to one
@@ -185,12 +188,13 @@ function within(target: EventTarget | null, selector: string) {
 }
 
 /**
- * The app's one player (2_player.md §4.1): the queue, and the one `<audio>`
- * element that plays it. It's inside `AppLayout`'s keyed `SidebarProvider`,
- * so it keeps playing from page to page, and stops when the library closes
- * or switches. The sidebar only shows its controls, so a hidden sidebar
- * doesn't stop the music. It starts with the library's remembered queue,
- * paused.
+ * The app's one player (2_player.md §4.1): the queue, and the two `<audio>`
+ * elements that play it, one ahead of the other so tracks follow each other
+ * with nearly no gap (3_gapless.md). It's inside `AppLayout`'s keyed
+ * `SidebarProvider`, so it keeps playing from page to page, and stops when
+ * the library closes or switches. The sidebar only shows its controls, so a
+ * hidden sidebar doesn't stop the music. It starts with the library's
+ * remembered queue, paused.
  */
 export function PlayerProvider({
   library,
@@ -200,11 +204,23 @@ export function PlayerProvider({
   library: string
   children: ReactNode
 }) {
-  const audio = useRef<HTMLAudioElement>(null)
   const [queue, dispatch] = useReducer(queueReducer, library, rememberedQueue)
   const [waiting, setWaiting] = useState(false)
   const [{ volume, muted }, setVolumeState] = useState(rememberedVolume)
   const [time] = useState(timeStore)
+  // The two elements: the current one, and the one loaded ahead. Each swap
+  // asks for what's up next again.
+  const [swaps, setSwaps] = useState(0)
+  const [elements] = useState(() =>
+    playerElements(
+      () => dispatch({ type: "handoff" }),
+      (element) => {
+        setWaiting(false)
+        setSwaps((swaps) => swaps + 1)
+        time.set(element.currentTime, element.duration)
+      }
+    )
+  )
 
   // What the player shows of each queued track. Saves fetch it again, and
   // the last data stays while the queue's ids change.
@@ -233,35 +249,28 @@ export function PlayerProvider({
     }
   }, [data, isPlaceholderData, ids])
 
-  // The element follows the queue. Its source changes only when the current
-  // entry does, never on a fetch, so a save never interrupts what plays.
-  const loaded = useRef<number | null>(null)
+  // The current element follows the queue. Its source changes only when the
+  // current entry does, never on a fetch, so a save never interrupts what
+  // plays.
+  const currentKey = current?.key ?? null
+  const currentSrc = track && fileUrl(track.file.id)
   useEffect(() => {
-    const element = audio.current
-    if (!element) return
-    if (!current) {
-      if (loaded.current !== null) {
-        loaded.current = null
-        element.pause()
-        element.removeAttribute("src")
-        element.load()
-      }
-      return
-    }
-    if (loaded.current !== current.key) {
-      if (!track) return
-      loaded.current = current.key
-      element.src = fileUrl(track.file.id)
-    }
-    if (queue.playing) {
-      if (element.paused) {
-        // Changing the source aborts a play() that hasn't started yet
-        element.play().catch(() => {})
-      }
-    } else if (!element.paused) {
-      element.pause()
-    }
-  }, [current, track, queue.playing])
+    elements.follow(
+      currentKey === null ? null : { key: currentKey, src: currentSrc },
+      queue.playing
+    )
+  }, [elements, currentKey, currentSrc, queue.playing])
+
+  // The other one loads what's up next (3_gapless.md §3), and loads again
+  // whenever the queue changes what that is, or the elements swap
+  const ahead = upNext(queue)
+  const nextKey = ahead?.key ?? null
+  const nextTrack = ahead && tracks.get(ahead.trackId)
+  const nextSrc = nextTrack ? fileUrl(nextTrack.file.id) : null
+  useEffect(() => {
+    elements.setAhead(nextKey === null ? null : { key: nextKey, src: nextSrc })
+  }, [elements, nextKey, nextSrc, swaps])
+  useEffect(() => () => elements.dispose(), [elements])
 
   // Remembered as it changes (2_player.md §5.7)
   const saved = JSON.stringify(savedQueue(queue))
@@ -278,16 +287,13 @@ export function PlayerProvider({
   useEffect(() => {
     if (queue.restarts === restarts.current) return
     restarts.current = queue.restarts
-    if (audio.current) audio.current.currentTime = 0
-  }, [queue.restarts])
+    elements.restart()
+  }, [elements, queue.restarts])
 
   useEffect(() => {
-    const element = audio.current
-    if (!element) return
-    element.volume = volume
-    element.muted = muted
+    elements.setVolume(volume, muted)
     remember(VOLUME, JSON.stringify({ volume, muted }))
-  }, [volume, muted])
+  }, [elements, volume, muted])
 
   const play = useCallback(
     (trackIds: number[], start?: number) =>
@@ -309,8 +315,12 @@ export function PlayerProvider({
   )
   const next = useCallback(() => dispatch({ type: "next" }), [])
   const previous = useCallback(
-    () => dispatch({ type: "previous", time: audio.current?.currentTime ?? 0 }),
-    []
+    () =>
+      dispatch({
+        type: "previous",
+        time: elements.current()?.currentTime ?? 0,
+      }),
+    [elements]
   )
   const jump = useCallback(
     (entry: Entry) => dispatch({ type: "jump", key: entry.key }),
@@ -382,24 +392,24 @@ export function PlayerProvider({
   }, [queued, toggle, next, previous, setVolume, volume])
 
   // One sound at a time (2_player.md §7.2): the file page's preview pauses
-  // the player, and the player pauses it. Media events don't bubble, so this
-  // listens in the capture phase.
+  // the player, and the player pauses it. Both of the player's elements are
+  // the player's. Media events don't bubble, so this listens in the capture
+  // phase.
   useEffect(() => {
     function onPlay(event: Event) {
-      const element = audio.current
       const started = event.target
-      if (!element || !(started instanceof HTMLMediaElement)) return
-      if (started !== element) {
-        element.pause()
+      if (!(started instanceof HTMLMediaElement)) return
+      if (!elements.ours(started)) {
+        elements.pause()
         return
       }
       for (const other of document.querySelectorAll("audio, video")) {
-        if (other !== element) (other as HTMLMediaElement).pause()
+        if (!elements.ours(other)) (other as HTMLMediaElement).pause()
       }
     }
     document.addEventListener("play", onPlay, true)
     return () => document.removeEventListener("play", onPlay, true)
-  }, [])
+  }, [elements])
 
   // Now Playing and the media keys (2_player.md §8.1)
   const title = track?.title
@@ -432,7 +442,8 @@ export function PlayerProvider({
   // and no seeking (2_player.md Appendix B). WebKit drops a handler set before
   // a media element has registered with its Now Playing, and offers its own
   // actions instead: a scrubber and 15-second skips. So the handlers are set
-  // again whenever the element starts playing (Appendix C).
+  // again whenever an element starts playing (Appendix C): either one, since
+  // they take turns (3_gapless.md §3).
   const setActions = useCallback(() => {
     if (!("mediaSession" in navigator)) return
     const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
@@ -509,8 +520,15 @@ export function PlayerProvider({
     return () => void listening.then((unlisten) => unlisten())
   }, [])
 
-  // A track that can't play is skipped (2_player.md §7.1)
+  // Only the current element's events count. The other one loads ahead, and
+  // starts the next track just before the current one ends (3_gapless.md §3).
+  const isCurrent = (event: SyntheticEvent<HTMLAudioElement>) =>
+    elements.isCurrent(event.currentTarget)
+
+  // A track that can't play is skipped (2_player.md §7.1). One that fails to
+  // load ahead is, once it would play.
   function onError(event: SyntheticEvent<HTMLAudioElement>) {
+    if (!isCurrent(event)) return elements.failed(event.currentTarget)
     if (!current || !event.currentTarget.getAttribute("src")) return
     toast.error(`Can't play ${track?.title ?? "the track"}`, {
       description: (
@@ -525,6 +543,7 @@ export function PlayerProvider({
   }
 
   function onTime(event: SyntheticEvent<HTMLAudioElement>) {
+    if (!isCurrent(event)) return
     const element = event.currentTarget
     time.set(element.currentTime, element.duration)
   }
@@ -590,33 +609,57 @@ export function PlayerProvider({
     <PlayerContext.Provider value={player}>
       <TimeContext.Provider value={time}>
         {children}
-        <audio
-          ref={audio}
-          preload="auto"
-          className="hidden"
-          onPlay={() => dispatch({ type: "setPlaying", playing: true })}
-          onPause={() => {
-            setWaiting(false)
-            dispatch({ type: "setPlaying", playing: false })
-          }}
-          onPlaying={() => {
-            setActions()
-            setWaiting(false)
-            dispatch({ type: "started" })
-          }}
-          onWaiting={() => setWaiting(true)}
-          onCanPlay={() => setWaiting(false)}
-          // A track that ends says it paused first: `ended` plays the next one
-          onEnded={() => dispatch({ type: "ended" })}
-          onError={onError}
-          onTimeUpdate={onTime}
-          onDurationChange={onTime}
-          onSeeked={onTime}
-          onEmptied={(event) => {
-            setWaiting(false)
-            onTime(event)
-          }}
-        />
+        {[0, 1].map((index) => (
+          <audio
+            key={index}
+            ref={(element) => elements.attach(index, element)}
+            preload="auto"
+            className="hidden"
+            onPlay={(event) => {
+              if (!isCurrent(event)) {
+                return elements.otherPlayed(event.currentTarget)
+              }
+              dispatch({ type: "setPlaying", playing: true })
+            }}
+            onPause={(event) => {
+              // A track that ends says it paused first. Once the next one has
+              // started, that's not the player pausing.
+              const element = event.currentTarget
+              if (!isCurrent(event) || elements.isEnding(element)) return
+              setWaiting(false)
+              dispatch({ type: "setPlaying", playing: false })
+            }}
+            onPlaying={(event) => {
+              setActions()
+              if (!isCurrent(event)) return
+              setWaiting(false)
+              dispatch({ type: "started" })
+              elements.playing(event.currentTarget)
+            }}
+            onWaiting={(event) => isCurrent(event) && setWaiting(true)}
+            onCanPlay={(event) => isCurrent(event) && setWaiting(false)}
+            // The next track plays: it already has, when it started just
+            // before this one ended
+            onEnded={(event) => {
+              if (!isCurrent(event)) return
+              if (!elements.ended(event.currentTarget)) {
+                dispatch({ type: "ended" })
+              }
+            }}
+            onError={onError}
+            onTimeUpdate={(event) => {
+              onTime(event)
+              elements.timeUpdated(event.currentTarget)
+            }}
+            onDurationChange={onTime}
+            onSeeked={onTime}
+            onEmptied={(event) => {
+              if (!isCurrent(event)) return
+              setWaiting(false)
+              onTime(event)
+            }}
+          />
+        ))}
       </TimeContext.Provider>
     </PlayerContext.Provider>
   )

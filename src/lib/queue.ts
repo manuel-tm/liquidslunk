@@ -3,6 +3,8 @@
 // queue, with no React and no audio element, so they're tested on their own.
 // `PlayerProvider` keeps the queue with `useReducer`, and makes the element
 // follow it. Shuffling takes a seed from the action, so the reducer stays pure.
+// `upNext()` says what plays when the current track ends, which the provider
+// loads ahead, for the handoff (3_gapless.md §3).
 
 /** A queued track. Its key is its own, so a track queued twice is two. */
 export type Entry = { key: number; trackId: number }
@@ -47,6 +49,11 @@ export type QueueAction =
   | { type: "previous"; time: number }
   /** The current track played to its end */
   | { type: "ended" }
+  /**
+   * What was up next started in the other element, just before the current
+   * track ended (3_gapless.md §3)
+   */
+  | { type: "handoff" }
   /** The current track can't play: missing, or a format that can't */
   | { type: "failed" }
   /** The current track started playing */
@@ -79,6 +86,20 @@ export const emptyQueue: Queue = {
 /** The current entry, or null with nothing queued. */
 export function currentEntry(queue: Queue): Entry | null {
   return queue.entries[queue.current] ?? null
+}
+
+/**
+ * The entry that plays when the current one ends, by the rules `ended`
+ * follows: the next one; after the last, the first with repeat all, or
+ * nothing; with repeat one, the current one again. Null with nothing queued.
+ */
+export function upNext(queue: Queue): Entry | null {
+  if (queue.current < 0) return null
+  if (queue.repeat === "one") return queue.entries[queue.current]
+  if (queue.current < queue.entries.length - 1) {
+    return queue.entries[queue.current + 1]
+  }
+  return queue.repeat === "all" ? queue.entries[0] : null
 }
 
 /** Repeat's next setting: off, all, one, then off again. */
@@ -143,6 +164,16 @@ export function queueReducer(queue: Queue, action: QueueAction): Queue {
       return queue.repeat === "one"
         ? restart(queue, true)
         : advance(queue, true)
+    case "handoff": {
+      // As `ended`, but what's up next is already playing from its start, in
+      // the other element: it doesn't restart, even when it's the same entry
+      const next = upNext(queue)
+      if (!next) return queueReducer(queue, { type: "ended" })
+      const current = queue.entries.indexOf(next)
+      return current === queue.current && queue.playing
+        ? queue
+        : { ...queue, current, playing: true }
+    }
     case "failed": {
       if (!queued) return queue
       const failed = { ...queue, failures: queue.failures + 1 }

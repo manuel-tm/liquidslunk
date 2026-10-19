@@ -15,7 +15,7 @@ The frontend is slunk's, moved into the app in phase 0, in `src/`. It does every
 - bulk edits on the release list: setting or removing a tag on many releases;
 - the import: a release built from a folder, step by step, with titles split at " = " and artists matched by any of their names;
 - the library check: files missing, moved or changed on disk, unregistered files, and gaps in the catalog;
-- the music player, in the sidebar: a queue of tracks, played or added from the release and track pages, the track list and the release table, with shuffle, repeat, shortcuts, macOS's Now Playing and a Controls menu in the menu bar ([The player](#the-player)).
+- the music player, in the sidebar: a queue of tracks, played or added from the release and track pages, the track list and the release table, with shuffle, repeat, shortcuts, macOS's Now Playing and a Controls menu in the menu bar, and nearly no gap between tracks ([The player](#the-player)).
 
 Its data comes from Tauri commands, through TanStack Query ([Data](#data)). slunk's frontend read it through GraphQL, and the port moved each page to commands as the context behind it was ported ([design §7.3](../design/1_introduction.md#73-converting-a-route)).
 
@@ -87,9 +87,13 @@ src/
     app-sidebar.tsx        the sidebar: the library menu, the player,
                            Import, the sections, the lists
     player/
-      provider.tsx         the player: its queue, the one <audio> element,
+      provider.tsx         the player: its queue, its two <audio> elements,
                            its shortcuts and Now Playing; usePlayer() and
                            usePlayerTime()
+      elements.ts          the two elements: the current one, the one that
+                           loads what's up next, and the handoff between them
+      ticks.worker.ts      a worker that ticks every few milliseconds, to
+                           time the handoff in a hidden window
       sidebar-player.tsx   the player's controls, in the sidebar's header
       queue-sheet.tsx      the queue, in a sheet: play, drag to move, remove,
                            clear
@@ -162,8 +166,8 @@ src/
                            title's parts around " = "
     import.ts              the artists the import's tags pick, the tags left
                            to pick, and the other names to offer
-    queue.ts               the player's queue, as a reducer; queue.test.ts
-                           tests it
+    queue.ts               the player's queue, as a reducer, and what plays
+                           next; queue.test.ts tests them
     tags.ts                tag types, values, and the list's tag filters
     utils.ts               cn() helper
 ```
@@ -375,7 +379,7 @@ The release list's rows have checkboxes (`bulk-edit.tsx`). The selection is kept
 ### The player
 
 The player plays a queue of tracks from the sidebar ([2_player.md](../design/2_player.md)).
-- **Where it is.** `PlayerProvider` (`components/player/provider.tsx`) is inside `AppLayout`'s `SidebarProvider`, around the sidebar and the page. It renders the app's one `<audio>` element, hidden. So the music keeps playing from page to page, and since `SidebarProvider` is keyed by the library, it stops when the library switches or closes. The sidebar's header shows the controls (`SidebarPlayer`), between the library menu and Import. When the sidebar is hidden, collapsed or in its sheet below 768 px, so is the player, and the music plays on.
+- **Where it is.** `PlayerProvider` (`components/player/provider.tsx`) is inside `AppLayout`'s `SidebarProvider`, around the sidebar and the page. It renders the app's two `<audio>` elements, hidden, one ahead of the other ([Nearly gapless](#nearly-gapless)). So the music keeps playing from page to page, and since `SidebarProvider` is keyed by the library, it stops when the library switches or closes. The sidebar's header shows the controls (`SidebarPlayer`), between the library menu and Import. When the sidebar is hidden, collapsed or in its sheet below 768 px, so is the player, and the music plays on.
 - **The controls:** the release's cover, the track's title, who performs it and the release, each linking to its page; a bar of how far the track has played, with the time played and the track's length; shuffle, previous, play/pause, next, and repeat; mute, the volume, and the queue's button. Shuffle and repeat are in the accent color while they're on. With nothing queued, the player is one line: "Nothing playing".
 - **Playing** replaces the queue. Pages call `usePlayer()`, and never touch the element.
   - On the release page, Play, by the tracklist's heading, plays the release from its first track, or from a random one when shuffled. A track's play button (`TrackPlayButton`) plays the release from that track. The current track's number becomes a speaker icon, and its button pauses.
@@ -383,7 +387,7 @@ The player plays a queue of tracks from the sidebar ([2_player.md](../design/2_p
   - On the track list, a row's play button plays the page's rows, in the list's order, from that row, so a filtered list plays like a playlist, a page at a time.
   - In the release table, on the release list, a label's page and an artist's Releases tab, each cover shows a play button on hover or keyboard focus (`ReleasePlayButton`). It asks `releaseTrackIds` for the release's tracks, then plays them like the release page's Play. A release with no tracks says so in a toast.
 - **Adding** keeps the queue. The queue menu (`QueueMenu`), by the release page's Play, on each tracklist row, by the track page's Play, and on each track list row, has Play next, which puts the tracks right after the current one, and Add to queue, which puts them at the end. A toast says what was added: "Added 12 tracks to the queue". With nothing queued, either one starts a queue, paused at its first track.
-- **The queue** is a reducer, `queueReducer` in `lib/queue.ts`, with no React and no element. The provider keeps it with `useReducer`, and the element follows it. An entry is a track id with a key of its own, so a track can be queued twice. The element's source changes only when the current entry does, never on a fetch, so a save never interrupts what plays.
+- **The queue** is a reducer, `queueReducer` in `lib/queue.ts`, with no React and no element. The provider keeps it with `useReducer`, and the current element follows it. An entry is a track id with a key of its own, so a track can be queued twice. The current element's source changes only when the current entry does, never on a fetch, so a save never interrupts what plays.
 - **Its rules:**
   - Previous goes back to the track's start after its first 3 seconds, and to the previous track before that. On the first track, it goes back to its start, or with repeat all, to the last track.
   - Next, and a track that ends, go to the next track. After the last, the player stops, paused at the last track's start, or with repeat all, goes on to the first.
@@ -394,15 +398,28 @@ The player plays a queue of tracks from the sidebar ([2_player.md](../design/2_p
   - **Moving a row:** it's dragged from anywhere on it, its title, cover and buttons included, with dnd-kit. The drag starts once the pointer has moved a few pixels, so a click still plays a row or follows a link, and the list scrolls while a row is dragged near its edges. dnd-kit keeps the click that ends a drag from reaching the row, but not its default, which on a link is the browser loading the link's page itself, so the sheet prevents that default for a moment after a drag. With its grip focused, the up and down arrow keys move it a place, the focus stays on it, and a live region says where it went ("Survive moved to place 2 of 11"). The keys don't go through dnd-kit's keyboard sensor: it listens on the document, and Base UI's dialog popup, which the sheet is, stops arrow keys from leaving it.
 - **Remembering.** The queue is remembered per library, in `localStorage` under `slunk.player.queue:<the library's path>`, since its ids belong to the library: its tracks in the order they play, the current one, and while shuffled, their order before. It's written as it changes, and `PlayerProvider`, which `AppLayout` gives the library's path, starts from it, paused at the current track's start (`restoredQueue()`). Shuffle and repeat are remembered for every library (`slunk.player.shuffle`, `slunk.player.repeat`). What isn't a queue, like something an older version wrote, is ignored.
 - **What it shows** comes from `playerTracks`, with the queue's ids. It's mounted, so every save fetches it again, and it reads with `{ keepPrevious: true }`, so it doesn't flicker when the queue changes. A track that's deleted leaves the queue. When it's the current one, the next one plays.
-- **The time** comes from `usePlayerTime()`, a store the element's events update, which only the progress bar reads, so nothing else renders again on each `timeupdate`. The track's length is the element's once it has read the file, and the catalog's `durationMs` until then.
+- **The time** comes from `usePlayerTime()`, a store the current element's events update, which only the progress bar reads, so nothing else renders again on each `timeupdate`. The track's length is the element's once it has read the file, and the catalog's `durationMs` until then.
 - **No seeking.** WebKit seeks a FLAC file by estimate, not with its seek table, so a seek can play from several seconds away from the time it shows: on a live track 4:28 long, a seek to 4:18 played from about 4:08. So nothing in the player seeks ([2_player.md](../design/2_player.md) Appendices A and B): the bar only shows how far the track has played, and Now Playing has no seek action, so it shows no scrubber or skips. Previous still goes back to a track's start, which is exact. The file page's preview is the browser's own player, so it can still seek, by estimate.
-- **One sound at a time:** when the file page's preview starts, the player pauses, and when the player starts, the preview pauses. The provider listens for `play` on the document, in the capture phase, since media events don't bubble.
+- **One sound at a time:** when the file page's preview starts, the player pauses, and when the player starts, the preview pauses. Both of the player's elements are the player's. The provider listens for `play` on the document, in the capture phase, since media events don't bubble.
 - **Shortcuts,** while something is queued: Space plays or pauses, ⌘→ and ⌘← go to the next and the previous track, and ⌘↑ and ⌘↓ change the volume by 10%. Space is ignored while a field or another control has focus, since Space presses that. The ⌘ arrows are ignored in a field, where they move the caret.
   - The Controls menu shows the ⌘ arrows as its items' key equivalents, but the provider still handles them. WebKit gives the page a key first, and the menu gets only what the page leaves: without the provider's handler, ⌘↓ on a long page scrolls it to its end, and the menu never sees it ([2_player.md](../design/2_player.md) Appendix E). In a field, WebKit moves the caret, so the menu doesn't get them there either.
-- **The volume,** and whether it's muted, are remembered in `localStorage` (`slunk.player.volume`), for every library, as the theme is. Changing the volume unmutes. It's kept in hundredths, so steps of 10% don't drift: 0.8 - 0.1 would be 0.7000000000000001.
-- **Now Playing.** The provider sets `navigator.mediaSession`'s metadata (the title, who performs it, the release, and the cover as `fileUrl()`), its state, and handlers for play, pause, previous and next. So Control Center, the media keys and headphones' controls work the player. Now Playing offers exactly the actions with handlers: previous and next, and no seeking. WebKit drops a handler set before a media element has registered with its Now Playing, and offers its own actions instead (a scrubber and 15-second skips), so the provider sets the handlers again whenever its element starts playing.
+- **The volume,** and whether it's muted, apply to both elements, and are remembered in `localStorage` (`slunk.player.volume`), for every library, as the theme is. Changing the volume unmutes. It's kept in hundredths, so steps of 10% don't drift: 0.8 - 0.1 would be 0.7000000000000001.
+- **Now Playing.** The provider sets `navigator.mediaSession`'s metadata (the title, who performs it, the release, and the cover as `fileUrl()`), its state, and handlers for play, pause, previous and next. So Control Center, the media keys and headphones' controls work the player. Now Playing offers exactly the actions with handlers: previous and next, and no seeking. WebKit drops a handler set before a media element has registered with its Now Playing, and offers its own actions instead (a scrubber and 15-second skips), so the provider sets the handlers again whenever either element starts playing.
 - **The Controls menu** in the menu bar ([backend.md](backend.md#the-menu-bar)) does what the player's buttons do, with the sidebar hidden too. Whenever the player plays or pauses, the queue empties or fills, or shuffle or repeat changes, the provider calls `setControlsMenu({ playing, queued, shuffle, repeat })`, and the menu shows Play or Pause, the checks, and every item off with nothing queued. As the provider unmounts, at Welcome, it calls it with nothing queued. It listens for `events.playerControl`, a click on an item, and calls its own actions, through `useEffectEvent`, so it listens once.
 - **No click needed.** wry turns autoplay on, so WKWebView plays without a click, and a track can start once `playerTracks` has answered.
+
+#### Nearly gapless
+
+WebKit takes about a quarter of a second to start an element's clock, loaded or not, so a track started at the last one's `ended` follows a silence of a quarter to half a second. So the player starts the next track in a second element, just before the current one ends ([3_gapless.md](../design/3_gapless.md)). `playerElements()` (`components/player/elements.ts`) runs the two elements, and the provider passes it their events.
+- **The current element** plays the current entry. Only its events count: play and pause, `waiting`, an error, and the time.
+- **The other one loads what's up next,** once the current one has started: `upNext()` in `lib/queue.ts`, the entry a track that ends goes on to, by the queue's rules. That's the same entry again with repeat one, and nothing after the last track without repeat all. Whenever the queue changes what's up next, by Play next, Add to queue, a move, a removal, Clear, shuffle or repeat, the other element loads the new one, or empties. After each swap, the provider says what's up next again.
+- **The handoff comes in two steps.** When the current track has `LEAD` left, 240 ms, by its `currentTime` and `duration`, the other element plays, and nothing else happens: work on the main thread right after `play()`, like a render, delays the start by as long as it lasts. When the current track ends, the elements swap, and the queue goes on with the `handoff` action: `ended`, without a restart, since what's up next already plays from its start. So the player shows the next track when it's heard.
+- **Timing it.** `timeupdate` comes four times a second, which is too coarse, and WebKit runs a hidden page's timers about once a second. So for a track's last second, a new worker (`ticks.worker.ts`) ticks every few milliseconds, and the time is checked at each tick: while the page plays audio, WebKit doesn't throttle a new worker's timers. It does slow down one that has sat idle for minutes, so each track's watch gets a new one, ended when it stops. From the last tick before the lead, the rest of the wait, up to 12 ms, is spent on the main thread, before `play()`, where blocking doesn't delay the start. A `MessageChannel` loop would tick more often, but WebKit runs it as fast as it can, which takes most of a core.
+- **How close it gets.** WebKit's start-up varies by file, from about 200 to 310 ms, so a transition leaves a silence of up to about 50 ms, or overlaps by a few tens of milliseconds.
+- **Without a handoff,** because the next file hasn't loaded yet, or failed to load, the track that ends goes on at `ended`, and the next one starts only then. Next, a jump, or a track that ends uses the other element when it holds that entry, so it starts sooner. A file that failed to load ahead is skipped when it would play, with its toast.
+- **During a handoff,** Pause, Previous, a jump, or a change to what's up next stops the next track, back at its start, and Next keeps it playing.
+- **Guards.** A track that plays on more than 250 ms past its `duration`, which was wrong, is cut off. The other element plays only for a handoff: WebKit sometimes starts the element loaded ahead by itself as the window comes into view, and it's paused and put back at its start before it's heard.
+- **Muted, in a hidden window,** macOS can suspend the page for seconds at a time, since nothing audible plays, and the queue waits at a track's end until it runs again.
 
 ### Components
 

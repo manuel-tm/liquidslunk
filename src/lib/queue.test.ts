@@ -10,6 +10,7 @@ import {
   type Repeat,
   restoredQueue,
   savedQueue,
+  upNext,
 } from "@/lib/queue"
 
 /** The queue after these actions, from an empty one. */
@@ -574,6 +575,152 @@ describe("repeat", () => {
       type: "clear",
     })
     expect(queue).toMatchObject({ shuffle: true, repeat: "one" })
+  })
+})
+
+/** The track up next, or null. */
+function next(queue: Queue) {
+  return upNext(queue)?.trackId ?? null
+}
+
+describe("what plays next", () => {
+  it("is the next entry", () => {
+    expect(next(after(playing()))).toBe(20)
+    const queue = after(playing(1))
+    expect(upNext(queue)).toBe(queue.entries[2])
+  })
+
+  it("is nothing after the last, or with nothing queued", () => {
+    expect(upNext(after(playing(2)))).toBeNull()
+    expect(upNext(emptyQueue)).toBeNull()
+  })
+
+  it("is the first after the last with repeat all", () => {
+    const last = modes({ repeat: "all" }, 5)
+    expect(upNext(last)).toBe(last.entries[0])
+  })
+
+  it("is the only entry again with repeat all", () => {
+    const one = after(
+      { type: "setRepeat", repeat: "all" },
+      { type: "play", trackIds: [10], seed: 1 }
+    )
+    expect(upNext(one)).toBe(currentEntry(one))
+  })
+
+  it("is the current entry again with repeat one, the last one too", () => {
+    for (const start of [2, 5]) {
+      const queue = modes({ repeat: "one" }, start)
+      expect(upNext(queue)).toBe(currentEntry(queue))
+    }
+  })
+
+  it("follows the shuffled order", () => {
+    const queue = modes({ shuffle: true })
+    expect(upNext(queue)).toBe(queue.entries[1])
+  })
+
+  it("is what a track that ends goes on to", () => {
+    for (const queue of [
+      after(playing()),
+      modes({ repeat: "all" }, 5),
+      modes({ shuffle: true }, 2),
+    ]) {
+      const ended = queueReducer(queue, { type: "ended" })
+      expect(currentEntry(ended)).toBe(upNext(queue))
+    }
+  })
+
+  it("changes with the queue after it was loaded ahead", () => {
+    const queue = after(playing())
+    const ahead = upNext(queue)
+    // Play next and add to queue
+    expect(next(queueReducer(queue, { type: "playNext", trackIds: [1] }))).toBe(
+      1
+    )
+    expect(
+      next(queueReducer(after(playing(2)), { type: "add", trackIds: [1] }))
+    ).toBe(1)
+    // A move, a removal, and clearing
+    const moved = queueReducer(queue, { type: "move", key: ahead!.key, by: 1 })
+    expect(next(moved)).toBe(30)
+    expect(next(queueReducer(queue, { type: "remove", key: ahead!.key }))).toBe(
+      30
+    )
+    expect(upNext(queueReducer(queue, { type: "clear" }))).toBeNull()
+    // Shuffle and repeat
+    const shuffled = queueReducer(modes({}), {
+      type: "setShuffle",
+      shuffle: true,
+      seed: 7,
+    })
+    expect(upNext(shuffled)).toBe(shuffled.entries[1])
+    expect(next(shuffled)).not.toBe(20)
+    const one = queueReducer(queue, { type: "setRepeat", repeat: "one" })
+    expect(upNext(one)).toBe(currentEntry(queue))
+    const all = queueReducer(after(playing(2)), {
+      type: "setRepeat",
+      repeat: "all",
+    })
+    expect(next(all)).toBe(10)
+  })
+})
+
+describe("the handoff", () => {
+  it("goes on to what was up next, playing", () => {
+    const queue = after(playing())
+    const handedOff = queueReducer(queue, { type: "handoff" })
+    expect(currentEntry(handedOff)).toBe(upNext(queue))
+    expect(handedOff).toMatchObject({ current: 1, playing: true })
+    expect(handedOff.restarts).toBe(queue.restarts)
+  })
+
+  it("goes on to the first after the last with repeat all", () => {
+    const last = modes({ repeat: "all" }, 5)
+    expect(queueReducer(last, { type: "handoff" })).toMatchObject({
+      current: 0,
+      playing: true,
+    })
+  })
+
+  it("doesn't restart the same entry, which already plays again", () => {
+    for (const queue of [
+      modes({ repeat: "one" }, 2),
+      after(
+        { type: "setRepeat", repeat: "all" },
+        { type: "play", trackIds: [10], seed: 1 }
+      ),
+    ]) {
+      const handedOff = queueReducer(queue, { type: "handoff" })
+      expect(handedOff).toBe(queue)
+      expect(handedOff.restarts).toBe(queue.restarts)
+    }
+  })
+
+  it("follows the shuffled order", () => {
+    const queue = modes({ shuffle: true }, 2)
+    expect(currentEntry(queueReducer(queue, { type: "handoff" }))).toBe(
+      queue.entries[1]
+    )
+  })
+
+  it("goes to what's up next now, when the queue changed after loading ahead", () => {
+    const queue = queueReducer(after(playing()), {
+      type: "playNext",
+      trackIds: [1],
+    })
+    expect(track(queueReducer(queue, { type: "handoff" }))).toBe(1)
+  })
+
+  it("stops as a track that ends does, with nothing up next", () => {
+    const last = after(playing(2))
+    expect(queueReducer(last, { type: "handoff" })).toEqual(
+      queueReducer(last, { type: "ended" })
+    )
+  })
+
+  it("does nothing with nothing queued", () => {
+    expect(queueReducer(emptyQueue, { type: "handoff" })).toBe(emptyQueue)
   })
 })
 

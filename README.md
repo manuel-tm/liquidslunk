@@ -7,6 +7,8 @@ liquidslunk is the next version of slunk, ported to Tauri 2 with its backend in 
 > **Status:** the port is done. The base design, [Introduction to liquidslunk](docs/design/1_introduction.md), planned it in phases 0 to 6, which are all built: the app chooses and remembers its library, migrates it, and runs every page on Rust commands, from the dashboard to the import and the library check. `npm run tauri build` makes the app and a disk image, signed ad hoc for this Mac.
 >
 > Then came a music player, planned in [2_player.md](docs/design/2_player.md), which is built: the player in the sidebar, with its shortcuts and macOS's Now Playing; its queue, with shuffle, repeat, play next and add to queue, from the release and track pages, the track list and the release table; and a Controls menu in the menu bar.
+>
+> Then came gapless playback, planned in [3_gapless.md](docs/design/3_gapless.md), which is built: the next track starts in a second element just before the current one ends, so tracks follow each other with nearly no gap.
 
 ## Documentation
 

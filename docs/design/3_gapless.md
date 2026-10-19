@@ -1,12 +1,14 @@
 # Gapless playback
 
-> **Status: in design.**
+> **Status: complete.** Its one phase (§6, phase 0) was built by 2026-10-19.
 
 The player leaves about a third of a second of silence between two tracks. On most albums that goes unnoticed, since tracks start and end quietly. On a live album or a continuous mix, the music stops at every track and starts again. This design closes most of that gap, within the webview's `<audio>` elements that the player already uses.
 
 It builds on [2_player.md](2_player.md), which is complete. Here, "§3" and "phase 0" mean this document's own sections and phase, and "2_player.md §3" means the player's. Code and docs cite this document as "3_gapless.md §3" and "phase 0 of 3_gapless.md".
 
 ## 1. Summary
+
+> Changed during implementation, see [Appendix A](#appendix-a-by-the-settled-clock-a-start-takes-about-240-ms) and [Appendix B](#appendix-b-the-queue-goes-on-when-the-current-track-ends).
 
 - **The gap is mostly WebKit starting an element, not loading a file.** On 2026-10-19, once a fully loaded element was told to play, its clock took 250 to 340 ms to start moving, depending on the format. Before that, `ended` fired up to 110 ms after the clock stopped. Loading the next track ahead doesn't shorten either (§2).
 - **So the next track starts a little before the current one ends.** A second element loads the next track ahead, and plays it about 120 ms before the current track's end, by the current element's clock. The next track's start-up then overlaps the current track's last moments. In the tests, the next clock started within one audio buffer, about 21 ms, of the last one stopping.
@@ -15,6 +17,8 @@ It builds on [2_player.md](2_player.md), which is complete. Here, "§3" and "pha
 - **One phase,** whose first check is by ear (§4).
 
 ## 2. What was measured
+
+> Changed during implementation, see [Appendix A](#appendix-a-by-the-settled-clock-a-start-takes-about-240-ms).
 
 On 2026-10-19, in the app, with the eight one-second files of the formats fixtures (FLAC, AAC and ALAC in M4A, ADTS AAC, WAV, AIFF, CBR and VBR MP3), played one after another, muted.
 
@@ -36,6 +40,8 @@ Not measured yet: real tracks, minutes long; the window in the background; and l
 
 ## 3. How it works
 
+> Changed during implementation, see [Appendix A](#appendix-a-by-the-settled-clock-a-start-takes-about-240-ms), [Appendix B](#appendix-b-the-queue-goes-on-when-the-current-track-ends), [Appendix C](#appendix-c-a-worker-times-the-handoff) and [Appendix D](#appendix-d-webkit-can-start-the-element-loaded-ahead).
+
 - **Two elements.** The provider renders two `<audio>` elements. One plays the current entry. The other holds the entry that plays next, loaded ahead. At each handoff, they swap.
 - **What plays next** is what the queue would go on to when the current track ends, by its rules (2_player.md §4.3): the next entry; the first after the last with repeat all; nothing after the last otherwise; and the same entry again with repeat one, loaded in the other element. A pure function in `lib/queue.ts`, `upNext(queue)`, says which, and has its tests.
 - **Loading ahead.** Once the current track is playing, the other element loads the next one's file. When the queue changes what plays next, by Play next, Add to queue, a move, a removal, Clear, shuffle or repeat, it loads the new one, or empties.
@@ -47,6 +53,8 @@ Not measured yet: real tracks, minutes long; the window in the background; and l
 - **Now Playing** follows whichever element plays: the provider already sets its actions again whenever its element starts playing (2_player.md Appendix C). The metadata follows the queue, as now.
 
 ## 4. Risks and checks
+
+> Changed during implementation, see [Appendix A](#appendix-a-by-the-settled-clock-a-start-takes-about-240-ms) and [Appendix C](#appendix-c-a-worker-times-the-handoff).
 
 Each is checked early in the phase, and anything that changes this design is recorded as an appendix.
 - **By ear.** On the formats library's live tracks, which run into each other on the record, each transition should have no gap and no doubling. The lead (120 ms) is tuned until it's right, and stays one constant.
@@ -77,7 +85,60 @@ Each is checked early in the phase, and anything that changes this design is rec
   - Next, Previous, jumping, shuffle, repeat, errors and Now Playing work as they did.
   - `npm test` passes.
 
-## 7. Open questions
+## 7. Settled questions
 
-1. **Nearly gapless now, or true gapless?** This design gets within a few milliseconds with what's there. True gapless means the app plays audio itself (§5), a much larger design, which would also bring exact seeking.
-2. **Always, or only within a release?** Music plays every transition without a gap, from any track to any other. This design does the same.
+The first draft left these open. They were settled on 2026-10-19, when this design was taken up to be built:
+1. **Nearly gapless now, or true gapless?** Nearly gapless, now: this design. True gapless means the app plays audio itself (§5), a much larger design, which would also bring exact seeking. It gets a design of its own if this one isn't enough.
+2. **Always, or only within a release?** Always, from any track to any other, as Music does.
+
+## Appendix A: By the settled clock, a start takes about 240 ms
+
+- **Date:** 2026-10-19
+- **Affects:** §1 Summary, §2 What was measured, §3 How it works, §4 Risks and checks
+- **Was:** a play takes 255 to 342 ms to start the clock, but less with another element already playing: played 120 ms before the end, the next clock started within 0 to 1 ms of the last one stopping. So the lead is 120 ms, and a transition is within a few milliseconds.
+- **Now:**
+  - A starting clock's first readings run ahead of it. For about a third of a second after a play, WebKit moves `currentTime` on an estimate, then holds it back until AVFoundation's clock catches up. From then on, `performance.now()` minus `currentTime`, read at each `timeupdate`, stays within a millisecond for the rest of the track, and the element's `pause` at the track's end comes within 2 ms of where that line says the track ends. That settled line is the element's clock. §2's first steps were the estimate, about 100 ms early.
+  - By the settled clock, a play takes 200 to 310 ms to start the clock, with a median of about 245 ms, and another element playing doesn't shorten it: medians of 239 and 241 ms, with and without, in the same session. Each file starts at one of a few levels about 25 ms apart (about 206, 232, 245, 272 and 285 ms), mostly the same one each time. About one start in 40 takes 50 to 250 ms longer.
+  - So the lead is 240 ms. In the player, on the formats fixtures, transitions leave 5 to 48 ms of silence, with a median of 24 ms. Shuffled, they range from an overlap of 14 ms to 48 ms of silence, and repeat all's wrap from the last track to the first overlaps by 14 ms. On the formats library's live tracks, the two transitions leave 32 ms of silence, and an overlap of 27 ms.
+  - So it's nearly gapless to within about 50 ms either way, not within a few milliseconds (§1). Whether that's heard is the check by ear (§4), which may still tune the lead.
+  - By ear, on 2026-10-19, the transitions had no gap or doubling heard, and the player's other behavior was as before. The lead stays 240 ms.
+  - An MP3's `duration` was 26 ms too long until its end, where WebKit corrected it (1.045 to 1.019 s), so its handoff came 26 ms late. That leaves a shorter silence, not an overlap.
+  - These were measured with both elements at a volume of 0.0001 rather than muted. Muted, in a hidden window, macOS suspended the page for up to 13 seconds at a time, since nothing audible played, and the handoffs and the measurements stopped with it.
+- **Why:** §2's numbers didn't hold in the player. With 120 ms of lead, transitions left 130 to 280 ms of silence by the settled clock.
+
+## Appendix B: The queue goes on when the current track ends
+
+- **Date:** 2026-10-19
+- **Affects:** §3 How it works
+- **Was:** when the current element has 120 ms left, the other element plays, and the queue goes on as it does at `ended`. The element that's ending fires `ended`, which the provider ignores.
+- **Now:**
+  - The handoff comes in two steps. At the lead, the other element plays, and nothing else happens. When the current track ends, at its `ended`, the elements swap, and the queue goes on with a `handoff` action: `ended` without a restart, since what's up next already plays from its start, even when it's the same entry.
+  - Until then, the ending element is still the current one. Its `pause` at its end isn't the player pausing.
+  - During those last moments, Pause, Previous, a jump, or a change to what's up next stops the next track, back at its start. Next keeps it playing.
+  - A track whose `duration` was too short would play on over the next one, so it's cut off 250 ms after the end it was expected at.
+  - The element loaded ahead and the code that runs both are in `components/player/elements.ts`, apart from the provider.
+- **Why:** work on the main thread right after `play()` delays the start by as long as it lasts: 60 ms of it added 60 to 85 ms to most files' start-up. From 150 ms after the play, it added nothing. Going on with the queue at the play rendered the app right then, and in a debug build, start-ups in the player were 30 to 150 ms longer than outside it. And this way, the player shows the next track when it's heard.
+
+## Appendix C: A worker times the handoff
+
+- **Date:** 2026-10-19
+- **Affects:** §3 How it works, §4 Risks and checks
+- **Was:** in a track's last second, a `MessageChannel` loop checks the time once a millisecond.
+- **Now:**
+  - In WKWebView, a `MessageChannel` loop runs 9 to 10 times a millisecond, as fast as the page can post. While it ran, the web content process used 70 to 83% of a core, which shows in Activity Monitor (§4).
+  - Instead, a dedicated worker's 1 ms `setTimeout` ticks, and the time is checked at each tick. With the window hidden and the page playing audio, the ticks came every 5 to 6 ms, 99% of them within 7 ms, at 2 to 6% of a core.
+  - A worker that has sat idle in the hidden page for minutes ticks much more slowly: after 270 s, every 82 ms on median, and up to 154 ms. With one worker for the whole queue, the live tracks' second handoff, 268 s after the first, didn't happen. So each watch starts a new worker, and ends it when it stops. A new one ticked every 5 ms, even in a page that had been hidden for most of an hour.
+  - From the last tick before the lead, the rest of the wait, up to 12 ms, is spent on the main thread. Blocking before `play()` doesn't delay the start.
+  - The page's own timers are no use: hidden, they ran about once a second, even with audio playing.
+  - Vite bundles the worker as a file of its own, which the CSP's `default-src 'self'` allows.
+- **Why:** the CPU check (§4).
+
+## Appendix D: WebKit can start the element loaded ahead
+
+- **Date:** 2026-10-19
+- **Affects:** §3 How it works
+- **Was:** the element loaded ahead plays only at the handoff, or when Next swaps it in.
+- **Now:**
+  - Twice, as the window came into view, WebKit started the paused element loaded ahead by itself, a second before its handoff, so both tracks played at once.
+  - So the other element plays only for a handoff. When it starts any other way, it's paused and put back at its start at once, long before its clock starts. Calling `play()` on it from outside the player checked that: it was paused at its start within 2 ms, and its handoff came on time.
+- **Why:** it's WebKit's own behavior, whose cause wasn't found: the window couldn't be brought into view on demand to test it.
