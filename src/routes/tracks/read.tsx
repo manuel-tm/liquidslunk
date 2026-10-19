@@ -1,4 +1,5 @@
 import { useMutation } from "@tanstack/react-query"
+import { PauseIcon, PlayIcon } from "lucide-react"
 import { Link, useParams } from "react-router"
 
 import { ButtonLink } from "@/components/button-link"
@@ -6,12 +7,14 @@ import { CreditLines } from "@/components/credit-lines"
 import { DeleteButton } from "@/components/delete-button"
 import { artistUrl, Names } from "@/components/names"
 import { PageHeader } from "@/components/page-header"
+import { usePlayer } from "@/components/player/provider"
 import { QueryError } from "@/components/query-error"
 import { TagValues } from "@/components/tag-values"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AlternateTitleLines, Title } from "@/components/titles"
 import { formatDuration } from "@/lib/format"
-import { call, fileUrl, idParam, queryClient, useCommand } from "@/lib/query"
+import { call, idParam, queryClient, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
 
 /** `/tracks/:id`: a track, with its audio, credits, tags and files. */
@@ -122,12 +125,7 @@ export function TrackRead() {
                 >
                   {track.file.path}
                 </Link>
-                <audio
-                  controls
-                  preload="metadata"
-                  src={fileUrl(track.file.id)}
-                  className="w-full max-w-md"
-                />
+                <PlayButton id={track.id} />
               </dd>
               {track.tags.map(({ tag, values }) => (
                 <div key={`${tag.type}:${tag.id}`} className="contents">
@@ -178,5 +176,28 @@ export function TrackRead() {
         )}
       </div>
     </>
+  )
+}
+
+/** Plays the track alone, or pauses it while it plays (2_player.md §5.2). */
+function PlayButton({ id }: { id: number }) {
+  const player = usePlayer()
+  const playing = player.current?.trackId === id && player.playing
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="self-start"
+      onClick={() =>
+        player.current?.trackId === id ? player.toggle() : player.play([id])
+      }
+    >
+      {playing ? (
+        <PauseIcon data-icon="inline-start" />
+      ) : (
+        <PlayIcon data-icon="inline-start" />
+      )}
+      {playing ? "Pause" : "Play"}
+    </Button>
   )
 }

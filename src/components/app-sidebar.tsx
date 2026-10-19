@@ -16,6 +16,7 @@ import { Link, useMatch } from "react-router"
 
 import { ButtonLink } from "@/components/button-link"
 import { LibraryMenu } from "@/components/library-menu"
+import { SidebarPlayer } from "@/components/player/sidebar-player"
 import {
   Sidebar,
   SidebarContent,
@@ -53,6 +54,7 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="gap-3">
         <LibraryMenu />
+        <SidebarPlayer />
         <ButtonLink to="/import" className="justify-start">
           <FolderInputIcon data-icon="inline-start" />
           Import

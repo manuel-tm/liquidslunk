@@ -373,6 +373,12 @@ export const commands = {
 	 */
 	setReleaseTracks: (args: SetReleaseTracksArgs) => typedError<Release, CommandError>(__TAURI_INVOKE("set_release_tracks", { args })),
 	/**
+	 *  What the player shows of each of these tracks: one per id that's a
+	 *  track, each once, in the order asked. An id that isn't a track is left
+	 *  out, since a queue can name a track deleted since.
+	 */
+	playerTracks: (args: PlayerTracksArgs) => typedError<PlayerTrack[], CommandError>(__TAURI_INVOKE("player_tracks", { args })),
+	/**
 	 *  What a folder suggests for a new release: the most common album, date
 	 *  and album artist tags, or else the folder's name, the releases with that
 	 *  title already, and how many audio files, images and other files it holds.
@@ -1270,6 +1276,31 @@ export type PageArgs = {
 	 *  alternate name finds them too.
 	 */
 	q?: string | null,
+};
+
+/**  What the player shows of a track (2_player.md §6.1). */
+export type PlayerTrack = {
+	id: number,
+	title: string,
+	/**  Null: the release's */
+	titleLanguage: string | null,
+	/**  Read from the audio file. Null when it can't be read. */
+	durationMs: number | null,
+	/**
+	 *  Who performs it: its own artists; on a regular release with none, the
+	 *  release's, as credited there; on a various-artists release, nobody.
+	 */
+	performers: CreditedArtist[],
+	release: ReleaseHeader,
+	/**  The release's cover */
+	cover: FileRef | null,
+	/**  The audio file */
+	file: TrackFile,
+};
+
+/**  The tracks the player's queue holds. */
+export type PlayerTracksArgs = {
+	ids: number[],
 };
 
 /**  A library opened recently. */

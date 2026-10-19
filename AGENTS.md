@@ -87,7 +87,7 @@ Don't implement export or sync, and don't add tables for it. It needs its own de
 ## Before you finish
 
 - **Code:** these pass, from the repository's root:
-  - **Frontend:** `npm run typecheck` and `npm run lint` pass, and `npm run format` has been run.
+  - **Frontend:** `npm run typecheck`, `npm run lint` and `npm test` pass, and `npm run format` has been run.
   - **Rust:** `cargo fmt --check`, `cargo clippy --workspace --all-targets` with no warnings, and `cargo test --workspace`.
   - **Bindings:** after changing a command or its types, a debug build has been started (`npm run tauri dev`), so `src/bindings.ts` is regenerated, and the change is in it.
   - **Migrations** apply and roll back cleanly through the CLI, on a scratch database: `npm run db:migrate`, `npm run db:rollback` and `npm run db:migrate` again, with `--db`.

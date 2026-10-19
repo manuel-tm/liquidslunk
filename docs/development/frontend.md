@@ -4,7 +4,7 @@
 
 The frontend is slunk's, moved into the app in phase 0, in `src/`. It does everything slunk's did. It has:
 - Welcome, which chooses the library ([design §6.1](../design/1_introduction.md#61-what-happens-at-launch));
-- the app shell (sidebar with the library menu and the Import button, page header with back and forward) and a "not found" page;
+- the app shell (sidebar with the library menu, the player and the Import button, page header with back and forward) and a "not found" page;
 - the dashboard: the library's status, the catalog's totals, and the newest releases;
 - the files pages: list, register, read and update;
 - the catalog's pages: releases (with the release page and its edit tabs), artists (with their tabs), tracks, labels, release formats and release media;
@@ -14,7 +14,8 @@ The frontend is slunk's, moved into the app in phase 0, in `src/`. It does every
 - tags: their definitions' pages, a release's Tags tab, its tags on the release page, a track's tags, and tag filters on the release and track lists;
 - bulk edits on the release list: setting or removing a tag on many releases;
 - the import: a release built from a folder, step by step, with titles split at " = " and artists matched by any of their names;
-- the library check: files missing, moved or changed on disk, unregistered files, and gaps in the catalog.
+- the library check: files missing, moved or changed on disk, unregistered files, and gaps in the catalog;
+- the music player, in the sidebar, which plays a queue of tracks from the release and track pages, with shortcuts and macOS's Now Playing ([The player](#the-player)).
 
 Its data comes from Tauri commands, through TanStack Query ([Data](#data)). slunk's frontend read it through GraphQL, and the port moved each page to commands as the context behind it was ported ([design §7.3](../design/1_introduction.md#73-converting-a-route)).
 
@@ -33,6 +34,7 @@ Its data comes from Tauri commands, through TanStack Query ([Data](#data)). slun
 | Fonts | Nunito Sans (body) and Outfit (headings), self-hosted through Fontsource |
 | Toasts | sonner |
 | Dates | react-day-picker and date-fns, used by `calendar` |
+| Tests | Vitest, for plain functions ([Tests](#tests)) |
 | Screenshots | WebDriver, embedded in the app by its `webdriver` feature |
 
 ## Structure
@@ -78,10 +80,16 @@ src/
     tags/                  /tags: list, read, form
     import/steps.tsx       /import and its steps
   components/
-    app-layout.tsx         the app shell: sidebar, and the page beside it,
-                           or Welcome when no library is open
-    app-sidebar.tsx        the sidebar: the library menu, Import, the
-                           sections, the lists
+    app-layout.tsx         the app shell: the player, the sidebar, and the
+                           page beside it, or Welcome when no library is
+                           open
+    app-sidebar.tsx        the sidebar: the library menu, the player,
+                           Import, the sections, the lists
+    player/
+      provider.tsx         the player: its queue, the one <audio> element,
+                           its shortcuts and Now Playing; usePlayer() and
+                           usePlayerTime()
+      sidebar-player.tsx   the player's controls, in the sidebar's header
     library-menu.tsx       the open library, with a menu to switch libraries
     page-header.tsx        a page's back and forward, breadcrumb title,
                            buttons and tabs
@@ -148,6 +156,8 @@ src/
                            title's parts around " = "
     import.ts              the artists the import's tags pick, the tags left
                            to pick, and the other names to offer
+    queue.ts               the player's queue, as a reducer; queue.test.ts
+                           tests it
     tags.ts                tag types, values, and the list's tag filters
     utils.ts               cn() helper
 ```
@@ -160,7 +170,7 @@ src/
 - **The launch** ([design §6.1](../design/1_introduction.md#61-what-happens-at-launch)): `AppLayout` sends the user to Welcome while no library is open. The first time Welcome sees the status, it opens the library the settings remember, without asking (`launchLibrary()` in `lib/library.ts`). If that library isn't there, Welcome says so, with "Try again". Choosing or closing a library ends the launch, so it happens once per run.
 - **Routes** are defined in `src/router.tsx`, as children of the `AppLayout` route, which renders the sidebar beside the current page. They're slunk's routes, as its frontend had them. The last one, `*`, shows `NotFound`.
 - **Pages** live in `src/routes/`, one component per route. Each one starts with a `PageHeader`: its breadcrumb title (`crumbs`), then its buttons and tabs as `children`, which go on the right. Every crumb but the last links to its `to`.
-- **The sidebar's header** is the library menu (`LibraryMenu`): the open library's folder name, with "Switch library…", which closes it and goes to Welcome, "Show in Finder", and the recent libraries, which open in its place.
+- **The sidebar's header** is the library menu (`LibraryMenu`): the open library's folder name, with "Switch library…", which closes it and goes to Welcome, "Show in Finder", and the recent libraries, which open in its place. Under it are the player's controls ([The player](#the-player)), then Import.
 - **Switching libraries** clears TanStack Query's cache, so nothing from the old library shows. `AppLayout` is keyed by the library's path, so every page mounts again.
 - **Back and forward** (`HistoryButtons`) are in every page's header, before the title, and ⌘[ and ⌘] do the same: a desktop window has no browser buttons. They use the index React Router keeps in `history.state`.
 - **The sidebar** lists each section that's built, in `sections` in `app-sidebar.tsx`, and the lists the user manages in their own group, `lists`. A section's link stays active on its pages below it (`/artists/12` keeps Artists active).
@@ -188,7 +198,7 @@ Data comes from Tauri commands, through TanStack Query (design §7.2).
 #### Commands
 
 - **The commands** are in `src/bindings.ts`, which tauri-specta generates from the Rust commands whenever a debug build starts ([backend.md](backend.md#commands)). It's committed, and lint and Prettier skip it. Each command returns `{ status: "ok", data } | { status: "error", error }`, and the error is `{ kind, message }`.
-- **Reading:** `useCommand(name, args, options)` from `@/lib/query` is the one way to read. It calls `commands[name](args)` through TanStack Query, with `[name, args]` as its key, and returns the data or throws a `BackendError`, whose `message` `QueryError` shows. A command with no arguments leaves them out: `useCommand("libraryStatus")`. `{ fresh: true }` keeps no cached copy, so a form never starts from out-of-date data.
+- **Reading:** `useCommand(name, args, options)` from `@/lib/query` is the one way to read. It calls `commands[name](args)` through TanStack Query, with `[name, args]` as its key, and returns the data or throws a `BackendError`, whose `message` `QueryError` shows. A command with no arguments leaves them out: `useCommand("libraryStatus")`. `{ fresh: true }` keeps no cached copy, so a form never starts from out-of-date data. `{ keepPrevious: true }` keeps the last arguments' data while new ones load, with `isPlaceholderData` set, so what shows doesn't flicker: the player reads with it.
 - **Disabled reads** (`{ enabled: false }`) still give what's cached for their key, so a component that disables one ignores its data too. A tag's page reads `tagValues` only for a text tag, and drops what it gives for a number or date tag, whose id can be a text tag's.
 - **Writing:** mutations use `useMutation`, with a `mutationFn` that calls `call(name, …args)`, which unwraps a result the same way `useCommand()` does. Callers `await mutateAsync()` inside `try`, and show the mutation's `error` with `QueryError`. After every mutation that goes through `useMutation`, the `MutationCache` invalidates every query, so the mounted ones fetch again. `call()` on its own invalidates nothing: it's for commands that change no data, like opening a file, or that reset the caches themselves, like opening a library (`lib/library.ts`).
   - **Work in steps** is one mutation whose `mutationFn` makes the calls, so the caches are invalidated once, at the end: registering files calls `registerFiles` for a few files at a time, for its progress bar, and the list doesn't change under it. Since the steps before a failure are saved, it invalidates on error too.
@@ -356,6 +366,26 @@ The release list's rows have checkboxes (`bulk-edit.tsx`). The selection is kept
 - **Unregistered files,** by folder, with "Register…", which opens `/files/create?folder=…`.
 - **Releases with no artist** and **tracks nobody performs,** each linking to the edit tab that fixes it.
 
+### The player
+
+The player plays a queue of tracks from the sidebar ([2_player.md](../design/2_player.md), whose phase 0 is built).
+- **Where it is.** `PlayerProvider` (`components/player/provider.tsx`) is inside `AppLayout`'s `SidebarProvider`, around the sidebar and the page. It renders the app's one `<audio>` element, hidden. So the music keeps playing from page to page, and since `SidebarProvider` is keyed by the library, it stops when the library switches or closes. The sidebar's header shows the controls (`SidebarPlayer`), between the library menu and Import. When the sidebar is hidden, collapsed or in its sheet below 768 px, so is the player, and the music plays on.
+- **The controls:** the release's cover, the track's title, who performs it and the release, each linking to its page; a bar of how far the track has played, with the time played and the track's length; previous, play/pause, and next; mute, and the volume. With nothing queued, the player is one line: "Nothing playing".
+- **Playing.** On the release page, Play, by the tracklist's heading, plays the release from its first track, and a track's play button plays it from that track. The current track's number becomes a speaker icon, and its button pauses. The track page's Play plays the track alone. Pages call `usePlayer()`, and never touch the element.
+- **The queue** is a reducer, `queueReducer` in `lib/queue.ts`, with no React and no element. The provider keeps it with `useReducer`, and the element follows it. An entry is a track id with a key of its own, so a track can be queued twice. The element's source changes only when the current entry does, never on a fetch, so a save never interrupts what plays.
+- **Its rules:**
+  - Previous goes back to the track's start after its first 3 seconds, and to the previous track before that.
+  - Next, and a track that ends, go to the next track. After the last, the player stops, paused at the last track's start.
+  - A track that can't play, missing or in a format WebKit can't decode, shows a toast with its path, and the next one plays. Once every entry has failed in a row, the player stops.
+- **What it shows** comes from `playerTracks`, with the queue's ids. It's mounted, so every save fetches it again, and it reads with `{ keepPrevious: true }`, so it doesn't flicker when the queue changes. A track that's deleted leaves the queue. When it's the current one, the next one plays.
+- **The time** comes from `usePlayerTime()`, a store the element's events update, which only the progress bar reads, so nothing else renders again on each `timeupdate`. The track's length is the element's once it has read the file, and the catalog's `durationMs` until then.
+- **No seeking.** WebKit seeks a FLAC file by estimate, not with its seek table, so a seek can play from several seconds away from the time it shows: on a live track 4:28 long, a seek to 4:18 played from about 4:08. So nothing in the player seeks ([2_player.md](../design/2_player.md) Appendices A and B): the bar only shows how far the track has played, and Now Playing has no seek action, so it shows no scrubber or skips. Previous still goes back to a track's start, which is exact. The file page's preview is the browser's own player, so it can still seek, by estimate.
+- **One sound at a time:** when the file page's preview starts, the player pauses, and when the player starts, the preview pauses. The provider listens for `play` on the document, in the capture phase, since media events don't bubble.
+- **Shortcuts,** while something is queued: Space plays or pauses, ⌘→ and ⌘← go to the next and the previous track, and ⌘↑ and ⌘↓ change the volume by 10%. Space is ignored while a field or another control has focus, since Space presses that. The ⌘ arrows are ignored in a field, where they move the caret.
+- **The volume,** and whether it's muted, are remembered in `localStorage` (`slunk.player.volume`), for every library, as the theme is. Changing the volume unmutes.
+- **Now Playing.** The provider sets `navigator.mediaSession`'s metadata (the title, who performs it, the release, and the cover as `fileUrl()`), its state, and handlers for play, pause, previous and next. So Control Center, the media keys and headphones' controls work the player. Now Playing offers exactly the actions with handlers: previous and next, and no seeking. WebKit drops a handler set before a media element has registered with its Now Playing, and offers its own actions instead (a scrubber and 15-second skips), so the provider sets the handlers again whenever its element starts playing.
+- **No click needed.** wry turns autoplay on, so WKWebView plays without a click, and a track can start once `playerTracks` has answered.
+
 ### Components
 
 - **Adding shadcn components:** use `npx shadcn@latest add <component>`. They're copied into `src/components/ui/` and become our code, so they get edited there rather than wrapped.
@@ -368,7 +398,7 @@ The release list's rows have checkboxes (`bulk-edit.tsx`). The selection is kept
 |---|---|
 | Layout and navigation | `sidebar`, `breadcrumb`, `separator`, `scroll-area`, `tabs` |
 | Showing data | `table`, `card`, `item`, `badge`, `avatar`, `skeleton`, `empty`, `tooltip` |
-| Forms | `field`, `label`, `input`, `input-group`, `textarea`, `select`, `combobox`, `checkbox`, `switch`, `toggle`, `toggle-group`, `calendar` |
+| Forms | `field`, `label`, `input`, `input-group`, `textarea`, `select`, `combobox`, `checkbox`, `switch`, `toggle`, `toggle-group`, `calendar`, `slider` |
 | Overlays | `dialog`, `alert-dialog`, `sheet`, `popover`, `dropdown-menu` |
 | Feedback | `sonner` (toasts), `alert`, `progress`, `spinner` |
 | Actions | `button` |
@@ -377,6 +407,7 @@ The release list's rows have checkboxes (`bulk-edit.tsx`). The selection is kept
 - `sonner.tsx` reads the theme from our `ThemeProvider` (`@/components/theme-provider`) instead of `next-themes`, which isn't installed.
 - `hooks/use-mobile.ts` subscribes to the media query with `useSyncExternalStore`. The registry version sets state inside an effect, which the react-hooks lint rule rejects.
 - `scroll-area.tsx` has its unused `React` import removed, which `tsc -b` rejects.
+- `slider.tsx` takes `thumb`, with `getAriaLabel` and `getAriaValueText` for each thumb's input, which Base UI reads only from the thumb. (Unchanged from the registry: it takes its value as an array, and a single number renders two thumbs.)
 
 ### Styling
 
@@ -402,6 +433,12 @@ Pressing `d` toggles between light and dark. It's ignored while typing in a fiel
 
 - **Prettier:** no semicolons, double quotes, 2-space indent, ES5 trailing commas, 80 columns. `prettier-plugin-tailwindcss` sorts classes, including inside `cn()` and `cva()`. Run `npm run format` instead of formatting by hand.
 - **ESLint:** the recommended JavaScript and typescript-eslint rules, plus react-hooks and react-refresh. Run `npm run lint`.
+
+### Tests
+
+`npm test` runs Vitest (`vitest run`), configured in `vite.config.ts`'s `test`, so `@/` resolves as it does in the app.
+- **Where:** next to what they test, as `src/**/*.test.ts`. They import `describe`, `it` and `expect` from `vitest`, with no globals, so `tsc -b` checks them like the rest of `src/`.
+- **What:** plain functions, in Node, with no DOM. So far that's the player's queue (`lib/queue.test.ts`). Components are checked in screenshots instead.
 
 ### Screenshots
 

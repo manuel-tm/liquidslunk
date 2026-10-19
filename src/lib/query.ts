@@ -1,4 +1,5 @@
 import {
+  keepPreviousData,
   MutationCache,
   QueryCache,
   QueryClient,
@@ -40,6 +41,11 @@ type CommandOptions = {
   /** Keeps no cached copy, so a form never starts from out-of-date data. */
   fresh?: boolean
   enabled?: boolean
+  /**
+   * Keeps the last arguments' data while new arguments load, with
+   * `isPlaceholderData` set, so what shows doesn't flicker.
+   */
+  keepPrevious?: boolean
 }
 
 type QueryArguments<N extends Query> =
@@ -69,7 +75,10 @@ export async function call<N extends Name>(
  */
 export function useCommand<N extends Query>(
   name: N,
-  ...[args, { fresh = false, enabled = true } = {}]: QueryArguments<N>
+  ...[
+    args,
+    { fresh = false, enabled = true, keepPrevious = false } = {},
+  ]: QueryArguments<N>
 ) {
   return useQuery({
     queryKey: [name, args ?? null],
@@ -80,6 +89,7 @@ export function useCommand<N extends Query>(
       ),
     gcTime: fresh ? 0 : undefined,
     enabled,
+    placeholderData: keepPrevious ? keepPreviousData : undefined,
   })
 }
 

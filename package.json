@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc -b",
+    "test": "vitest run",
     "screenshot": "node scripts/screenshot.ts",
     "db:migrate": "cargo run --quiet -p slunk-cli -- migrate",
     "db:rollback": "cargo run --quiet -p slunk-cli -- rollback",
@@ -54,6 +55,7 @@
     "prettier-plugin-tailwindcss": "^0.8.1",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8",
-    "vite": "^8"
+    "vite": "^8",
+    "vitest": "^5.0.5"
   }
 }

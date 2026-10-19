@@ -1,7 +1,7 @@
-//! Tracks: the track list, the track page and form, and a release's Tracks
-//! tab, which the import's tracks step is too.
+//! Tracks: the track list, the track page and form, a release's Tracks tab,
+//! which the import's tracks step is too, and what the player shows.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use slunk::catalog::{self as domain, CreditOwner};
@@ -20,7 +20,7 @@ use super::{
     AlternateTitle, Credit, CreditedArtist, FileLink, FileLinkInput, IdArgs, NamedCreditedArtist,
     NamedItem, Related, files_by_id,
 };
-use crate::commands::media::File;
+use crate::commands::media::{File, FileRef};
 use crate::commands::on_library;
 use crate::commands::tagging::{TagFilterInput, TagValues, TagValuesInput, owned};
 use crate::error::CommandError;
@@ -115,6 +115,26 @@ pub struct TrackView {
     /// By tag name
     pub tags: Vec<TagValues>,
     pub files: Vec<FileLink>,
+}
+
+/// What the player shows of a track (2_player.md §6.1).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerTrack {
+    pub id: i64,
+    pub title: String,
+    /// Null: the release's
+    pub title_language: Option<String>,
+    /// Read from the audio file. Null when it can't be read.
+    pub duration_ms: Option<i64>,
+    /// Who performs it: its own artists; on a regular release with none, the
+    /// release's, as credited there; on a various-artists release, nobody.
+    pub performers: Vec<CreditedArtist>,
+    pub release: ReleaseHeader,
+    /// The release's cover
+    pub cover: Option<FileRef>,
+    /// The audio file
+    pub file: TrackFile,
 }
 
 /// A track, as its form edits it.
@@ -408,6 +428,13 @@ fn first() -> i64 {
     1
 }
 
+/// The tracks the player's queue holds.
+#[derive(Debug, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerTracksArgs {
+    pub ids: Vec<i64>,
+}
+
 /// Tracks, with the release filter's title. The filters combine.
 #[tauri::command]
 #[specta::specta]
@@ -532,6 +559,57 @@ pub fn page(library: &Library, args: IdArgs) -> Result<Option<TrackView>, Comman
         cd_number: track.cd_number,
         track_number: track.track_number,
     }))
+}
+
+/// What the player shows of each of these tracks: one per id that's a
+/// track, each once, in the order asked. An id that isn't a track is left
+/// out, since a queue can name a track deleted since.
+#[tauri::command]
+#[specta::specta]
+pub async fn player_tracks(
+    app: AppHandle,
+    args: PlayerTracksArgs,
+) -> Result<Vec<PlayerTrack>, CommandError> {
+    on_library(app, move |library| for_player(library, args)).await
+}
+
+pub fn for_player(
+    library: &Library,
+    args: PlayerTracksArgs,
+) -> Result<Vec<PlayerTrack>, CommandError> {
+    let mut seen = HashSet::new();
+    let ids: Vec<i64> = args.ids.into_iter().filter(|id| seen.insert(*id)).collect();
+    let mut found: HashMap<i64, domain::Track> = library
+        .catalog
+        .tracks_by_ids(&ids)?
+        .into_iter()
+        .map(|track| (track.id, track))
+        .collect();
+    let tracks: Vec<domain::Track> = ids.iter().filter_map(|id| found.remove(id)).collect();
+    let file_ids: Vec<i64> = tracks.iter().map(|track| track.file_id).collect();
+    let files = files_by_id(library, &file_ids)?;
+    let Performing {
+        releases,
+        performers: mut performing,
+    } = performers_of(library, &tracks)?;
+    let mut related = Related::default();
+    related.load_artists(library, performing.values().flatten(), false)?;
+    Ok(tracks
+        .into_iter()
+        .filter_map(|track| {
+            let release = releases.get(&track.release_id)?;
+            Some(PlayerTrack {
+                performers: related.credited_all(&performing.remove(&track.id).unwrap_or_default()),
+                release: header(release),
+                cover: release.cover_picture.map(|id| FileRef { id }),
+                file: track_file(&files, track.file_id),
+                id: track.id,
+                title: track.title,
+                title_language: track.title_language,
+                duration_ms: track.duration_ms,
+            })
+        })
+        .collect())
 }
 
 /// What the track form starts from: the track to edit, or a new one's
@@ -857,4 +935,94 @@ fn alternate_titles(titles: Option<Vec<domain::AlternateTitle>>) -> Vec<Alternat
         .into_iter()
         .map(AlternateTitle::from)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use slunk::repo::{connection, migrator};
+
+    use super::*;
+
+    const HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+
+    /// A library with a regular release, whose second track only has a
+    /// feature, and a various-artists one, whose second track has nobody.
+    fn library() -> (tempfile::TempDir, Library) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("slunk.db");
+        migrator::migrate(&db, 10).unwrap();
+        let library = Library::new(&db, connection::open(&db).unwrap());
+        library
+            .store
+            .conn()
+            .execute_batch(&format!(
+                r#"
+                insert into files (id, path, type, size_bytes, mtime, sha256) values
+                    (1, 'a/1.flac', 'music', 1, 0, '{HASH}'),
+                    (2, 'a/2.flac', 'music', 1, 0, '{HASH}'),
+                    (3, 'b/1.flac', 'music', 1, 0, '{HASH}'),
+                    (4, 'b/2.flac', 'music', 1, 0, '{HASH}'),
+                    (5, 'a/cover.jpg', 'image', 1, 0, '{HASH}');
+                insert into artists (id, name) values (1, 'Alika'), (2, 'Guest'), (3, 'Solo');
+                insert into releases (id, title, cover_picture, various_artists) values
+                    (1, 'Regular', 5, 0),
+                    (2, 'Various', null, 1);
+                insert into artists_releases (artist_id, release_id, position) values (1, 1, 0);
+                insert into tracks (id, title, track_number, cd_number, release_id, file_id) values
+                    (1, 'One', 1, 1, 1, 1),
+                    (2, 'Two', 2, 1, 1, 2),
+                    (3, 'Three', 1, 1, 2, 3),
+                    (4, 'Four', 2, 1, 2, 4);
+                insert into artists_tracks (artist_id, track_id, featured, position) values
+                    (2, 2, 1, 0),
+                    (3, 3, 0, 0);
+                "#
+            ))
+            .unwrap();
+        (dir, library)
+    }
+
+    fn names(track: &PlayerTrack) -> Vec<&str> {
+        track
+            .performers
+            .iter()
+            .map(|performer| performer.artist.name.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn player_tracks_come_once_each_in_the_order_asked() {
+        let (_dir, library) = library();
+        let tracks = for_player(
+            &library,
+            PlayerTracksArgs {
+                ids: vec![2, 99, 1, 2, 3, 4],
+            },
+        )
+        .unwrap();
+        let ids: Vec<i64> = tracks.iter().map(|track| track.id).collect();
+        assert_eq!(ids, [2, 1, 3, 4]);
+
+        let [two, one, three, four] = &tracks[..] else {
+            unreachable!()
+        };
+        // A regular release's track without its own artists is the
+        // release's, and a feature doesn't perform it
+        assert_eq!(names(one), ["Alika"]);
+        assert_eq!(names(two), ["Alika"]);
+        // On a various-artists release, only its own, or nobody
+        assert_eq!(names(three), ["Solo"]);
+        assert!(names(four).is_empty());
+
+        assert_eq!(one.release.title, "Regular");
+        assert_eq!(one.cover.as_ref().map(|cover| cover.id), Some(5));
+        assert!(three.cover.is_none());
+        assert_eq!((one.file.id, one.file.path.as_str()), (1, "a/1.flac"));
+
+        assert!(
+            for_player(&library, PlayerTracksArgs { ids: vec![] })
+                .unwrap()
+                .is_empty()
+        );
+    }
 }

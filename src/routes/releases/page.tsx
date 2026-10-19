@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query"
-import { PauseIcon, PlayIcon } from "lucide-react"
-import { type ReactNode, useRef, useState } from "react"
+import { PauseIcon, PlayIcon, Volume2Icon } from "lucide-react"
+import { type ReactNode, useState } from "react"
 import { Link, useParams } from "react-router"
 
 import { ButtonLink } from "@/components/button-link"
@@ -9,6 +9,7 @@ import { CreditLines } from "@/components/credit-lines"
 import { DeleteButton } from "@/components/delete-button"
 import { artistUrl, labelUrl, Names } from "@/components/names"
 import { PageHeader } from "@/components/page-header"
+import { usePlayer } from "@/components/player/provider"
 import { QueryError } from "@/components/query-error"
 import { TagValues } from "@/components/tag-values"
 import { AlternateTitleLines, Title } from "@/components/titles"
@@ -16,7 +17,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { FileRefInput, ReleaseView } from "@/bindings"
 import { formatDuration, formatReleased } from "@/lib/format"
-import { call, fileUrl, idParam, queryClient, useCommand } from "@/lib/query"
+import { call, idParam, queryClient, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
 
 type Release = ReleaseView
@@ -216,13 +217,14 @@ function Heading({ release }: { release: Release }) {
 
 /**
  * Grouped by disc. On a various-artists release, each row starts with the
- * track's artists; a regular release only shows features.
+ * track's artists; a regular release only shows features. Play plays the
+ * release, and a track's button plays it from that track (2_player.md §5.2).
  */
 function Tracklist({ release }: { release: Release }) {
   const [hideCredits, toggleCredits] = useRemembered(HIDE_CREDITS)
   const [hideTitles, toggleTitles] = useRemembered(HIDE_TITLES)
-  const [playing, setPlaying] = useState<number | null>(null)
-  const audio = useRef<HTMLAudioElement>(null)
+  const player = usePlayer()
+  const ids = release.tracks.map((track) => track.id)
   const discs = [...new Set(release.tracks.map((track) => track.cdNumber))]
   const titles = new Map(
     release.discTitles.map((disc) => [disc.cdNumber, disc])
@@ -233,23 +235,26 @@ function Tracklist({ release }: { release: Release }) {
     release.tracks.some((track) => track.alternateTitles.length > 0) ||
     release.discTitles.some((disc) => disc.alternateTitles.length > 0)
 
-  function play(track: Release["tracks"][number]) {
-    const element = audio.current
-    if (!element) return
-    if (playing === track.id) {
-      element.pause()
-      setPlaying(null)
-      return
-    }
-    element.src = fileUrl(track.file.id)
-    void element.play()
-    setPlaying(track.id)
+  const isCurrent = (id: number) => player.current?.trackId === id
+  const isPlaying = (id: number) => isCurrent(id) && player.playing
+
+  function play(index: number) {
+    if (isCurrent(ids[index])) player.toggle()
+    else player.play(ids, index)
   }
 
   return (
     <section className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <h2 className="font-heading text-base font-semibold">Tracklist</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="font-heading text-base font-semibold">Tracklist</h2>
+          {ids.length > 0 && (
+            <Button variant="outline" size="xs" onClick={() => play(0)}>
+              <PlayIcon data-icon="inline-start" />
+              Play
+            </Button>
+          )}
+        </div>
         <div className="flex">
           {hasAlternateTitles && (
             <Button variant="ghost" size="sm" onClick={toggleTitles}>
@@ -263,7 +268,6 @@ function Tracklist({ release }: { release: Release }) {
           )}
         </div>
       </div>
-      <audio ref={audio} onEnded={() => setPlaying(null)} className="hidden" />
       {release.tracks.length === 0 && (
         <p className="text-muted-foreground">
           No tracks yet. Add them from Edit, Tracks.
@@ -300,7 +304,15 @@ function Tracklist({ release }: { release: Release }) {
                 className="grid grid-cols-[2rem_1fr_auto_auto] items-start gap-2 border-b py-1.5"
               >
                 <span className="text-muted-foreground tabular-nums">
-                  {track.trackNumber}
+                  {isCurrent(track.id) ? (
+                    <Volume2Icon
+                      role="img"
+                      aria-label="Now playing"
+                      className="size-3.5 text-primary"
+                    />
+                  ) : (
+                    track.trackNumber
+                  )}
                 </span>
                 <div className="flex flex-col gap-1">
                   <span>
@@ -349,13 +361,13 @@ function Tracklist({ release }: { release: Release }) {
                   variant="ghost"
                   size="icon-xs"
                   aria-label={
-                    playing === track.id
+                    isPlaying(track.id)
                       ? `Pause ${track.title}`
                       : `Play ${track.title}`
                   }
-                  onClick={() => play(track)}
+                  onClick={() => play(ids.indexOf(track.id))}
                 >
-                  {playing === track.id ? <PauseIcon /> : <PlayIcon />}
+                  {isPlaying(track.id) ? <PauseIcon /> : <PlayIcon />}
                 </Button>
               </div>
             ))}

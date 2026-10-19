@@ -92,6 +92,7 @@ pub fn builder() -> Builder<Wry> {
             catalog::tracks::delete_track,
             catalog::tracks::release_tracks,
             catalog::tracks::set_release_tracks,
+            catalog::tracks::player_tracks,
             catalog::import::release_suggestion,
             catalog::import::import_files,
             catalog::languages,

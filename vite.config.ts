@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { resolve } from "node:path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
@@ -20,5 +21,10 @@ export default defineConfig({
     watch: {
       ignored: ["**/src-tauri/**", "**/crates/**", "**/target/**"],
     },
+  },
+  // `npm test`: the frontend's plain functions, in Node, with no DOM
+  test: {
+    include: ["src/**/*.test.ts"],
+    environment: "node",
   },
 })

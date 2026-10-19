@@ -73,6 +73,7 @@ Run from the repository's root:
 | `npm run build` | Type-checks and builds the frontend into `dist/`, which `tauri build` does itself |
 | `npm run typecheck` | Type-checks the app and config files (`tsc -b`) |
 | `npm run lint` | Runs ESLint |
+| `npm test` | Runs the frontend's tests, with Vitest: see [frontend.md](frontend.md#tests) |
 | `npm run format` | Formats `.ts`/`.tsx` files with Prettier |
 | `npm run screenshot -- [route] [file.png]` | Takes a screenshot of the running app: see [frontend.md](frontend.md#screenshots) |
 | `npm run db:migrate -- --db <path>` | Backs up a library's database, then applies pending migrations |
