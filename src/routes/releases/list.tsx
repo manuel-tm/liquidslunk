@@ -16,9 +16,9 @@ const filterOption = (item: NamedItem | null | undefined) =>
   item ? { id: String(item.id), name: item.name } : null
 
 /**
- * `/releases` (slunk's design §7.6). The filters combine: `?format=3&medium=4` is
- * "EPs on vinyl", and `?text.3=Rock&number.5.min=8` is "Genre is Rock and
- * Score ≥ 8". Rows can be selected, across pages, for a bulk edit.
+ * `/releases`. The filters combine: `?format=3&medium=4` is "EPs on vinyl", and
+ * `?text.3=Rock&number.5.min=8` is "Genre is Rock and Score ≥ 8". Rows can be
+ * selected, across pages, for a bulk edit.
  */
 export function ReleaseList() {
   const list = useListParams()

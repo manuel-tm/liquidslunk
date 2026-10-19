@@ -14,13 +14,12 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { textProps } from "@/lib/languages"
 
-/** A crumb. `lang` is the language of a name in it (slunk's 3_alternate_names.md §7.1). */
+/** A crumb. `lang` is the language of a name in it. */
 export type Crumb = { label: string; to?: string; lang?: string | null }
 
 /**
- * A page's header (slunk's design §7.1): back and forward (design §7.1) and
- * its breadcrumb title on the left, and its buttons and tabs (`children`) on
- * the right.
+ * A page's header: back and forward (design §7.1) and its breadcrumb title on
+ * the left, and its buttons and tabs (`children`) on the right.
  */
 export function PageHeader({
   crumbs,

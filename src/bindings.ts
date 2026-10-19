@@ -453,6 +453,24 @@ export const commands = {
 	 *  them when `value` is left out. Returns how many releases changed.
 	 */
 	removeTagFromReleases: (args: RemoveTagFromReleasesArgs) => typedError<number, CommandError>(__TAURI_INVOKE("remove_tag_from_releases", { args })),
+	/**
+	 *  Runs the library check: reads every registered file's size and mtime,
+	 *  and lists the folders they're in. When files are missing, it also scans
+	 *  the library and hashes files of the same size, to find where they moved.
+	 *  Nothing is written.
+	 */
+	libraryCheck: () => typedError<LibraryReport, CommandError>(__TAURI_INVOKE("library_check")),
+	/**
+	 *  Points files that moved at their new paths, reading each one again, one
+	 *  at a time: a move that fails leaves the ones before it saved.
+	 */
+	relinkFiles: (args: RelinkFilesArgs) => typedError<File[], CommandError>(__TAURI_INVOKE("relink_files", { args })),
+	/**
+	 *  Reads changed files again: their size, mtime and hash, and the duration
+	 *  of the track each one is the audio of. A file that's gone fails the call
+	 *  before anything is saved.
+	 */
+	rehashFiles: (args: RehashFilesArgs) => typedError<File[], CommandError>(__TAURI_INVOKE("rehash_files", { args })),
 };
 
 /* Types */
@@ -465,10 +483,7 @@ export type AddArtistNameArgs = {
 	language?: string | null,
 };
 
-/**
- *  A title besides the main one, of a release, a track or a disc (slunk's
- *  3_alternate_names.md §4.2).
- */
+/**  A title besides the main one, of a release, a track or a disc. */
 export type AlternateTitle = {
 	title: string,
 	/**  A BCP 47 tag. Null when it isn't known. */
@@ -698,6 +713,16 @@ export type CatalogTotals = {
 	durationMs: number,
 };
 
+/**  A registered file whose size or mtime changed since it was read. */
+export type ChangedFile = {
+	/**  As it was read */
+	file: File,
+	/**  The size on disk now */
+	sizeBytes: number,
+	/**  The mtime on disk now, in epoch seconds */
+	mtime: number,
+};
+
 export type CommandError = {
 	kind: ErrorKind,
 	message: string,
@@ -748,10 +773,7 @@ export type CreditTrack = {
 	titleLanguage: string | null,
 };
 
-/**
- *  An artist as credited on a release, a track or a credit line (slunk's
- *  3_alternate_names.md §4.2).
- */
+/**  An artist as credited on a release, a track or a credit line. */
 export type CreditedArtist = {
 	artist: ArtistRef,
 	/**  The name printed, when it isn't the artist's main name */
@@ -878,6 +900,13 @@ export type FileListItem = {
 	insertedAt: number,
 	updatedAt: number,
 	track: FileTrack | null,
+};
+
+/**  A file that moved, and its new path. */
+export type FileMoveInput = {
+	fileId: number,
+	/**  Relative to the database's folder, or absolute */
+	path: string,
 };
 
 export type FilePage = {
@@ -1092,6 +1121,24 @@ export type LibraryInfo = {
 	migration: string | null,
 };
 
+/**  The library check's results, by kind of problem. */
+export type LibraryReport = {
+	/**  How many registered files were checked */
+	fileCount: number,
+	/**  Registered files that aren't on disk anymore */
+	missingFiles: MissingFile[],
+	/**  Registered files whose size or mtime changed since they were read */
+	changedFiles: ChangedFile[],
+	/**  Files that aren't registered, in folders that hold registered files */
+	unregisteredFolders: UnregisteredFolder[],
+	releasesWithoutArtists: ReleaseHeader[],
+	/**
+	 *  Tracks on various-artists releases with no artist of their own but
+	 *  features, so nobody performs them
+	 */
+	tracksWithoutPerformers: UnperformedTrack[],
+};
+
 /**  What `library_status` says, which replaces slunk's `health` query. */
 export type LibraryStatus = {
 	/**  The open library, if one is. */
@@ -1149,6 +1196,22 @@ export type MigrationReport = {
 	removed: string[],
 };
 
+/**  A registered file that's gone, and where it may have moved. */
+export type MissingFile = {
+	/**  With what uses it */
+	file: FileDetails,
+	/**
+	 *  Unregistered files with the same content (size and hash), where it
+	 *  may have moved. Those with the same name come first.
+	 */
+	movedTo: string[],
+	/**
+	 *  Where it most likely moved: the only candidate, or the only one with
+	 *  the same name. Null when that's unclear, or nothing matched.
+	 */
+	likelyMove: string | null,
+};
+
 /**  A name, and its language. */
 export type NameRef = {
 	name: string,
@@ -1157,8 +1220,7 @@ export type NameRef = {
 
 /**
  *  An artist a link names, with its other names, in order, for a page that
- *  shows a title's artists in the title's language (slunk's
- *  3_alternate_names.md §7.2).
+ *  shows a title's artists in the title's language.
  */
 export type NamedArtistRef = {
 	alternateNames: NameRef[],
@@ -1220,6 +1282,10 @@ export type RecentLibrary = {
 
 export type RegisterFilesArgs = {
 	paths: string[],
+};
+
+export type RehashFilesArgs = {
+	ids: number[],
 };
 
 /**  A release, as a save returns it. */
@@ -1493,6 +1559,10 @@ export type ReleasesArgs = {
 	 */
 	sort?: string | null,
 } & ReleaseFiltersArgs;
+
+export type RelinkFilesArgs = {
+	moves: FileMoveInput[],
+};
 
 /**
  *  A tag, and a value to remove from many releases, or none to remove them
@@ -1869,9 +1939,8 @@ export type TrackListItem = {
 	updatedAt: number,
 	release: ReleaseHeader,
 	/**
-	 *  Who performs it (slunk's design §4.3): its own artists; on a regular
-	 *  release with none, the release's, as credited there; on a
-	 *  various-artists release, nobody.
+	 *  Who performs it: its own artists; on a regular release with none, the
+	 *  release's, as credited there; on a various-artists release, nobody.
 	 */
 	performers: CreditedArtist[],
 	file: TrackFile,
@@ -1941,6 +2010,23 @@ export type TracksArgs = {
 	release?: number | null,
 	/**  Every filter has to match. */
 	tags?: TagFilterInput[],
+};
+
+/**  A track nobody performs. */
+export type UnperformedTrack = {
+	id: number,
+	title: string,
+	titleLanguage: string | null,
+	cdNumber: number,
+	trackNumber: number,
+	release: ReleaseHeader,
+};
+
+/**  A folder's files that aren't registered. */
+export type UnregisteredFolder = {
+	/**  `""` for the database's folder */
+	path: string,
+	files: FolderFile[],
 };
 
 export type UpdateArtistArgs = {

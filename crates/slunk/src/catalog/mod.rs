@@ -1,9 +1,8 @@
-//! The catalog context: what the user catalogs (slunk's design §6): artists
-//! and labels, with their alternate names, pictures and logos, and an
-//! artist's file links; the two lists the user manages, release formats and
-//! release media; the languages in use (phase 2); releases, with their
-//! credits (phase 4); and tracks, with their disc titles, and what a folder
-//! suggests for importing it (phase 5).
+//! The catalog context, what the user catalogs: artists and labels, with their
+//! alternate names, pictures and logos, and an artist's file links; the two
+//! lists the user manages, release formats and release media; the languages in
+//! use (phase 2); releases, with their credits (phase 4); and tracks, with
+//! their disc titles, and what a folder suggests for importing it (phase 5).
 //!
 //! - `names`: saving alternate names, and the links credited with them.
 //! - `releases`: releases, their links, cover, file links and credits.
@@ -56,8 +55,7 @@ pub struct FileLinkInput {
     pub note: Option<String>,
 }
 
-/// An alternate name (slunk's 3_alternate_names.md §6). With an id, one the
-/// owner has.
+/// An alternate name. With an id, one the owner has.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AlternateNameInput {
     pub id: Option<i64>,
@@ -91,8 +89,8 @@ pub struct LabelInput {
     pub alternate_names: Option<Vec<AlternateNameInput>>,
 }
 
-/// An artist as credited (slunk's 3_alternate_names.md §6): `credited_as` is
-/// the name printed. Blank, or the artist's main name, means the main name.
+/// An artist as credited: `credited_as` is the name printed. Blank, or the
+/// artist's main name, means the main name.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CreditedArtistInput {
     pub artist_id: i64,
@@ -113,7 +111,7 @@ pub struct TrackCreditsInput {
     pub credits: Vec<CreditInput>,
 }
 
-/// An alternate title (slunk's 3_alternate_names.md §6).
+/// An alternate title.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AlternateTitleInput {
     pub title: String,
@@ -381,8 +379,7 @@ impl Catalog {
     }
 
     /// Adds an alternate name after the artist's others, like one the import
-    /// offers (slunk's 3_alternate_names.md §7.7). Refuses one the artist has
-    /// already, and its main name.
+    /// offers. Refuses one the artist has already, and its main name.
     pub fn add_artist_name(&self, id: i64, name: &str, language: Option<&str>) -> Result<Artist> {
         let name = clean_text(name);
         if name.is_empty() {

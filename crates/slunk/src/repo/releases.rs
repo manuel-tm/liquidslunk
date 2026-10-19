@@ -399,6 +399,20 @@ pub fn set_disc_titles(conn: &Connection, release_id: i64, titles: &[DiscTitle])
     Ok(())
 }
 
+/// Releases with no artist, by title, for the library check.
+pub fn without_artists(conn: &Connection) -> Result<Vec<Release>> {
+    let sql = format!(
+        r#"select {COLUMNS} from "releases" where not exists (
+          select 1 from artists_releases where release_id = releases.id
+        ) order by title collate nocase"#
+    );
+    let mut statement = conn.prepare(&sql)?;
+    let rows = statement
+        .query_map([], release)?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
 /// How many tracks the release has.
 pub fn track_count(conn: &Connection, id: i64) -> Result<i64> {
     Ok(conn.query_row(

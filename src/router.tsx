@@ -44,8 +44,7 @@ import { TrackForm } from "@/routes/tracks/form"
 import { TrackList } from "@/routes/tracks/list"
 import { TrackRead } from "@/routes/tracks/read"
 
-// The routes of slunk's design §7.4, and Welcome (design §6.1), outside the
-// app's layout
+// The app's routes, and Welcome (design §6.1), outside the app's layout
 export const router = createBrowserRouter([
   { path: "library", element: <Welcome /> },
   {

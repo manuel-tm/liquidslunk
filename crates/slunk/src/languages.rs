@@ -1,6 +1,6 @@
-//! Languages of names and titles (slunk's 3_alternate_names.md §4.2): BCP 47
-//! tags, in the canonical form slunk saved them in, which is what Node 26's
-//! `Intl.getCanonicalLocales` gives, with ICU 78 and CLDR 48 (design §10).
+//! Languages of names and titles: BCP 47 tags, in the canonical form slunk
+//! saved them in, which is what Node 26's `Intl.getCanonicalLocales` gives,
+//! with ICU 78 and CLDR 48 (design §10).
 //!
 //! ICU4X's canonicalizer does most of it. V8 and ICU4C do a few things it
 //! doesn't, which `canonical_locale()` adds: `tests/languages.rs` checks the
@@ -16,11 +16,10 @@ use icu_properties::props::Script;
 use crate::text::trim;
 use crate::{Error, Result};
 
-/// A language tag as it's saved (slunk's 3_alternate_names.md §4.2):
-/// canonical, so "JA-latn" becomes "ja-Latn", or `None` when it's blank.
-/// Refuses a malformed tag, one whose language isn't 2 or 3 letters
-/// ("japanese" is well formed, but isn't a language), and `und`, since an
-/// unknown language is `None`.
+/// A language tag as it's saved: canonical, so "JA-latn" becomes "ja-Latn", or
+/// `None` when it's blank. Refuses a malformed tag, one whose language isn't 2
+/// or 3 letters ("japanese" is well formed, but isn't a language), and `und`,
+/// since an unknown language is `None`.
 pub fn language_tag(text: Option<&str>) -> Result<Option<String>> {
     let Some(typed) = text.map(trim).filter(|typed| !typed.is_empty()) else {
         return Ok(None);
@@ -45,9 +44,9 @@ pub fn language_tag(text: Option<&str>) -> Result<Option<String>> {
 }
 
 /// The language a name's script gives away, for a name added as it was
-/// credited (slunk's 3_alternate_names.md §6): kana are only Japanese, and
-/// Hangul only Korean. Han characters could be Chinese or Japanese, and
-/// Cyrillic several languages, so they give none.
+/// credited: kana are only Japanese, and Hangul only Korean. Han characters
+/// could be Chinese or Japanese, and Cyrillic several languages, so they give
+/// none.
 pub fn script_language(text: &str) -> Option<&'static str> {
     let scripts = CodePointMapData::<Script>::new();
     let has = |wanted: &[Script]| text.chars().any(|c| wanted.contains(&scripts.get(c)));

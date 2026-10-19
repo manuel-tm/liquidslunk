@@ -18,9 +18,9 @@ import type { useListParams } from "@/hooks/use-list-params"
 export const PER_PAGE = 50
 
 /**
- * A list page (slunk's design §7.2): the header with its New button, a search box,
- * filters and the pager, then the table, or what's there instead while it
- * loads, fails or is empty.
+ * A list page: the header with its New button, a search box, filters and the
+ * pager, then the table, or what's there instead while it loads, fails or is
+ * empty.
  */
 export function ListLayout({
   title,

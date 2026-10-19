@@ -17,8 +17,8 @@ import {
 import { Button } from "@/components/ui/button"
 
 /**
- * The read page's Delete button and its confirmation (slunk's design §7.2). While
- * something blocks the delete, the dialog says what instead.
+ * The read page's Delete button and its confirmation. While something blocks
+ * the delete, the dialog says what instead.
  */
 export function DeleteButton({
   name,

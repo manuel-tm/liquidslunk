@@ -1,6 +1,6 @@
-//! The tagging context's commands (slunk's `tagging.graphql`): tag
-//! definitions, their values, and a release's tags. Each tag type has its
-//! own ids, so a tag is named by its type and its id.
+//! The tagging context's commands: tag definitions, their values, and a
+//! release's tags. Each tag type has its own ids, so a tag is named by its
+//! type and its id.
 
 use std::collections::HashMap;
 

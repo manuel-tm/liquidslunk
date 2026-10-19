@@ -1,10 +1,8 @@
-//! The catalog context's commands (slunk's `catalog.graphql`): artists,
-//! labels, the lists the user manages, the languages in use (phase 2),
-//! releases (phase 4), tracks and the import's reads (phase 5).
+//! The catalog context's commands: artists, labels, the lists the user
+//! manages, the languages in use, releases, tracks, and the import's reads.
 //!
 //! - `artists`, `labels`, `lists`, `releases`, `tracks` and `import` each
-//!   hold their commands and DTOs, and the plain functions behind them,
-//!   which the write parity script calls too, like
+//!   hold their commands and DTOs, and the plain functions behind them, like
 //!   `artists::create(library, args)`.
 //! - This module holds what they share: arguments, the DTOs of what a
 //!   release refers to, and `Related`, which loads it.
@@ -30,7 +28,7 @@ pub mod lists;
 pub mod releases;
 pub mod tracks;
 
-/// Pickers offer the first 20 matches (slunk's design §7.3).
+/// Pickers offer the first 20 matches.
 pub(crate) const OPTIONS: i64 = 20;
 
 /// A page of a list: artists, labels, formats or media.
@@ -175,8 +173,7 @@ fn files_by_id(
         .collect())
 }
 
-/// A title besides the main one, of a release, a track or a disc (slunk's
-/// 3_alternate_names.md §4.2).
+/// A title besides the main one, of a release, a track or a disc.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct AlternateTitle {
@@ -217,8 +214,7 @@ pub struct ArtistRef {
 }
 
 /// An artist a link names, with its other names, in order, for a page that
-/// shows a title's artists in the title's language (slunk's
-/// 3_alternate_names.md §7.2).
+/// shows a title's artists in the title's language.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct NamedArtistRef {
@@ -227,8 +223,7 @@ pub struct NamedArtistRef {
     pub alternate_names: Vec<NameRef>,
 }
 
-/// An artist as credited on a release, a track or a credit line (slunk's
-/// 3_alternate_names.md §4.2).
+/// An artist as credited on a release, a track or a credit line.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CreditedArtist {

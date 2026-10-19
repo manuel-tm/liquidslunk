@@ -26,8 +26,8 @@ import { call } from "@/lib/query"
 const releases = (n: number) => `${n} release${n === 1 ? "" : "s"}`
 
 /**
- * The release list's bulk edit (slunk's design §8, phase 4): what's selected, and
- * what can be done to it all at once.
+ * The release list's bulk edit: what's selected, and what can be done to it all
+ * at once.
  */
 export function BulkEditBar({
   selected,

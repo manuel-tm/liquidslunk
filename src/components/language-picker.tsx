@@ -4,7 +4,7 @@ import { type Option, Picker } from "@/components/picker"
 import { canonicalTag, LANGUAGES, languageName } from "@/lib/languages"
 import { useCommand } from "@/lib/query"
 
-// Like the other pickers (slunk's design §7.3)
+// Like the other pickers
 const LIMIT = 20
 
 const optionOf = (tag: string): Option => ({
@@ -13,9 +13,9 @@ const optionOf = (tag: string): Option => ({
 })
 
 /**
- * A language tag (slunk's 3_alternate_names.md §7.6). It offers the tags already in
- * use first, so a language keeps one tag, then searches every language by
- * name or tag. Any other valid tag can be typed in.
+ * A language tag. It offers the tags already in use first, so a language keeps
+ * one tag, then searches every language by name or tag. Any other valid tag can
+ * be typed in.
  */
 export function LanguagePicker({
   value,

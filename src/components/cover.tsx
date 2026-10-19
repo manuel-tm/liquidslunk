@@ -4,10 +4,10 @@ import { fileUrl } from "@/lib/query"
 import { cn } from "@/lib/utils"
 
 /**
- * A cover or picture: the original image, loaded lazily (slunk's design §7.3), or a
- * placeholder. It takes the size in `className`, and only that: the
- * `max-width: 100%` Tailwind gives images lets a table that's too wide, like
- * the release list, squeeze an image's column to nothing.
+ * A cover or picture: the original image, loaded lazily, or a placeholder. It
+ * takes the size in `className`, and only that: the `max-width: 100%` Tailwind
+ * gives images lets a table that's too wide, like the release list, squeeze an
+ * image's column to nothing.
  */
 export function Cover({
   file,

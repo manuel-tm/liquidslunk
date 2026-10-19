@@ -13,9 +13,9 @@ import {
 
 /**
  * Something a picker offers: an id, and what it shows. An option with an
- * `image` key shows it before the name, or a placeholder when it's null.
- * `lang` is the name's language, and `detail` shows after it, muted: the
- * alternate name a search matched (slunk's 3_alternate_names.md §7.4).
+ * `image` key shows it before the name, or a placeholder when it's null. `lang`
+ * is the name's language, and `detail` shows after it, muted: the alternate
+ * name a search matched.
  *
  * An artist can also be offered as credited with one of its names, as
  * "Alika · as ALIKA": `creditedAs` is that name, and `key` tells the option
@@ -50,8 +50,8 @@ export type PickerProps<T extends Option = Option> = {
 }
 
 /**
- * A combobox whose options come from the backend as the user types (design
- * §7.2). With `onCreate`, it also offers to create what was typed.
+ * A combobox whose options come from the backend as the user types. With
+ * `onCreate`, it also offers to create what was typed.
  */
 export function Picker<T extends Option>({
   value,

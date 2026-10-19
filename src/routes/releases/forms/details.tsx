@@ -54,11 +54,10 @@ export const EMPTY_DETAILS: DetailsValues = {
 }
 
 /**
- * A release's details (slunk's design §7.6): title, artists, various artists,
- * date, formats, media, labels and catalog number. Without `releaseId`, it
- * creates the release. The import also offers to split a title with " = ",
- * and types the tag names that picked no artist into Artists, in turn
- * (slunk's 3_alternate_names.md §7.7).
+ * A release's details: title, artists, various artists, date, formats, media,
+ * labels and catalog number. Without `releaseId`, it creates the release. The
+ * import also offers to split a title with " = ", and types the tag names that
+ * picked no artist into Artists, in turn.
  */
 export function ReleaseDetailsForm({
   releaseId,

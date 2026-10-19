@@ -17,7 +17,7 @@ import { formatDateTime } from "@/lib/format"
 import { textProps } from "@/lib/languages"
 import { useCommand } from "@/lib/query"
 
-/** `/artists` (slunk's design §7.7) */
+/** `/artists`: the artist list. */
 export function ArtistList() {
   const list = useListParams()
   const { data, error } = useCommand("artists", {

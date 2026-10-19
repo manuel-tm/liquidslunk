@@ -1,6 +1,7 @@
 //! Audio files' durations and tags, checked against what slunk read from the
-//! same files. The fixtures and expected.json come from
-//! `fixtures/audio/generate.ts`, which says how to make them again.
+//! same files. The fixtures come from `fixtures/audio/generate.ts`, which says
+//! how to make them again, and expected.json is what slunk's reader read from
+//! them.
 
 use std::collections::BTreeMap;
 use std::fs;

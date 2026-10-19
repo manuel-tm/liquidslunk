@@ -2,7 +2,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
-/** "1–50 of 172", with previous and next buttons (slunk's design §7.2). */
+/** "1–50 of 172", with previous and next buttons. */
 export function Pager({
   page,
   perPage,

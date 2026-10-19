@@ -16,7 +16,7 @@ import { formatDateTime } from "@/lib/format"
 import { textProps } from "@/lib/languages"
 import { useCommand } from "@/lib/query"
 
-/** `/labels` (slunk's design §7.8) */
+/** `/labels`: the label list. */
 export function LabelList() {
   const list = useListParams()
   const { data, error } = useCommand("labels", {

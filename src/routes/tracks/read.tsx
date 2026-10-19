@@ -14,7 +14,7 @@ import { formatDuration } from "@/lib/format"
 import { call, fileUrl, idParam, queryClient, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
 
-/** `/tracks/:id` (slunk's design §7.8) */
+/** `/tracks/:id`: a track, with its audio, credits, tags and files. */
 export function TrackRead() {
   const { id = "" } = useParams()
   const trackId = idParam(id)

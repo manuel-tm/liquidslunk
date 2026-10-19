@@ -1,8 +1,8 @@
-//! The media context's commands (slunk's `media.graphql`): registered files,
-//! the library on disk, and opening files (design §5.5).
+//! The media context's commands: registered files, the library on disk, and
+//! opening files (design §5.5).
 //!
 //! Each command is a thin async wrapper over a function that takes the open
-//! library, which the write parity script calls too.
+//! library.
 
 use std::path::PathBuf;
 

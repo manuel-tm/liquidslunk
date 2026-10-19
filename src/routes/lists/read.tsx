@@ -11,7 +11,7 @@ import { call, idParam, queryClient, useCommand } from "@/lib/query"
 import { LISTS } from "@/routes/lists/config"
 import { NotFound } from "@/routes/not-found"
 
-/** A format or medium, and how many releases use it (slunk's design §7.8). */
+/** A format or medium, and how many releases use it. */
 export function ListItemRead({ kind }: { kind: ListKind }) {
   const { id = "" } = useParams()
   const itemId = idParam(id)

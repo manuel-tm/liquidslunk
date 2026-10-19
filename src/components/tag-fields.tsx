@@ -33,7 +33,7 @@ import { TAG_TYPE_LABELS, TAG_TYPES } from "@/lib/tags"
 
 export type TagFieldValues = { type: TagType; name: string; multiple: boolean }
 
-/** A tag definition's fields (slunk's design §7.8). The type is set once. */
+/** A tag definition's fields. The type is set once. */
 export function TagFields({
   values,
   onChange,

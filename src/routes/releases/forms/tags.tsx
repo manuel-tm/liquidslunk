@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { call, idParam, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
 
-/** A release's Tags tab (slunk's design §7.6), which the import's last step reuses. */
+/** A release's Tags tab, which the import's last step reuses. */
 export function ReleaseTagsForm({
   releaseId,
   submitLabel = "Save",

@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { textProps } from "@/lib/languages"
 
-/** An alternate name being edited (slunk's 3_alternate_names.md §7.6). */
+/** An alternate name being edited. */
 export type AlternateNameRow = {
   /** Tells rows apart, before they're saved too */
   key: string

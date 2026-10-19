@@ -1,5 +1,4 @@
-//! Alternate titles, saved after their release's, track's or disc's main
-//! title (slunk's 3_alternate_names.md §6).
+//! Alternate titles, saved after their release's, track's or disc's main title.
 
 use std::collections::HashSet;
 

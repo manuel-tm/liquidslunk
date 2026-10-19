@@ -29,8 +29,8 @@ impl Store {
     /// back if it fails. A context that writes inside another's transaction
     /// takes the `Transaction`, which derefs to a `Connection`, so there's
     /// no nesting. It starts with `BEGIN IMMEDIATE`, which takes the write
-    /// lock at once, since slunk's backend writes the same database until
-    /// phase 6.
+    /// lock at once: another process writing the library, like the database
+    /// commands, makes it wait for the lock rather than fail midway.
     pub fn transaction<T>(&self, work: impl FnOnce(&Transaction<'_>) -> Result<T>) -> Result<T> {
         let mut conn = self.conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;

@@ -11,9 +11,9 @@ import { call } from "@/lib/query"
 const keyOf = (offer: OfferedName) => `${offer.artist.id}:${offer.name}`
 
 /**
- * The other parts of artist tags like "Ryo Fukui = 福居良", offered as
- * alternate names of the artists they matched (slunk's 3_alternate_names.md §7.7).
- * Each is added on its own, with the language its script gives away.
+ * The other parts of artist tags like "Ryo Fukui = 福居良", offered as alternate
+ * names of the artists they matched. Each is added on its own, with the
+ * language its script gives away.
  */
 export function OtherNamesOffer({ offers }: { offers: OfferedName[] }) {
   const [added, setAdded] = useState<Set<string>>(new Set())

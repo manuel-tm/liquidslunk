@@ -94,8 +94,8 @@ function initialRows(data: ReleaseTracks): TrackRow[] {
     include: true,
     fromFolder: false,
   }))
-  // On a regular release, the release's artists perform a track with none
-  // of its own, so tags naming them don't become track artists (slunk's design §7.6)
+  // On a regular release, the release's artists perform a track with none of
+  // its own, so tags naming them don't become track artists
   const releaseArtists = new Set(
     data.variousArtists ? [] : data.artists.map((link) => link.artist.id)
   )
@@ -166,10 +166,9 @@ function initialTitles(data: ReleaseTracks): Record<number, DiscTitleValues> {
 }
 
 /**
- * A release's tracks (slunk's design §7.6): a row each, in order. Saving deletes the
- * tracks whose rows were removed, not their files. With `folder` (the
- * import), there's also a row for each of its audio files that isn't a
- * track yet (slunk's design §7.9).
+ * A release's tracks: a row each, in order. Saving deletes the tracks whose
+ * rows were removed, not their files. With `folder` (the import), there's also
+ * a row for each of its audio files that isn't a track yet.
  */
 export function ReleaseTracksForm({
   releaseId,
@@ -223,7 +222,7 @@ function Rows({
 }: {
   releaseId: number
   variousArtists: boolean
-  /** The import's split of titles with " = " (slunk's 3_alternate_names.md §7.7) */
+  /** The import's split of titles with " = " */
   offerSplit: boolean
   offers: OfferedName[]
   initial: TrackRow[]

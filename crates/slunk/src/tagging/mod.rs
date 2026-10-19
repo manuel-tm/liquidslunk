@@ -1,5 +1,5 @@
 //! The tagging context: tag definitions, and their values on releases and
-//! tracks (slunk's design §4.3 Tags, §6).
+//! tracks.
 //!
 //! - `values`: values as they're typed, and as they're shown.
 //! - `repository`: the records `repo::tags` stores.
@@ -346,8 +346,8 @@ pub fn tag_filters(inputs: &[TagFilterInput]) -> Result<Vec<TagFilter>> {
     inputs.iter().map(filter_of).collect()
 }
 
-/// Each type's names are unique in the database. Across types, only the app
-/// can check it (slunk's design §4.3 Tags).
+/// Each type's names are unique in the database. Across types, only the app can
+/// check it.
 fn check_name(tx: &Connection, kind: TagType, name: &str) -> Result<()> {
     match tags::find_by_name(tx, name)?
         .into_iter()

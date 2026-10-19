@@ -44,7 +44,7 @@ import { textProps } from "@/lib/languages"
 import { call, idParam, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
 
-/** `/artists/create` and `/artists/:id/update` (slunk's design §7.7). */
+/** `/artists/create` and `/artists/:id/update`. */
 export function ArtistForm() {
   const { id } = useParams()
   const artistId = idParam(id)
@@ -159,10 +159,9 @@ function Form({
   })
 
   /**
-   * Swaps a name with the main name (slunk's 3_alternate_names.md §7.6): the name
-   * and its language become the main ones, and the main name takes its
-   * place. A real name stays a real name too. Saving keeps the old main name
-   * on the links that show it.
+   * Swaps a name with the main name: the name and its language become the main
+   * ones, and the main name takes its place. A real name stays a real name too.
+   * Saving keeps the old main name on the links that show it.
    */
   function makeMain(row: AlternateNameRow) {
     const old = alternateNameRow({ name, language: nameLanguage })
@@ -294,9 +293,9 @@ function Form({
 }
 
 /**
- * Asks before a save changes what links show (slunk's 3_alternate_names.md §7.6):
- * removing a name that's in use credits its links with the main name, and a
- * rename can keep the old name on the links that show it.
+ * Asks before a save changes what links show: removing a name that's in use
+ * credits its links with the main name, and a rename can keep the old name on
+ * the links that show it.
  */
 function SaveDialog({
   asking,

@@ -6,9 +6,8 @@ import { matchedName } from "@/lib/names"
 type Name = { name: string; language?: string | null; realName?: boolean }
 
 /**
- * An artist's or label's alternate names, under its name
- * (slunk's 3_alternate_names.md §7.5): the real names, then the others, each with its
- * language. A row with nothing in it is hidden.
+ * An artist's or label's alternate names, under its name: the real names, then
+ * the others, each with its language. A row with nothing in it is hidden.
  */
 export function AlternateNames({ names }: { names: Name[] }) {
   const real = names.filter((name) => name.realName)
@@ -46,8 +45,8 @@ export function AlternateNames({ names }: { names: Name[] }) {
 }
 
 /**
- * The alternate name a search matched, under a row's main name
- * (slunk's 3_alternate_names.md §7.4), so the row shows why it's there.
+ * The alternate name a search matched, under a row's main name, so the row
+ * shows why it's there.
  */
 export function MatchedName({
   main,

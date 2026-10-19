@@ -30,10 +30,10 @@ export function tagValueKey(value: string): string {
   return value.trim().replace(/[A-Z]/g, (c) => c.toLowerCase())
 }
 
-// Release list filters in the query string (slunk's design §7.6), one parameter each:
-// `text.3=Rock` (equals), `text.3.contains=ro`, `number.5=8`,
-// `number.5.min=8`, `number.5.max=10`, `date.2=2024` (anytime in 2024),
-// `date.2.min=2024-03` and `date.2.max=2024`. They all have to match.
+// Release list filters in the query string, one parameter each: `text.3=Rock`
+// (equals), `text.3.contains=ro`, `number.5=8`, `number.5.min=8`,
+// `number.5.max=10`, `date.2=2024` (anytime in 2024), `date.2.min=2024-03` and
+// `date.2.max=2024`. They all have to match.
 
 export type TagFilterOp = "equals" | "contains" | "min" | "max"
 

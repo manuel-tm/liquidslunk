@@ -29,7 +29,7 @@ import { formatDateTime, formatSize } from "@/lib/format"
 import { call, fileUrl, idParam, queryClient, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
 
-/** `/files/:id` (slunk's design §7.8) */
+/** `/files/:id`: a file, whether it's on disk, and what uses it. */
 export function FileRead() {
   const { id = "" } = useParams()
   const fileId = idParam(id)
@@ -186,8 +186,8 @@ function Uses({ file }: { file: File }) {
 }
 
 /**
- * Deletes the record, after a confirmation. While anything uses the file,
- * the dialog says what instead (slunk's design §7.2).
+ * Deletes the record, after a confirmation. While anything uses the file, the
+ * dialog says what instead.
  */
 function DeleteFile({ file }: { file: File }) {
   const navigate = useNavigate()

@@ -1,5 +1,5 @@
-//! Alternate names, saved after their artist's or label's main name (slunk's
-//! 3_alternate_names.md §6), and the links credited with them.
+//! Alternate names, saved after their artist's or label's main name, and the
+//! links credited with them.
 
 use std::collections::HashSet;
 
@@ -27,8 +27,8 @@ pub(super) fn named_values(
     })
 }
 
-/// Saves an artist's alternate names, after its main name (slunk's
-/// 3_alternate_names.md §6). Links keep showing what they showed:
+/// Saves an artist's alternate names, after its main name. Links keep showing
+/// what they showed:
 /// - with `keep_old_name`, a rename credits the links that showed the old
 ///   main name with it, as an alternate name;
 /// - a name that goes leaves its links showing the main name, and so does a
@@ -138,12 +138,11 @@ pub(super) fn save_label_names(
     named::set_alternate_names(tx, Table::Labels, label.id, &list)
 }
 
-/// Alternate names as they're saved (slunk's 3_alternate_names.md §6):
-/// cleaned, a blank one left out, and languages in canonical form. Refuses a
-/// name given twice, and one that's the main name, unless it's a real name:
-/// an artist who performs under their real name can still record it. Labels
-/// have no real names. Names compare exactly, case included, so "ALIKA"
-/// isn't "Alika".
+/// Alternate names as they're saved: cleaned, a blank one left out, and
+/// languages in canonical form. Refuses a name given twice, and one that's the
+/// main name, unless it's a real name: an artist who performs under their real
+/// name can still record it. Labels have no real names. Names compare exactly,
+/// case included, so "ALIKA" isn't "Alika".
 fn alternate_name_rows(
     what: NamedKind,
     main: &str,

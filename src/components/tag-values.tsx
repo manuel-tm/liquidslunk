@@ -4,8 +4,7 @@ import type { TagType } from "@/bindings"
 import { formatTagValue, tagValueUrl } from "@/lib/tags"
 
 /**
- * A tag's values, "Pop, Rock", each linking to the list filtered by it
- * (slunk's design §7.6).
+ * A tag's values, "Pop, Rock", each linking to the list filtered by it.
  */
 export function TagValues({
   type,

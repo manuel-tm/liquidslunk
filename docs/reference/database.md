@@ -15,7 +15,7 @@ This is the schema as built, by these migrations in `crates/slunk/src/repo/migra
 | `20261016151144_add_credited_names` | Credited names: `credited_name_id` on the four artist link tables, which it rebuilds |
 | `20261016180957_add_alternate_titles` | Alternate titles: `release_alternate_titles`, `track_alternate_titles` and `release_disc_alternate_titles`, and the main titles' languages |
 
-The schema is slunk's. The reasoning behind it is in slunk's design docs, which are in `legacy/docs/design/` until phase 6: its base design's §4 and its appendices A and D, `2_credits.md` §4 for credits, and `3_alternate_names.md` §4 for alternate names. Disc titles have no design doc: [Disc titles](#disc-titles) below explains them. Every column's type is in its migration's `create table`, and `sqlite3 slunk.db .schema` shows them all.
+The schema is slunk's, carried over unchanged ([design §2.1](../design/1_introduction.md#21-what-the-port-keeps)). This page describes what it holds and the rules it enforces, with the reasons where they aren't plain, as for [disc titles](#disc-titles) and [credited names](#credited-names). Every column's type is in its migration's `create table`, and `sqlite3 slunk.db .schema` shows them all.
 
 How to connect and migrate: [development/backend.md](../development/backend.md#the-database).
 
@@ -140,7 +140,7 @@ Every credit line has an artist. A line is inserted before its artists, so a def
 
 ### Credited names
 
-The four artist link tables, `artists_releases`, `artists_tracks`, `artists_release_credits` and `artists_track_credits`, each have `credited_name_id`: the alternate name printed there, like "ALIKA" for Alika (slunk's `3_alternate_names.md` §4.2). NULL is the artist's main name.
+The four artist link tables, `artists_releases`, `artists_tracks`, `artists_release_credits` and `artists_track_credits`, each have `credited_name_id`: the alternate name printed there, like "ALIKA" for Alika. NULL is the artist's main name.
 - `(artist_id, credited_name_id)` references `artist_alternate_names (artist_id, id)`, so the name is the linked artist's own. SQLite doesn't check a key with a NULL in it. Otherwise the database refuses, with `FOREIGN KEY constraint failed`:
   - crediting an artist with another artist's name;
   - moving a credited name to another artist;

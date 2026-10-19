@@ -76,14 +76,13 @@ export type Selection = {
 }
 
 /**
- * The release table (slunk's design §7.6): the release list's, also shown on label
- * and artist pages with fewer columns. `withArtists` names every artist in
- * the title cell, as on an artist page. With `selection`, each row gets a
- * checkbox, and the header one selects the page. Artists show as credited
- * (slunk's 3_alternate_names.md §7.1), so on an artist page the title cell says when
- * a release credits the artist under another name: "ALIKA – virmalised".
- * Under each title is an alternate title, the one `q` matched or the first
- * (slunk's 3_alternate_names.md §7.4).
+ * The release table: the release list's, also shown on label and artist pages
+ * with fewer columns. `withArtists` names every artist in the title cell, as on
+ * an artist page. With `selection`, each row gets a checkbox, and the header
+ * one selects the page. Artists show as credited, so on an artist page the
+ * title cell says when a release credits the artist under another name: "ALIKA
+ * – virmalised". Under each title is an alternate title, the one `q` matched or
+ * the first.
  */
 export function ReleaseTable({
   releases,

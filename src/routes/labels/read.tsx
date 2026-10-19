@@ -17,7 +17,7 @@ import { textProps } from "@/lib/languages"
 import { call, idParam, queryClient, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
 
-/** `/labels/:id`: the logo and name, then the label's releases (slunk's design §7.8). */
+/** `/labels/:id`: the logo and name, then the label's releases. */
 export function LabelRead() {
   const { id = "" } = useParams()
   const labelId = idParam(id)

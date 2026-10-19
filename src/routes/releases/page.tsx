@@ -31,8 +31,7 @@ const RELEASE_QUERIES = [
   "releaseTags",
 ]
 
-// The browser remembers whether credits (slunk's design §7.6) and alternate titles
-// (slunk's 3_alternate_names.md §7.3) are hidden
+// The browser remembers whether credits and alternate titles are hidden
 const HIDE_CREDITS = "slunk.release.hideCredits"
 const HIDE_TITLES = "slunk.release.hideAlternateTitles"
 
@@ -56,7 +55,7 @@ function useRemembered(key: string) {
   return [on, toggle] as const
 }
 
-/** `/releases/:id`, laid out like a Discogs release page (slunk's design §7.6). */
+/** `/releases/:id`, laid out like a Discogs release page. */
 export function ReleasePage() {
   const { id = "" } = useParams()
   const releaseId = idParam(id)
@@ -329,7 +328,7 @@ function Tracklist({ release }: { release: Release }) {
                   {!hideTitles && (
                     <AlternateTitleLines
                       titles={track.alternateTitles}
-                      // Where the row names the track's artists (§7.2)
+                      // Where the row names the track's artists
                       artists={
                         release.variousArtists && track.artists.length > 0
                           ? track.artists

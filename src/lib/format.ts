@@ -40,9 +40,9 @@ export function formatDuration(ms: number | null | undefined): string {
 }
 
 /**
- * A release date with only its known parts (slunk's design §7.2): `2006`,
- * `Jan 2006` or `Jan 10, 2006`. It comes as `2006`, `2006-01` or
- * `2006-01-10`, and isn't shifted to the viewer's time zone.
+ * A release date with only its known parts: `2006`, `Jan 2006` or `Jan 10,
+ * 2006`. It comes as `2006`, `2006-01` or `2006-01-10`, and isn't shifted to
+ * the viewer's time zone.
  */
 export function formatReleased(released: string | null | undefined): string {
   if (!released) return ""

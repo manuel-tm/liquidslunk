@@ -1,7 +1,9 @@
 //! Migration parity with slunk (design §5.6). The fixtures in
-//! `fixtures/parity/` come from slunk's own migration runner (`generate.ts`
-//! there says how), so these tests check the Rust migrator against what slunk
-//! did.
+//! `fixtures/parity/` are what slunk's own migration runner made, written while
+//! its backend was in the repository: a database at each migration, with sample
+//! rows, then where slunk took it, migrated to the end, and rolled back one. So
+//! these tests check the Rust migrator against what slunk did. They cover
+//! slunk's eight migrations, which never change.
 
 use std::fs;
 use std::path::{Path, PathBuf};

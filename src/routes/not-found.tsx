@@ -11,7 +11,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty"
 
-/** Shown for an unknown route, and later for an unknown id (slunk's design §7.2). */
+/** Shown for an unknown route, and later for an unknown id. */
 export function NotFound() {
   return (
     <>

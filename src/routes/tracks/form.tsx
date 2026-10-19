@@ -67,8 +67,8 @@ type Values = {
 }
 
 /**
- * `/tracks/create` and `/tracks/:id/update` (slunk's design §7.8). `?release=` and
- * `?file=` prefill a new track.
+ * `/tracks/create` and `/tracks/:id/update`. `?release=` and `?file=` prefill a
+ * new track.
  */
 export function TrackForm() {
   const { id } = useParams()

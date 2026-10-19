@@ -2,15 +2,16 @@
 
 > Keep this page up to date: any change to the backend's stack, structure, commands or conventions updates it in the same change.
 
-The backend is Rust, built into the app. It's being ported from slunk's Node backend one context at a time ([design §8](../design/1_introduction.md#8-the-transition)). So far:
-- **Phase 0:** the database connection, the migration runner with its backups, slunk's eight migrations, and their parity tests; the database commands, in `crates/slunk-cli`; the app: commands typed by tauri-specta, their error, the settings, opening, creating, switching and closing libraries, the file protocol, and opening files; and the sidecar, slunk's backend, which still serves every route not ported yet, in debug builds.
-- **Phase 1:** the media context: registered files, the library on disk, file links, and reading audio files; lists' paging; and the write parity script.
+The backend is Rust, built into the app. It was ported from slunk's Node backend one context at a time ([design §8](../design/1_introduction.md#8-the-transition)):
+- **Phase 0:** the database connection, the migration runner with its backups, slunk's eight migrations, and their parity tests; the database commands, in `crates/slunk-cli`; the app: commands typed by tauri-specta, their error, the settings, opening, creating, switching and closing libraries, the file protocol, and opening files. While the port ran, slunk's backend served the routes not ported yet, beside the app in debug builds.
+- **Phase 1:** the media context: registered files, the library on disk, file links, and reading audio files; and lists' paging. Until phase 6, a script checked that the commands wrote what slunk's backend wrote, step by step.
 - **Phase 2:** the catalog context's artists and labels, with their alternate names, pictures and logos, and an artist's file links; release formats and release media; and language tags.
 - **Phase 3:** the tagging context: tag definitions, their values on releases and tracks, list filters and bulk edits; and dates.
 - **Phase 4:** the catalog context's releases: their details, alternate titles, artists as credited, labels, formats and media, cover and file links, and credit lines, theirs and their tracks'; the release list's filters; what the release, artist and label pages read, a release's tracks among it; and the catalog's totals.
 - **Phase 5:** the catalog context's tracks: the track list, a track with everything saved with it, and a release's whole track list with its disc titles; what a folder suggests for importing it; and adding one alternate name to an artist.
+- **Phase 6:** the library check and its fixes, and the sample data. slunk's backend was removed, with what ran it.
 
-The rest of slunk's catalog context (saving tracks, their disc titles and their tags, the import's suggestions, adding an artist's name) and its library check aren't ported yet, nor the media context's part of the library check (`checkFiles`, `relinkFiles`, `rehashFiles`). Their rules are in slunk's backend doc, `legacy/docs/development/backend.md`, and a rule moves here only once Rust does it, with a test.
+Each rule on this page has a test.
 
 ## Stack
 
@@ -47,8 +48,11 @@ crates/slunk/                the domain and its database, with no Tauri dependen
   src/paging.rs              a list's page, sort and search
   src/languages.rs           language tags as they're saved, as Node's Intl gave them
   src/dates.rs               dates as they're typed, stored and shown
+  src/library_check.rs       the library check, over the media context and
+                             the catalog
   src/media/                 the media context
     mod.rs                   Media: registering, browsing, updating, deleting
+    check.rs                 the library check's file part, and its fixes
     library.rs               the library on disk, read-only
     paths.rs                 Node's path functions, ported
     file_types.rs            a file's type, from its extension
@@ -87,6 +91,7 @@ crates/slunk/                the domain and its database, with no Tauri dependen
     stats.rs                 the languages in use, and the catalog's totals
     tags.rs                  tag definitions, their values, and list filters
     helpers.rs               chunked in (…) lists, grouping, sea-query's values
+    seeds.rs                 the sample data (npm run db:seed)
     migrations/              one module per migration, listed in mod.rs
   tests/parity.rs            the migrations, checked against slunk's
   tests/media.rs             the media context's rules
@@ -96,35 +101,32 @@ crates/slunk/                the domain and its database, with no Tauri dependen
   tests/tracks.rs            the rules for tracks and the import's suggestions
   tests/languages.rs         language tags, checked against Node's
   tests/tagging.rs           the tagging context's rules
-  tests/fixtures/parity/     what slunk's runner made, and the script that made it
+  tests/library_check.rs     the library check's rules
+  tests/seeds.rs             the sample data
+  tests/fixtures/parity/     what slunk's migration runner made
   tests/fixtures/audio/      audio files, what slunk read from them, and the
-                             script that made both
+                             script that makes the files
   tests/fixtures/languages/  what Node's Intl gave for language tags, and the
                              script that asked it
 crates/slunk-cli/            the database commands (npm run db:*)
 src-tauri/
   tauri.conf.json            the app's name, identifier, window, CSP and bundle
   capabilities/default.json  what the window may call
-  icons/                     Tauri's placeholder icons
-  sidecar-watchdog.cjs       stops the sidecar if the app is gone
+  icons/                     the app's icons, and icon.svg, their source
   src/lib.rs                 the builder: plugins, state, protocol, commands
   src/error.rs               the commands' error, and SQLite's errors in words
   src/settings.rs            the settings file
   src/library.rs             opening, creating, switching and closing libraries
   src/protocol.rs            slunk://localhost/files/:id
-  src/sidecar.rs             slunk's backend, in debug builds
   src/commands/              the commands and their DTOs, one module per context;
                              catalog/ has one per entity
-  examples/run_commands.rs   runs commands without the app, for write parity
-scripts/write-parity/        the write parity script, with each phase's steps
-legacy/slunk-be/             slunk's backend, run as the sidecar
 ```
 
 `crates/slunk` doesn't depend on Tauri, so its tests run with a plain `cargo test`, and the CLI uses it directly. Its repositories are plain functions over a `&Connection`, and a `Transaction` is one.
 
-**Contexts** are structs, like slunk's context factories, wired once when a library opens (`Library::new()` in `src-tauri/src/library.rs`), as slunk's `server.ts` wired them: `Media::new(store, library)` takes the store and the library on disk, `Catalog::new(store, media)` the store and the media context, which it registers files with, and `Tagging::new(store)` the store. The library holds the media context in an `Arc`, which both share. Commands call contexts, and contexts call repositories.
+**Contexts** are structs, like slunk's context factories, wired once when a library opens (`Library::new()` in `src-tauri/src/library.rs`), as slunk's `server.ts` wired them: `Media::new(store, library)` takes the store and the library on disk, `Catalog::new(store, media)` the store and the media context, which it registers files with, `Tagging::new(store)` the store, and `LibraryCheck::new(media, catalog)` the media context and the catalog. The library holds the media context and the catalog in `Arc`s, which they share. Commands call contexts, and contexts call repositories.
 
-**The store** (`repo/store.rs`) holds the library's one connection, behind a mutex. `store.conn()` takes it. `store.transaction(|tx| …)` runs a closure in a transaction, started with `BEGIN IMMEDIATE`, since slunk's backend writes the same database until phase 6. A context that writes inside another's transaction takes the `tx`, as `Media::insert_prepared(tx, prepared)` does, so there's no nesting. A context reads files before taking the connection, never while holding it: `prepare_files()` looks up what's registered, lets go of the connection, then reads and hashes the rest.
+**The store** (`repo/store.rs`) holds the library's one connection, behind a mutex. `store.conn()` takes it. `store.transaction(|tx| …)` runs a closure in a transaction, started with `BEGIN IMMEDIATE`, which takes the write lock at once: another process writing the library, like the database commands, makes it wait for the lock (`busy_timeout`) rather than fail midway. A context that writes inside another's transaction takes the `tx`, as `Media::insert_prepared(tx, prepared)` does, so there's no nesting. A context reads files before taking the connection, never while holding it: `prepare_files()` looks up what's registered, lets go of the connection, then reads and hashes the rest.
 
 **Errors** meant for the user are `slunk::Error::Invalid`, with slunk's words ("There's no file at music/a.flac"), and `NotFound` for something that isn't there ("There's no file 12"). Commands turn them into `invalid` and `notFound`.
 
@@ -134,7 +136,7 @@ legacy/slunk-be/             slunk's backend, run as the sidecar
 
 ## The media context
 
-`crates/slunk/src/media/` registers files and reads the library. It never writes to the user's files: `media/library.rs` only reads them. Each rule here has a test in `tests/media.rs`, or next to its code, and the write parity script checks them against slunk's backend.
+`crates/slunk/src/media/` registers files and reads the library. It never writes to the user's files: `media/library.rs` only reads them. Each rule here has a test in `tests/media.rs`, or next to its code. Until phase 6, a script also checked them against slunk's backend.
 
 - **Paths** are relative to the database's folder, and resolved: `""` is the folder itself, and paths above it start with `../`. They're worked out as Node's `path` works them out (`media/paths.rs`), lexically, without touching the disk, with forward slashes, and with `..` stopping at `/`. A path given absolute is made relative. They aren't text: they're kept as they are on disk, in whatever Unicode form the disk has.
 - **Browsing** (`folder`) lists a folder's subfolders and the files directly inside, following symlinks: a symlinked folder is listed as a folder, a symlinked file as a file, and a broken symlink is left out. Each subfolder says whether it, or a folder inside it, holds registered files. That's a range on the index of `files.path`, and it works for the folders above the database's folder too: `..` holds everything but the paths that start with `../../`. The parent is `None` at the top of the disk.
@@ -174,20 +176,21 @@ Known differences, which no file in `dev-library/music/` has:
 - lofty doesn't read AAC in ADTS (`.aac`) at 8 kHz, which music-metadata did, so it has no duration and no tags. At 44.1 kHz it does.
 - Ogg Vorbis, Opus, APE, WavPack and Musepack use the same tables, but their durations are lofty's, and none of it has been checked against music-metadata ([design Appendix D](../design/1_introduction.md#appendix-d-no-dsf-reader-and-audio-checks-on-the-formats-this-mac-makes)). DSF, DFF and WMA have no duration and no tags: lofty doesn't read them.
 
-`tests/audio.rs` checks every fixture in `tests/fixtures/audio/` against `expected.json`, what slunk's own `readAudio()` read from it: FLAC, M4A (AAC and Apple Lossless), MP3 (ID3v2.3, ID3v2.4, ID3v1, with and without an Info header), AAC in ADTS, WAV and AIFF, a second or so of silence each, with tags written byte by byte, so they don't come from lofty. `tests/fixtures/audio/generate.ts` makes them, on macOS, with afconvert and slunk's backend:
+`tests/audio.rs` checks every fixture in `tests/fixtures/audio/` against `expected.json`, what slunk's reader, with music-metadata, read from it: FLAC, M4A (AAC and Apple Lossless), MP3 (ID3v2.3, ID3v2.4, ID3v1, with and without an Info header), AAC in ADTS, WAV and AIFF, a second or so of silence each, with tags written byte by byte, so they don't come from lofty. `tests/fixtures/audio/generate.ts` makes the files, on macOS, with afconvert:
 
 ```sh
-npm install --prefix legacy/slunk-be
 node crates/slunk/tests/fixtures/audio/generate.ts
 ```
 
+`expected.json` was written while slunk's backend was in the repository, and isn't written again: the files hold the same audio and tags each time they're made. A new fixture needs its expected values added by hand.
+
 ## The catalog context
 
-`crates/slunk/src/catalog/` holds what the user catalogs: artists and labels, the two lists the user manages, release formats and release media, releases ([Releases](#releases)) and tracks ([Tracks](#tracks)), and what a folder suggests for importing it ([Import suggestions](#import-suggestions)). Each rule here has a test in `tests/catalog.rs`, `tests/releases.rs` or `tests/tracks.rs`, or next to its code, and the write parity script checks them against slunk's backend.
+`crates/slunk/src/catalog/` holds what the user catalogs: artists and labels, the two lists the user manages, release formats and release media, releases ([Releases](#releases)) and tracks ([Tracks](#tracks)), and what a folder suggests for importing it ([Import suggestions](#import-suggestions)). Each rule here has a test in `tests/catalog.rs`, `tests/releases.rs` or `tests/tracks.rs`, or next to its code. Until phase 6, a script also checked them against slunk's backend.
 
 - **Lists** share one repository (`repo/lists.rs`) and one set of functions, with a `ListKind`. Names are cleaned like other text, and unique in their list ignoring case, which the database enforces: "There's already one with that name, ignoring case". Renaming an unknown one is `NotFound`: "There's no format 12".
 - **Listing** sorts by `name`, ignoring case, or by `id`, and searches the name ignoring ASCII case. Artists and labels then sort by id, and their search matches an alternate name too, so "福居" finds Ryo Fukui. Lists of each have their own sort error: "Artists can't be sorted by picture".
-- **Alternate names** (slunk's 3_alternate_names.md §4.2) are other names an artist or label goes by: other spellings ("ALIKA"), initials ("R. Fukui"), names in other scripts ("福居良"). An artist's can be real names.
+- **Alternate names** are other names an artist or label goes by: other spellings ("ALIKA"), initials ("R. Fukui"), names in other scripts ("福居良"). An artist's can be real names.
   - They're saved with their artist or label, as an ordered list: a name with an id keeps its row, one without is added, and names left out are deleted. Left out entirely, they stay as they are.
   - Names are cleaned like other text, and a blank one is left out. They compare exactly, case included, so "ALIKA" isn't "Alika".
   - A save is refused when a name is given twice (`"ALIKA" is listed twice`), when one is the main name (`"Alika" is already the artist's main name`), unless it's an artist's real name, and when an id isn't one of the owner's names (`Name 3 isn't one of its alternate names`). Labels have no real names.
@@ -214,10 +217,10 @@ node crates/slunk/tests/fixtures/audio/generate.ts
 - **Details** are saved together: the title, cleaned; its language, canonical ([Languages](#languages)), which an update leaves as it is when it's left out; the date as typed, `2006`, `2006-01` or `2006-01-10`, stored with its precision ([Dates](#dates)), and a blank one is none; the catalog number, cleaned, and a blank one is none; and whether it's various artists. They're checked before anything is written: the language first, then the date. An unknown id is `NotFound`: "There's no release 12".
 - **Artists** are saved as credited, each once, the first time it's given (`catalog/credited.rs`): blank, or the artist's main name, is the main name; one of the artist's alternate names is that name; anything else is added to its alternate names, in the language its script gives away ([Languages](#languages)), and remembered, so two links in one save share it. Names compare exactly, case included. An unknown artist is `NotFound`: "There's no artist 12".
 - **Labels** keep the order they're given in, each once. **Formats and media** each once too, and they're listed by their own id, not in the order given: slunk's query ordered them by `id`, which SQLite read as its alias for the format's or medium's id.
-- **Alternate titles** (slunk's 3_alternate_names.md §4.2) are saved as an ordered list, replacing the old ones (`catalog/titles.rs`). They're cleaned, a blank one is left out, and each is printed unless it says otherwise. A title given twice is refused (`"A" is listed twice on the release`), and so is the main title (`"Scenery" is already the main title of the release`). Left out, they stay as they are, except one that's now the main title, which goes.
+- **Alternate titles** are saved as an ordered list, replacing the old ones (`catalog/titles.rs`). They're cleaned, a blank one is left out, and each is printed unless it says otherwise. A title given twice is refused (`"A" is listed twice on the release`), and so is the main title (`"Scenery" is already the main title of the release`). Left out, they stay as they are, except one that's now the main title, which goes.
 - **The list** (`list_releases()`) sorts by `title`, ignoring case, by `released`, with undated releases last either way, or by `id`, then by id. Its search matches part of the title or of an alternate title, and its filters all have to match: a format, a medium, a label, a release artist, and tag filters ([The tagging context](#the-tagging-context)). `release_ids()` gives every match's id, newest first, to select them all.
 - **The cover and file links** are saved together (`set_release_files()`), or the cover alone (`set_release_cover()`), from a file id or a path. Paths are registered in the same transaction, so a file the database refuses ("a release cover must be an image") isn't left registered, and neither is one for a release that isn't there.
-- **Credit lines** (slunk's 2_credits.md) are saved with the release's tracks' (`set_release_credits()`), each replacing its owner's. A role is cleaned, and an artist given twice on a line is kept once, with the first name it's credited with. A save is refused for a blank role ("A credit needs a role"), a line with no artist ("The Piano credit needs an artist"), two roles that differ only in case ("Two credits have the role PIANO, ignoring case. Put their artists on one line."), and another release's track ("Track 12 isn't on this release"). `credit_roles()` suggests the roles in use, the first 20 with what's typed in them, the most used first, each spelling its own.
+- **Credit lines** are saved with the release's tracks' (`set_release_credits()`), each replacing its owner's. A role is cleaned, and an artist given twice on a line is kept once, with the first name it's credited with. A save is refused for a blank role ("A credit needs a role"), a line with no artist ("The Piano credit needs an artist"), two roles that differ only in case ("Two credits have the role PIANO, ignoring case. Put their artists on one line."), and another release's track ("Track 12 isn't on this release"). `credit_roles()` suggests the roles in use, the first 20 with what's typed in them, the most used first, each spelling its own.
 - **Deleting** a release fails while it has tracks: "The release still has 2 tracks. Delete them first." `release_blockers()` says it ahead of time: "Has 2 tracks". Its links, titles, credits, tags and file links go with it, and its files stay registered. An unknown id deletes nothing, as in slunk.
 - **What the pages read:** a release's tracks, by disc then number, with their alternate titles, artists, features and credit lines; its disc titles; an artist's appearances, the releases where it's on tracks without being a release artist, its credit lines, and how many of its releases have each format; and `totals()`, the dashboard's numbers.
 
@@ -234,12 +237,12 @@ node crates/slunk/tests/fixtures/audio/generate.ts
 - **A track** is created (`create_track()`) from a registered music file, whose duration is read first: "There's no file 12", "music/a.txt isn't a music file". Saving one (`update_track()`) reads the duration again only when its file changes. Its title's language, left out, stays as it is. Its alternate titles, artists, credit lines and file links are saved with it, replacing the old ones, with paths registered in the same transaction, and its tags too when they're given ([The tagging context](#the-tagging-context)); left out, they stay as they are. An unknown id is `NotFound`: "There's no track 12". Deleting one (`delete_track()`) deletes its artists, credit lines, alternate titles, file links and tags, and its file stays registered.
 - **A track's titles** are cleaned, and its alternate titles saved as a release's are ([Releases](#releases)), naming the track by its number in their errors: `"初夏" is already the main title of track 4`.
 - **Artists** are a track's own performers, saved as credited, as a release's are, then its features, each once. An artist can't be both: "An artist can't both perform a track and be featured on it". A name added for one link is shared by the others in the same save, whole list included.
-- **Who performs a track** (`performers()`, slunk's design §4.3): its own artists, without features; on a regular release with none, the release's artists, as credited there; on a various-artists release, only its own, or nobody.
+- **Who performs a track** (`performers()`): its own artists, without features; on a regular release with none, the release's artists, as credited there; on a various-artists release, only its own, or nobody.
 - **The track list** (`list_tracks()`) sorts by `title`, ignoring case, or by `id`, then by id. Its search matches part of the title or of an alternate title, and its filters all have to match: a release, and tag filters.
 
 ### Import suggestions
 
-`catalog/suggestions.rs` reads a folder for the import (slunk's design §7.9), without writing anything:
+`catalog/suggestions.rs` reads a folder for the import, without writing anything:
 - **A release** (`suggest_release()`): the most common album, date and album artist tags of the folder's first 50 audio files, or their artist tags when they have no album artists. A tie goes to the value read first. Without an album tag, the title is the folder's name, and a date that isn't one, like `2013-02-30`, is left out. It also counts the folder's audio files, images and other files, and finds the releases with that title already, main or alternate, ignoring case, so a folder isn't imported twice.
 - **Titles with " = "** are kept whole, and the import offers to split them. The check for releases with that title also tries each part, so "Scenery = シーナリィ" finds "Scenery". `equals_parts()` splits only at an "=" with white space on both sides, as JavaScript's `\s` matched it, since "E=MC²" is a title. Parts are trimmed, and empty and repeated ones left out.
 - **A folder's tracks** (`suggest_tracks()`): a row for each audio file in the folder and its subfolders, in the folder's order, with its disc, number and title from its tags, or else from its path, relative to the folder: `CD2/03 Title.flac` is disc 2, track 3, "Title". A folder named `cd`, `disc` or `disk` and a number, in any case of ASCII letters, gives the disc. A name that starts with one to three digits, then white space, `.`, `_` or `-`, gives the number, and the rest the title. A file with no number in either gets its place on its disc. Each row also has its disc's title tag, its duration, its registration if the file is registered, and the track it's already the audio of, on any release.
@@ -271,7 +274,7 @@ node crates/slunk/tests/fixtures/languages/generate.ts
 
 ## The tagging context
 
-`crates/slunk/src/tagging/` holds tag definitions and their values on releases and tracks (slunk's design §4.3 Tags). Each type, `text`, `number` or `date`, has its own definition table, so the same id exists once per type, and every function takes the type with the id. Each type also has a value table per owner, release or track (`release_text_tags`, `track_text_tags`, …). Releases and tracks share the definitions, so one Genre tag works on both. `repo/tags.rs` serves all of them. Each rule here has a test in `tests/tagging.rs`, or next to its code, and the write parity script checks them against slunk's backend.
+`crates/slunk/src/tagging/` holds tag definitions and their values on releases and tracks. Each type, `text`, `number` or `date`, has its own definition table, so the same id exists once per type, and every function takes the type with the id. Each type also has a value table per owner, release or track (`release_text_tags`, `track_text_tags`, …). Releases and tracks share the definitions, so one Genre tag works on both. `repo/tags.rs` serves all of them. Each rule here has a test in `tests/tagging.rs`, or next to its code. Until phase 6, a script also checked them against slunk's backend.
 
 - **Listing** shows one type's tags, or every type's together. It sorts by `name`, ignoring case, or by `id`, and ties go text, number, date. The search matches part of the name. Another sort is refused: "Tags can't be sorted by multiple".
 - **Names** are cleaned like other text, and unique across types, ignoring case. Each type's table enforces its own names ("There's already one with that name, ignoring case"), and the context checks the other two types when a tag is created or renamed: "There's already a number tag named Score". A blank name is the database's CHECK.
@@ -312,6 +315,17 @@ node crates/slunk/tests/fixtures/languages/generate.ts
 
 `last_day()` is the last day of a date's year, month or day, for a filter's range, and `format_date()` writes a date's known parts as `toISOString()` writes them: `2006`, `2006-01` or `2006-01-10`.
 
+## The library check
+
+`crates/slunk/src/library_check.rs` checks the library against what was registered, and the catalog for gaps the database can't rule out. It joins the media context, which reads the disk (`media/check.rs`), and the catalog. Running it writes nothing; the fixes are separate calls. Each rule here has a test in `tests/library_check.rs`, or next to its code.
+- **Missing and changed files:** it reads every registered file's size and mtime, without hashing. A file that isn't there is missing. One whose size or mtime isn't what was read has changed, with what's on disk now.
+- **Where a missing file moved:** when files are missing, it scans the library, which is the database's folder and the top folders outside it that hold registered files (`../shared` for `../shared/a.m4a`), and hashes the unregistered files of a missing file's size. Those with the same hash are where it may have moved, the ones with its name first. The likely move is the only one, or else the only one with its name.
+- **Unregistered files** are the files in folders that hold registered ones that aren't registered themselves, by folder. The files of a missing file's size that were hashed are left out, matched or not, as slunk left them out.
+- **Order:** missing files, changed files and folders as a file browser sorts paths ([The media context](#the-media-context)), and a folder's files as browsing lists them.
+- **The catalog's gaps:** releases with no artist, by title, and tracks on various-artists releases with no artist of their own but features, whom nobody performs, by release title, then release, disc and number.
+- **Relinking** (`relink_files()`) points files that moved at their new paths, one move at a time, as editing a file's path does: each file is read again, and a path that's taken, or has no file, is refused. A refused move leaves the ones before it saved.
+- **Rehashing** (`rehash_files()`) reads changed files again: every file is read first, so one that's gone fails the call before anything is saved ("There's no file at music/a.flac"). Then their size, mtime and hash are saved in one transaction, and the tracks whose audio they are get their durations read again, saved where they differ. Ids that aren't registered are left out.
+
 ## The database
 
 ### Connection
@@ -345,13 +359,13 @@ slunk's eight migrations are its Kysely migrations' statements, copied from what
 
 The rules:
 - Never edit a migration once it has been committed. Write a new one.
-- No new migrations until the cut-over, phase 6: slunk's backend, the sidecar, wouldn't know the new schema.
+- A new migration is a one-way door: slunk refuses a library with a migration it doesn't have, so it can't open that library again, apart from its backups (design §8).
 - Every `down` undoes its `up`, or fails with an explicit "irreversible" error.
 - A migration runs inside the runner's transaction, so it never starts its own.
 - Migrations don't use app code, which changes over time while a migration must not. The exception is `rebuild_table`, which is part of the migration system.
 - Starter rows, like the first release formats, are inserted by migrations, and nothing may depend on them. Sample data goes in the seeds.
 
-Writing one, once migrations are allowed again:
+Writing one:
 1. `npm run db:gen -- <name>` creates `m<timestamp>_<name>.rs` from a template, and adds it at the end of `migrations![…]`.
 2. Write `up` as SQL statements: end every table with `strict`, and name indexes `<table>_<columns>_index`.
 3. Write `down` so it undoes `up`.
@@ -398,12 +412,7 @@ Using it:
 
 The tests compare everything but `migrations.applied_at`. One more test checks that every `down` undoes its `up`. `add_track_tags`' down recreates three triggers with the baseline's logic, laid out differently, as slunk's did, so that test compares SQL without whitespace and parentheses.
 
-`tests/fixtures/parity/generate.ts` makes the fixtures, with slunk's migrations in `legacy/slunk-be/` and the `sqlite3` command-line tool. They don't need to change while the migrations don't. To make them again, from the repository's root:
-
-```sh
-npm install --prefix legacy/slunk-be
-node crates/slunk/tests/fixtures/parity/generate.ts
-```
+The fixtures were made by slunk's runner while its backend was in the repository, and aren't made again: they record what slunk's eight migrations did, and those never change. A new migration has no slunk version to check against, so its tests are its own.
 
 ### The database commands
 
@@ -418,7 +427,7 @@ node crates/slunk/tests/fixtures/parity/generate.ts
 | `npm run db:seed -- --db <path>` | Loads sample data, unless the database already has releases |
 | `npm run db:reset -- --db <path>` | Backs up and deletes the database, then migrates and seeds a new one |
 
-`seed` runs slunk's seeds through `legacy/slunk-be`, since they use the catalog, which isn't ported yet: five releases, with their artists, labels, formats, media, alternate names, and the tags Genre and Score. There are no files or tracks.
+`seed` loads the sample data in `repo/seeds.rs`, a port of slunk's seeds that makes the same rows: five releases, with their artists, labels, formats, media, alternate names and titles, a credited name, and the tags Genre and Score. There are no files or tracks, which need real files on disk. It writes the rows directly, in one transaction, and skips a database that already has releases.
 
 ## The app
 
@@ -435,18 +444,19 @@ The frontend calls the backend through Tauri commands, in `src-tauri/src/command
   - `tracks.rs` ([Tracks](#tracks)): the list, `tracks`; the track page, `track_page`; the track form's read, `track_form`, and `create_track`, `update_track` and `delete_track`; and the Tracks tab's, `release_tracks`, which with a folder has the import's rows too, and `set_release_tracks`;
   - `import.rs` ([Import suggestions](#import-suggestions)): the import's reads, `release_suggestion` and `import_files`, the release's cover and links with the folder's files;
   - `mod.rs`: `languages`, and what they share: the DTOs of what a release refers to, and `Related`, which loads it;
+- `library_check.rs` ([The library check](#the-library-check)): `library_check`, and its fixes, `relink_files` and `rehash_files`;
 - `tagging.rs` ([The tagging context](#the-tagging-context)): `tags`, `tag`, `tag_options`, `tags_by_ref`, `tag_values`, `tag_value_options`, `create_tag`, `update_tag` and `delete_tag`, which name a tag by its `type` and id; a release's tags, `release_tags` and `set_release_tags`; and the bulk edits, `set_tag_on_releases` and `remove_tag_from_releases`.
 
 Their conventions:
 - **Async.** Every command is `async`, and does its database and disk work on Tokio's blocking pool, with `blocking()`, or `on_library()` for one that needs the open library, which is `noLibrary` without one. A command that isn't `async` runs on the main thread, and freezes the window while it works.
-- **Thin.** A command that uses the library is a wrapper over a plain function that takes it, like `media::register(library, args)` or `catalog::artists::create(library, args)`, which maps the context's records to DTOs. The write parity script calls those functions too.
+- **Thin.** A command that uses the library is a wrapper over a plain function that takes it, like `media::register(library, args)` or `catalog::artists::create(library, args)`, which maps the context's records to DTOs.
 - **Results.** Every command returns `Result<_, CommandError>`.
 - **Arguments.** A command takes its arguments as one struct, `args`, like `open_file`'s `FileArgs`, so the frontend passes them as an object, as `useCommand()` expects: `call("openFile", { id })`. A command can also take a `Channel` to report progress, as `open_library` does with a path.
-- **DTOs** derive `Serialize` (or `Deserialize`) and `specta::Type`, with `#[serde(rename_all = "camelCase")]`. Enums are tagged: `{ type: "created", … }`. A DTO has the fields its GraphQL document asked for, with the same names, so components change little: a file's `type`, `sizeBytes` and `uses[].entityId`. A shared one is flattened in with `#[serde(flatten)]`, as `FileDetails` holds a `File`, and an update's arguments hold its input: `UpdateArtistArgs` is `{ id, ...ArtistInput }`.
+- **DTOs** derive `Serialize` (or `Deserialize`) and `specta::Type`, with `#[serde(rename_all = "camelCase")]`. Enums are tagged: `{ type: "created", … }`. A DTO has the fields and names the GraphQL query it replaced asked for, so components changed little in the port: a file's `type`, `sizeBytes` and `uses[].entityId`. A shared one is flattened in with `#[serde(flatten)]`, as `FileDetails` holds a `File`, and an update's arguments hold its input: `UpdateArtistArgs` is `{ id, ...ArtistInput }`.
   - No serde attribute that makes a type's two directions differ, like `skip_serializing_if` or `deserialize_with`: specta then splits it into `…_Serialize` and `…_Deserialize` types. Where a field is there on one page and not another, there are two DTOs, like `CreditedArtist` and `NamedCreditedArtist`, with the artist's alternate names.
   - A field an update can leave out, rather than set to null, is a `Given<T>`, which has its own `Deserialize`: left out, `Given(None)`, and given, even as null, `Given(Some(…))`. A release's `titleLanguage` is one.
 - **Related rows** are loaded the way slunk's DataLoaders loaded them (design §5.4): a page's rows first, then one query per kind of row they refer to. `Related` (`commands/catalog/mod.rs`) loads artists, the names they're credited with, labels, formats and media for a page, and builds their DTOs.
-- **Pickers** have their own small commands, like `artist_options`, which return the first 20 matches by name (slunk's design §7.3).
+- **Pickers** have their own small commands, like `artist_options`, which return the first 20 matches by name.
 - **Optional arguments** are `Option`s with `#[serde(default)]` and `#[specta(optional)]`, so the frontend leaves them out: `useCommand("files", { sort: "path" })`.
 - **Ids** are `i64`, exported to TypeScript as `number` (`dangerously_cast_bigints_to_number()`): SQLite's ids stay far below 2^53.
 
@@ -479,19 +489,17 @@ SQLite's constraint errors are `invalid`, rewritten by the same table slunk's ba
 
 **Opening a library**, `Libraries::open()` in `library.rs`, on the blocking pool:
 1. **Existing library:** the file is an SQLite database, and has the `migrations` table or no tables at all. Anything else is refused: "That isn't a Slunk library." **New library** (`create`): the folder exists and can be written. If it has a `slunk.db` already, the command says so, and the frontend offers to open it.
-2. In debug builds, checks that the sidecar can start.
-3. **Migrates**, with its backup. If anything is pending, `progress` hears `{ type: "migrating", pending }` first, so Welcome can say it's upgrading.
-4. **Closes** the open library, if there is one, then **opens** the app's connection, and keeps the library in Tauri's state.
-5. **Saves** the settings.
-6. In debug builds, **starts the sidecar**.
+2. **Migrates**, with its backup. If anything is pending, `progress` hears `{ type: "migrating", pending }` first, so Welcome can say it's upgrading.
+3. **Closes** the open library, if there is one, then **opens** the app's connection, and keeps the library in Tauri's state.
+4. **Saves** the settings.
 
 Each failure is an `invalid` error, in words. An I/O or locking error adds that SQLite can't keep a library on a network drive. The result carries the migration's backup and applied migrations, for a toast.
 
-**Switching** opens the new library: the old one stays open until the new one is checked and migrated. **Closing** (`close_library`, and the app's exit) stops the sidecar, then drops the connection, which checkpoints the WAL and removes the `-wal` and `-shm` files. It's in that order because SQLite only removes them when the app's connection is the last one to close. The settings still open the library at the next launch.
+**Switching** opens the new library: the old one stays open until the new one is checked and migrated. **Closing** (`close_library`, and the app's exit) drops the connection, which checkpoints the WAL and removes the `-wal` and `-shm` files, when it's the last connection to the library. The settings still open the library at the next launch.
 
 **One instance:** tauri-plugin-single-instance focuses the open window instead of starting a second app.
 
-**`--library <path>`**, in debug builds only, opens a library at startup without touching the settings, for scripts: `npm run tauri dev -- -- -- --library /absolute/path/slunk.db`. The first `--` is npm's, the second ends the Tauri CLI's options, and the third the runner's..
+**`--library <path>`**, in debug builds only, opens a library at startup without touching the settings, for scripts: `npm run tauri dev -- -- -- --library /absolute/path/slunk.db`. The first `--` is npm's, the second ends the Tauri CLI's options, and the third the runner's.
 
 ### Serving files
 
@@ -506,29 +514,8 @@ The app's CSP allows `slunk:` and `http://slunk.localhost` in `img-src` and `med
 
 `open_file` opens a registered file in its default app, and `reveal_file` shows it in Finder, with the opener plugin, from its absolute path. `reveal_library` shows the open library's database in Finder. The webview has no opener permission: only these commands use it.
 
-## Write parity
-
-`npm run parity:writes` checks that commands write what slunk's GraphQL wrote (design §10). It runs the same steps on two copies of a seeded library, one through slunk's backend and one through the commands, then compares what each step returned, its error included, and the two databases, table by table, leaving out `inserted_at`, `updated_at` and `applied_at`:
-1. It makes, in a temporary folder, two libraries with the same files: audio fixtures, text files and images, a hidden folder, symlinks, a name in NFD, a folder next to the library for `../` paths, and a folder to import, of FLACs it tags itself, with " = " in their titles and artist tags. Their mtimes are a few nanoseconds before a second.
-2. It migrates one with the CLI, seeds it, and prepares it through GraphQL with each phase's `prepare` steps, then copies the database to the other.
-3. It runs the steps through slunk's backend, on a free port, and through `src-tauri/examples/run_commands.rs`, which opens the other library without the app and calls the commands' functions with the same JSON arguments.
-4. It compares results with ids as numbers, since GraphQL's are strings, and each library's folder replaced. Where a command returns something else than its GraphQL query, the step's `fromGraphql` maps one to the other: a picker's command returns a list, and its query a page.
-
-Each phase adds its steps in a module of `scripts/write-parity/` (`media.ts` is phase 1's, `catalog.ts` phase 2's, `tagging.ts` phase 3's, `releases.ts` phase 4's, `tracks.ts` phase 5's), lists it in `PHASES`, and adds its commands to `run_commands.rs`. A step with `whole` gets every root field of its GraphQL query, for `fromGraphql` to map, as the release list asks for its filters' names beside its page. The steps run in order, on the same library, so a phase's steps start where the earlier phases' left it. Every phase's `prepare` runs before any steps, so it mustn't add rows that earlier phases' steps would count or whose ids they'd take: phases 3 and 4 add to the track phase 1's made, tags, artists the earlier steps don't look at, credits and a disc title, and register no file, and phase 5 has no `prepare`. A step that fails says so, with its message, even when both sides fail alike. `KEEP=1` keeps the temporary folder when they differ. It needs `npm install --prefix legacy/slunk-be`, and runs until phase 6, which deletes slunk's backend.
-
-## The sidecar
-
-Until phase 6, slunk's backend serves the one route that isn't ported yet, the library check. When a library opens in a debug build, `sidecar.rs` starts it:
-- `node src/server.ts`, in `legacy/slunk-be/`, on port 4000, with `SLUNK_DB` set to the library and `SLUNK_SKIP_MIGRATE=1`, since Rust has migrated it already. Its output goes to the terminal running the app.
-- Opening waits until it listens. If its dependencies aren't installed, or something else listens on port 4000, opening fails before anything changes, and says so.
-- Vite proxies `/graphql` to it, so Apollo works as it did in slunk.
-- It stops when the library closes or the app exits, before the app's connection closes: it gets SIGTERM, which closes its database, and is killed if it hasn't stopped after 5 seconds.
-- `sidecar-watchdog.cjs`, preloaded with `node --require`, stops it if the app is gone without stopping it, as when `tauri dev` restarts the app after a Rust change.
-
-Both write the same database. WAL and `busy_timeout` handle it. Release builds never start the sidecar, so the library check can't load in them yet.
-
 ## Conventions
 
 - **Formatting and linting:** `cargo fmt`, and `cargo clippy --workspace --all-targets` with no warnings.
 - **Tests:** `cargo test --workspace`. Tests make their own temporary databases and files, and never read `dev-library/`. Audio and language tag tests use the committed fixtures in `crates/slunk/tests/fixtures/`.
-- **Comments** cite the base design as "design §5.6", and slunk's docs by name, like "slunk's design §7.4".
+- **Comments** cite the base design as "design §5.6". slunk's docs aren't in the repository, so they aren't cited.

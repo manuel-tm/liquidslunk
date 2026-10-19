@@ -1,6 +1,6 @@
 import type { ListKind } from "@/bindings"
 
-/** The two lists the user manages, which share their pages (slunk's design §7.8). */
+/** The two lists the user manages, which share their pages. */
 export const LISTS: Record<
   ListKind,
   {

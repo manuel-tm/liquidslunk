@@ -21,8 +21,8 @@ import { ReleaseTracksForm } from "@/routes/releases/forms/tracks"
 export type EditTab = "details" | "tracks" | "files" | "credits" | "tags"
 
 /**
- * `/releases/:id/update/…` (slunk's design §7.6): editing split into tabs in the
- * header, each a route that saves on its own and then goes to the release.
+ * `/releases/:id/update/…`: editing split into tabs in the header, each a route
+ * that saves on its own and then goes to the release.
  */
 export function ReleaseEdit({ tab }: { tab: EditTab }) {
   const { id = "" } = useParams()

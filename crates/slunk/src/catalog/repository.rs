@@ -12,7 +12,7 @@ use crate::tagging::TagFilter;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Named {
     pub id: i64,
-    /// The main name (slunk's 3_alternate_names.md §4.2)
+    /// The main name
     pub name: String,
     /// A BCP 47 tag, or `None` when it isn't known
     pub name_language: Option<String>,
@@ -50,8 +50,8 @@ pub struct NamedValues {
     pub picture: Option<i64>,
 }
 
-/// A name an artist or label goes by, besides its main one (slunk's
-/// 3_alternate_names.md §4.2). A label's is never a real name.
+/// A name an artist or label goes by, besides its main one. A label's is never
+/// a real name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AlternateName {
     pub id: i64,
@@ -137,11 +137,11 @@ pub struct NameQuery {
     pub search: Option<String>,
 }
 
-/// A release (slunk's design §4.3).
+/// A release.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Release {
     pub id: i64,
-    /// The main title (slunk's 3_alternate_names.md §4.2)
+    /// The main title
     pub title: String,
     /// Its language, and its discs' and tracks' unless they have their own
     pub title_language: Option<String>,
@@ -169,7 +169,7 @@ pub struct ReleaseValues {
     pub various_artists: bool,
 }
 
-/// A track (slunk's design §4.3).
+/// A track.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Track {
     pub id: i64,
@@ -227,9 +227,8 @@ pub struct TrackQuery {
     pub tags: Vec<TagFilter>,
 }
 
-/// An artist named on a release, a track or a credit line, and the
-/// alternate name printed there: `None` for the main name (slunk's
-/// 3_alternate_names.md §4.2).
+/// An artist named on a release, a track or a credit line, and the alternate
+/// name printed there: `None` for the main name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ArtistLink {
     pub artist_id: i64,
@@ -244,9 +243,9 @@ pub struct TrackArtist {
     pub featured: bool,
 }
 
-/// A title besides the main one, of a release, a track or a disc (slunk's
-/// 3_alternate_names.md §4.2). `printed` says it's on the release as
-/// published, rather than added, like a translation.
+/// A title besides the main one, of a release, a track or a disc. `printed`
+/// says it's on the release as published, rather than added, like a
+/// translation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AlternateTitle {
     pub title: String,
@@ -264,8 +263,7 @@ pub struct DiscTitle {
     pub alternate_titles: Vec<AlternateTitle>,
 }
 
-/// A credit line: a role as printed, and the artists who hold it, in order
-/// (slunk's 2_credits.md §4).
+/// A credit line: a role as printed, and the artists who hold it, in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Credit {
     pub role: String,
@@ -362,8 +360,7 @@ pub struct NameMatch {
     pub alternate: Option<AlternateName>,
 }
 
-/// The artist a tag suggests, for the import (slunk's
-/// 3_alternate_names.md §7.7).
+/// The artist a tag suggests, for the import.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtistSuggestion {
     /// The name matched: the tag, or its first part when it has " = "
@@ -378,7 +375,7 @@ pub struct ArtistSuggestion {
     pub other_names: Vec<String>,
 }
 
-/// What a folder suggests for a new release (slunk's design §7.9).
+/// What a folder suggests for a new release.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReleaseSuggestion {
     /// The album tag, or else the folder's name

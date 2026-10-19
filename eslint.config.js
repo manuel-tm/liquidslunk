@@ -6,15 +6,8 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  // Generated files, builds, and slunk as of its last commit, read-only
-  globalIgnores([
-    'dist',
-    'target',
-    'legacy',
-    'src-tauri',
-    'src/gql',
-    'src/bindings.ts',
-  ]),
+  // Generated files, and builds
+  globalIgnores(['dist', 'target', 'src-tauri', 'src/bindings.ts']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -31,7 +24,7 @@ export default defineConfig([
     },
   },
   {
-    // Scripts that Node runs: screenshots, the parity fixtures' generator
+    // Scripts that Node runs: screenshots, the fixtures' generators
     files: ['scripts/**/*.ts', 'crates/**/*.ts'],
     languageOptions: {
       globals: globals.node,

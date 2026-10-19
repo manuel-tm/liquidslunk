@@ -1,7 +1,7 @@
-//! The repository layer: the connection, the migration runner with its
-//! backups, the migrations (design §5.6), and the repositories. Repositories
-//! are plain functions over a `&Connection`, and a `Transaction` is one
-//! (design §12.2).
+//! The repository layer: the connection, the migration runner with its backups,
+//! the migrations (design §5.6), the repositories, and the sample data
+//! (`seeds`). Repositories are plain functions over a `&Connection`, and a
+//! `Transaction` is one (design §12.2).
 
 pub mod artists;
 pub mod backups;
@@ -17,6 +17,7 @@ pub mod migrator;
 pub mod named;
 pub mod rebuild_table;
 pub mod releases;
+pub mod seeds;
 pub mod stats;
 pub mod store;
 pub mod tags;

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/popover"
 import { textProps } from "@/lib/languages"
 
-/** An alternate title being edited (slunk's 3_alternate_names.md §7.6). */
+/** An alternate title being edited. */
 export type AlternateTitleRow = {
   /** Tells rows apart */
   key: string
@@ -166,10 +166,9 @@ export function AlternateTitlesEditor({
 }
 
 /**
- * A "Titles" button for a row of a table, like the tracks editor's
- * (slunk's 3_alternate_names.md §7.6): it opens a popover with the main title's
- * language and the alternate titles, so the row stays compact. It shows how
- * many alternate titles there are.
+ * A "Titles" button for a row of a table, like the tracks editor's: it opens a
+ * popover with the main title's language and the alternate titles, so the row
+ * stays compact. It shows how many alternate titles there are.
  */
 export function TitlesPopover({
   main,

@@ -1,5 +1,5 @@
-//! A list's arguments, as every list command takes them (slunk's design
-//! §7.2): a page, a sort column, and a search.
+//! A list's arguments, as every list command takes them: a page, a sort column,
+//! and a search.
 
 use crate::text::clean_text;
 use crate::{Error, Result};

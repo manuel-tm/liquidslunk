@@ -1,7 +1,6 @@
-//! What the import makes of a folder (slunk's design §7.9), only reading it:
-//! a release from its files' tags, or else its name; a row for each audio
-//! file; and the artist each artist tag names (slunk's 3_alternate_names.md
-//! §7.7).
+//! What the import makes of a folder, only reading it: a release from its
+//! files' tags, or else its name; a row for each audio file; and the artist
+//! each artist tag names.
 
 use std::collections::{HashMap, HashSet};
 
@@ -257,10 +256,10 @@ impl Catalog {
 }
 
 /// A tag's parts around " = ", as Discogs joins a name or title in two
-/// languages: "Ryo Fukui = 福居良" (slunk's 3_alternate_names.md §7.7). The
-/// "=" needs white space on both sides, since it's part of titles like
-/// "E=MC²". Parts are trimmed, and empty and repeated ones left out. White
-/// space is what JavaScript's `\s` matches, as slunk split with it.
+/// languages: "Ryo Fukui = 福居良". The "=" needs white space on both sides, since
+/// it's part of titles like "E=MC²". Parts are trimmed, and empty and repeated
+/// ones left out. White space is what JavaScript's `\s` matches, as slunk split
+/// with it.
 pub fn equals_parts(text: &str) -> Vec<String> {
     let chars: Vec<(usize, char)> = text.char_indices().collect();
     let at = |i: usize| chars.get(i).map_or(text.len(), |(byte, _)| *byte);
@@ -309,11 +308,11 @@ struct FromName {
     title: String,
 }
 
-/// `CD2/03 Title.flac` → disc 2, track 3, "Title" (slunk's design §7.9),
-/// relative to the folder imported. A folder named `cd`, `disc` or `disk`
-/// with a number, in any case, gives the disc. A name that starts with up to
-/// three digits, then white space, `.`, `_` or `-`, gives the number and the
-/// title. These match what slunk's regular expressions matched.
+/// `CD2/03 Title.flac` → disc 2, track 3, "Title", relative to the folder
+/// imported. A folder named `cd`, `disc` or `disk` with a number, in any case,
+/// gives the disc. A name that starts with up to three digits, then white
+/// space, `.`, `_` or `-`, gives the number and the title. These match what
+/// slunk's regular expressions matched.
 fn from_file_name(path: &str, folder: &str) -> FromName {
     let relative = match path
         .strip_prefix(folder)

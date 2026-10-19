@@ -1,5 +1,5 @@
-// Artists as credited (slunk's 3_alternate_names.md §4.2): an artist, and the
-// alternate name printed on the release, track or credit line, if any.
+// Artists as credited: an artist, and the alternate name printed on the
+// release, track or credit line, if any.
 import type { Option } from "@/components/picker"
 
 /** An artist as credited, as commands and queries return it. */

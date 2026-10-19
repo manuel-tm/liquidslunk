@@ -22,8 +22,8 @@ import { call, idParam, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
 
 /**
- * A release's cover, chosen from its linked images or any registered image,
- * and its file links, each with a note (slunk's design §7.6).
+ * A release's cover, chosen from its linked images or any registered image, and
+ * its file links, each with a note.
  */
 export function ReleaseFilesForm({
   releaseId,

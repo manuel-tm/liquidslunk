@@ -1,6 +1,5 @@
-//! Credit lines of releases and tracks (slunk's 2_credits.md §4): a role as
-//! printed, and its artists in order, each as credited. slunk's credits
-//! repository.
+//! Credit lines of releases and tracks: a role as printed, and its artists in
+//! order, each as credited. slunk's credits repository.
 
 use std::collections::HashMap;
 

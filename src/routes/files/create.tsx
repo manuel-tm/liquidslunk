@@ -33,8 +33,8 @@ const createUrl = (params: Record<string, string>) =>
   `/files/create?${new URLSearchParams(params)}`
 
 /**
- * `/files/create` registers files (slunk's design §7.8). `?path=` browses for a
- * folder; `?folder=` lists the chosen folder's files to register.
+ * `/files/create` registers files. `?path=` browses for a folder; `?folder=`
+ * lists the chosen folder's files to register.
  */
 export function RegisterFiles() {
   const [params] = useSearchParams()

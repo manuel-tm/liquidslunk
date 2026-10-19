@@ -17,8 +17,8 @@ import { isTagType } from "@/lib/tags"
 import { NotFound } from "@/routes/not-found"
 
 /**
- * `/tags/create` and `/tags/:type/:id/update` (slunk's design §7.8): type (only
- * when creating), name, and single or multiple.
+ * `/tags/create` and `/tags/:type/:id/update`: type (only when creating), name,
+ * and single or multiple.
  */
 export function TagForm() {
   const { type, id } = useParams()
@@ -83,7 +83,7 @@ function Form({ tag }: { tag?: TagDetails }) {
         : call("createTag", { type: values.type, ...input })
     },
   })
-  // Switching to single fails while these have several values (slunk's design §4.4)
+  // Switching to single fails while these have several values
   const switching = tag?.multiple && !values.multiple
   const blocking = !switching
     ? []

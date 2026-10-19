@@ -1,7 +1,6 @@
 //! Tag definitions and their values: slunk's tags repository. Each type has a
-//! definition table, and a value table per owner, release or track (slunk's
-//! design §4.3). The three types' tables have the same columns, so one
-//! repository serves them.
+//! definition table, and a value table per owner, release or track. The three
+//! types' tables have the same columns, so one repository serves them.
 
 use std::collections::HashMap;
 
@@ -551,9 +550,9 @@ pub fn owner_titles(
     Ok(titles)
 }
 
-/// A list filter on a tag's values, for releases or tracks (slunk's design
-/// §7.6): `releases.id in (select release_id …)`, which uses the value
-/// table's `(tag_id, value)` index.
+/// A list filter on a tag's values, for releases or tracks: `releases.id in
+/// (select release_id …)`, which uses the value table's `(tag_id, value)`
+/// index.
 pub fn tag_matches(owner: TagOwner, filter: &TagFilter) -> Expr {
     let mut conditions = vec![r#""tag_id" = ?"#];
     let mut values = vec![Value::from(filter.tag_id)];

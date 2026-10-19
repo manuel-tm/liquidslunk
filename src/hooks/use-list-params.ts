@@ -4,7 +4,7 @@ type Change = string | number | boolean | null
 
 /**
  * A list's state, kept in the query string so it survives a refresh, the back
- * button and a shared link (slunk's design §7.2): `page`, `sort`, `q` and filters.
+ * button and a shared link: `page`, `sort`, `q` and filters.
  */
 export function useListParams() {
   const [params, setParams] = useSearchParams()

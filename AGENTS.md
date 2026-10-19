@@ -13,8 +13,7 @@ It's a port of slunk, an earlier version of the same app, with a Node backend an
 - **[`docs/design/`](docs/design/): design docs.** These are the plans, used for planning and prompting, and an archive once they're built. [`docs/design/README.md`](docs/design/README.md) lists them with their status. [`1_introduction.md`](docs/design/1_introduction.md) is the base design: the port to Tauri 2, its architecture and its phases. Read its relevant sections before changing the backend's structure, the commands, how the library is chosen, the migrations, or anything that touches files.
 - **The rest of [`docs/`](docs/README.md): what's actually built,** kept up to date with the code. Start at `docs/README.md`.
 - **`src/`: the frontend,** React in the app's webview. How it's built: [`docs/development/frontend.md`](docs/development/frontend.md).
-- **`src-tauri/`: the app,** Tauri, with its commands, the library and the file protocol. **`crates/slunk/`: the domain and its database,** with no Tauri dependency: the contexts ported so far, the repositories, and the migrations with their parity tests. **`crates/slunk-cli/`: the database commands.** How they're built: [`docs/development/backend.md`](docs/development/backend.md). The schema as built: [`docs/reference/database.md`](docs/reference/database.md).
-- **`legacy/`: slunk as of its last commit, read-only, until phase 6.** `legacy/slunk-be/` is slunk's backend, which the app runs as its sidecar for the routes not ported yet, and the reference for porting the backend. `legacy/docs/` is slunk's docs. Never edit anything in `legacy/`. Its docs describe slunk, not liquidslunk, and their rules don't apply here: this file's do.
+- **`src-tauri/`: the app,** Tauri, with its commands, the library and the file protocol. **`crates/slunk/`: the domain and its database,** with no Tauri dependency: the contexts, the repositories, and the migrations with their parity tests. **`crates/slunk-cli/`: the database commands.** How they're built: [`docs/development/backend.md`](docs/development/backend.md). The schema as built: [`docs/reference/database.md`](docs/reference/database.md).
 - **`temp/`: local assets for prompting, never committed.** See [Never reference files in `temp/`](#never-reference-files-in-temp).
 - **`dev-library/`: scratch libraries for development, never committed.** See [Never commit or depend on `dev-library/`](#never-commit-or-depend-on-dev-library).
 
@@ -22,7 +21,7 @@ How to set up and run the app: [`docs/development/getting-started.md`](docs/deve
 
 Work happens in phases. Each design doc plans its own, numbered from 0, so a phase is named with its doc. Stay within the current phase unless asked otherwise.
 
-When citing a design doc in code comments or docs, "design §5.4" and "phase 2" with no document named mean `1_introduction.md`. Name any later design doc: "2_topic.md §3", "phase 0 of 2_topic.md". slunk's design docs, in `legacy/docs/design/`, are cited with slunk's name: "slunk's design §7.4", "slunk's 3_alternate_names.md §7.1".
+When citing a design doc in code comments or docs, "design §5.4" and "phase 2" with no document named mean `1_introduction.md`. Name any later design doc: "2_topic.md §3", "phase 0 of 2_topic.md". slunk's own docs aren't in this repository, so don't cite them: what a comment needs from them goes in the comment, or in `docs/`.
 
 ## Workflow: design → code → docs
 
@@ -51,7 +50,7 @@ The full process is in [docs/README.md](docs/README.md#how-we-work).
 
 liquidslunk ports slunk's schema, behavior and routes ([design §2.1](docs/design/1_introduction.md#21-what-the-port-keeps)). slunk's own repository will be deleted once the port is done, so this one has to stand on its own:
 - Read slunk's source for how something worked, when it's available to you. Never point to it: no local path, relative path or link to slunk's repository in docs, design docs, code, comments, commit messages or PR descriptions. For anyone else, and later for everyone, it would point to nothing.
-- Never import, symlink or copy from it at build or run time. What liquidslunk needs from slunk is copied into this repository, as phase 0 copies its code and docs ([design §8](docs/design/1_introduction.md#8-the-transition)), or written into the docs.
+- Never import, symlink or copy from it at build or run time. What liquidslunk needed from slunk was copied into this repository during the port ([design §8](docs/design/1_introduction.md#8-the-transition)), and is its own code and docs now. Anything more is written into the docs.
 - Naming slunk is fine ("a port of slunk's import"). Pointing at its files isn't.
 
 ### Never write to the user's music files
@@ -79,7 +78,7 @@ The schema is slunk's, carried over unchanged. Everything else can change faster
 
 - Change the schema only through a new migration. Never edit a migration that has already been committed.
 - Enforce integrity in the database (constraints, triggers) wherever it can be expressed, not only in app code.
-- No new migrations until the cut-over: the schema stays frozen while the port runs ([design §8](docs/design/1_introduction.md#8-the-transition)).
+- A new migration is a one-way door: slunk refuses a library with a migration it doesn't have, so it can't open that library again, apart from its backups ([design §8](docs/design/1_introduction.md#8-the-transition)). Plan one before writing it.
 
 ### Not designed yet: external libraries
 
@@ -92,8 +91,6 @@ Don't implement export or sync, and don't add tables for it. It needs its own de
   - **Rust:** `cargo fmt --check`, `cargo clippy --workspace --all-targets` with no warnings, and `cargo test --workspace`.
   - **Bindings:** after changing a command or its types, a debug build has been started (`npm run tauri dev`), so `src/bindings.ts` is regenerated, and the change is in it.
   - **Migrations** apply and roll back cleanly through the CLI, on a scratch database: `npm run db:migrate`, `npm run db:rollback` and `npm run db:migrate` again, with `--db`.
-  - **GraphQL,** until phase 6: after changing a GraphQL document, `npm run format`, then `npm run codegen`.
-  - **Write parity,** until phase 6: after porting or changing a command that writes, its steps are in `scripts/write-parity/`, and `npm run parity:writes` passes: see [Write parity](docs/development/backend.md#write-parity).
   - **Screenshots:** a change that shows in the UI has been looked at in a screenshot of the running app, taken through WebDriver: see [Screenshots](docs/development/frontend.md#screenshots).
 - **Docs:** everything in `docs/` outside `docs/design/` matches the code after your change. A design change made while building that design's phases is recorded as an appendix, and no other design doc was touched.
 - **References:** nothing you wrote points to a file in slunk's repository or in `temp/`.

@@ -3,19 +3,17 @@ import { useSyncExternalStore } from "react"
 import { toast } from "sonner"
 
 import type { LibraryStatus, MigrationReport, OpenProgress } from "@/bindings"
-import { apollo } from "@/lib/apollo"
 import { call, queryClient } from "@/lib/query"
 
 type OnProgress = (progress: OpenProgress) => void
 
 /**
- * Forgets everything cached from the library that was open, Apollo's and
- * TanStack Query's, so nothing from it shows in the next one (design §6.4).
- * Resetting the queries fetches the mounted ones again, like the library's
- * status, which `AppLayout` remounts the pages by.
+ * Forgets everything cached from the library that was open, so nothing from it
+ * shows in the next one (design §6.4). Resetting the queries fetches the
+ * mounted ones again, like the library's status, which `AppLayout` remounts the
+ * pages by.
  */
 async function forgetCaches() {
-  await apollo.clearStore()
   await queryClient.resetQueries()
 }
 

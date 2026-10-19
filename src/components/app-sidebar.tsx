@@ -30,7 +30,7 @@ import {
 
 type Section = { title: string; to: string; icon: LucideIcon }
 
-// A section appears once its phase is built (slunk's design §7.1)
+// A section appears once its phase is built
 const sections: Section[] = [
   { title: "Dashboard", to: "/", icon: LayoutDashboardIcon },
   { title: "Artists", to: "/artists", icon: UsersIcon },

@@ -30,7 +30,7 @@ import { TAG_TYPE_LABELS, TAG_TYPES } from "@/lib/tags"
 // limit
 const PER_TYPE = 200
 
-/** `/tags`: a table per type (slunk's design §7.8). */
+/** `/tags`: a table per type. */
 export function TagList() {
   const list = useListParams()
   const args = { q: list.q, sort: list.sort, perPage: PER_TYPE }

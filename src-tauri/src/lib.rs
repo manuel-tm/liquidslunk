@@ -4,15 +4,11 @@
 
 use tauri::{Manager, RunEvent};
 
-// Public for the write parity script's command runner,
-// examples/run_commands.rs
-pub mod commands;
-pub mod error;
-pub mod library;
+mod commands;
+mod error;
+mod library;
 mod protocol;
 mod settings;
-#[cfg(debug_assertions)]
-mod sidecar;
 
 use library::Libraries;
 

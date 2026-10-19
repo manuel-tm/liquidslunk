@@ -7,9 +7,9 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { useCommand } from "@/lib/query"
 
 /**
- * The app shell (slunk's design §7.1): the sidebar, and the page beside it. Without
- * an open library, it sends the user to Welcome (design §6.1). It's keyed by
- * the library, so switching libraries mounts every page again.
+ * The app shell: the sidebar, and the page beside it. Without an open library,
+ * it sends the user to Welcome (design §6.1). It's keyed by the library, so
+ * switching libraries mounts every page again.
  */
 export function AppLayout() {
   const status = useCommand("libraryStatus")

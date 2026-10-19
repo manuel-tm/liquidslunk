@@ -1,5 +1,5 @@
-//! The media context, on a temporary library: its rules, as slunk's backend
-//! doc lists them (docs/development/backend.md, "The media context").
+//! The media context, on a temporary library: its rules, as
+//! docs/development/backend.md lists them ("The media context").
 
 use std::fs::{self, File};
 use std::os::unix::fs::symlink;

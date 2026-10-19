@@ -6,9 +6,5 @@ package-lock.json
 yarn.lock
 target/
 
-# slunk, as of its last commit: read-only
-legacy/
-
 # Generated
-src/gql/
 src/bindings.ts

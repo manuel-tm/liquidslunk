@@ -1,7 +1,7 @@
-//! The import's reads (slunk's design §7.9): what a folder suggests for a new
-//! release and for its tracks, and the files to link from it. The import's
-//! writes are the release's own: `create_release`, `set_release_tracks`,
-//! `set_release_files`, and `add_artist_name` for a tag's other names.
+//! The import's reads: what a folder suggests for a new release and for its
+//! tracks, and the files to link from it. The import's writes are the release's
+//! own: `create_release`, `set_release_tracks`, `set_release_files`, and
+//! `add_artist_name` for a tag's other names.
 
 use std::collections::HashMap;
 

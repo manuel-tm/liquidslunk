@@ -47,7 +47,7 @@ const STEPS = [
 ] as const
 type Step = (typeof STEPS)[number]
 
-/** The step's route, keeping `?folder=` (slunk's design §7.9). */
+/** The step's route, keeping `?folder=`. */
 function stepUrl(
   step: Step,
   id: number | string | undefined,

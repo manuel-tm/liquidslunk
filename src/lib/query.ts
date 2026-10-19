@@ -84,16 +84,10 @@ export function useCommand<N extends Query>(
 }
 
 let onNoLibrary = () => {}
-const afterMutation: (() => void)[] = []
 
 /** What to do when a command says no library is open: go to Welcome. */
 export function whenNoLibrary(handler: () => void) {
   onNoLibrary = handler
-}
-
-/** Runs after every command mutation, as Apollo's refetch does (design §8). */
-export function afterCommandMutation(listener: () => void) {
-  afterMutation.push(listener)
 }
 
 function noLibrary(error: Error) {
@@ -103,7 +97,7 @@ function noLibrary(error: Error) {
 export const queryClient: QueryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // A page shows what's cached and fetches again, like cache-and-network
+      // A page shows what's cached, and fetches again (design §7.2)
       staleTime: 0,
       // A local call that fails will fail the same way again
       retry: false,
@@ -114,10 +108,7 @@ export const queryClient: QueryClient = new QueryClient({
   mutationCache: new MutationCache({
     onError: noLibrary,
     // Only mounted queries fetch again, usually one or two, over local IPC
-    onSuccess: () => {
-      void queryClient.invalidateQueries()
-      for (const listener of afterMutation) listener()
-    },
+    onSuccess: () => void queryClient.invalidateQueries(),
   }),
 })
 

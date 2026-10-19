@@ -1,5 +1,5 @@
-// What the import makes of artist tags (slunk's 3_alternate_names.md §7.7): the
-// artists they pick, the names left to pick, and other names to offer.
+// What the import makes of artist tags: the artists they pick, the names left
+// to pick, and other names to offer.
 import type { ArtistSuggestion } from "@/bindings"
 import type { Option } from "@/components/picker"
 

@@ -17,10 +17,10 @@ export type TitleValues = {
 }
 
 /**
- * A title split at " = " (slunk's 3_alternate_names.md §7.7): the first part is the
- * main title, and the others are printed alternate titles, each with the
- * language its script gives away. The main title keeps its language unless
- * its script gives one. Null when there's nothing to split.
+ * A title split at " = ": the first part is the main title, and the others are
+ * printed alternate titles, each with the language its script gives away. The
+ * main title keeps its language unless its script gives one. Null when there's
+ * nothing to split.
  */
 export function splitTitle(values: TitleValues): TitleValues | null {
   const parts = titleParts(values.title)
@@ -75,10 +75,9 @@ function Part({ title }: { title: string }) {
 }
 
 /**
- * The import's offer to split a title with " = " in it, under the title
- * field (slunk's 3_alternate_names.md §7.7). Nothing is split until the user says
- * so, since "=" can be part of a title. Once it's split, "Swap" makes the
- * other part the main title.
+ * The import's offer to split a title with " = " in it, under the title field.
+ * Nothing is split until the user says so, since "=" can be part of a title.
+ * Once it's split, "Swap" makes the other part the main title.
  */
 export function SplitTitleOffer({
   values,
@@ -143,9 +142,8 @@ export function SplitTitleOffer({
 }
 
 /**
- * A track row's split, as an icon button (slunk's 3_alternate_names.md §7.7): it
- * splits a title with " = " in it, and once the row is split, swaps its main
- * title with the first alternate one.
+ * A track row's split, as an icon button: it splits a title with " = " in it,
+ * and once the row is split, swaps its main title with the first alternate one.
  */
 export function SplitTitleButton({
   values,

@@ -11,14 +11,13 @@ import { matchedName } from "@/lib/names"
 import { call, useCommand } from "@/lib/query"
 import { tagValueKey } from "@/lib/tags"
 
-// Pickers return the first 20 matches (slunk's design §7.3)
+// Pickers return the first 20 matches
 const LIMIT = 20
 
 /**
- * An artist as options (slunk's 3_alternate_names.md §7.4): the artist, then the
- * artist credited with each alternate name `q` matches, as "Alika · as
- * ALIKA". Only those credit the name, so a search hint like "Bjork" is never
- * printed on a release by mistake.
+ * An artist as options: the artist, then the artist credited with each
+ * alternate name `q` matches, as "Alika · as ALIKA". Only those credit the
+ * name, so a search hint like "Bjork" is never printed on a release by mistake.
  */
 const withCredits =
   (q: string) =>

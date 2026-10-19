@@ -31,9 +31,9 @@ import {
 const TEXT_OPS = { equals: "is", contains: "contains" }
 
 /**
- * A list's tag filters (slunk's design §7.6), on releases or tracks: a chip for
- * each, and a button that adds one. They all have to match. The chips name
- * their tags with `tagsByRef`.
+ * A list's tag filters, on releases or tracks: a chip for each, and a button
+ * that adds one. They all have to match. The chips name their tags with
+ * `tagsByRef`.
  */
 export function TagFilters({
   filters,

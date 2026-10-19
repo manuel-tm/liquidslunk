@@ -181,6 +181,30 @@ pub fn update(conn: &Connection, id: i64, changes: &TrackChanges) -> Result<Opti
         .optional()?)
 }
 
+/// Tracks on various-artists releases with no artist of their own but features,
+/// so nobody performs them, for the library check: by release title, then
+/// release, disc and number.
+pub fn without_performers(conn: &Connection) -> Result<Vec<Track>> {
+    let columns: Vec<String> = COLUMNS
+        .split(", ")
+        .map(|column| format!(r#""tracks".{column}"#))
+        .collect();
+    let sql = format!(
+        r#"select {} from "tracks" inner join "releases" on "releases"."id" = "tracks"."release_id"
+        where "releases"."various_artists" = 1 and not exists (
+          select 1 from artists_tracks
+          where track_id = tracks.id and featured = 0
+        )
+        order by releases.title collate nocase, "tracks"."release_id", "tracks"."cd_number", "tracks"."track_number""#,
+        columns.join(", ")
+    );
+    let mut statement = conn.prepare(&sql)?;
+    let rows = statement
+        .query_map([], track)?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
 /// Deletes a track. Its artists, credit lines, alternate titles, file links
 /// and tags go with it, and its file stays registered. An unknown id deletes
 /// nothing.

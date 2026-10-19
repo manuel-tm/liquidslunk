@@ -1,34 +1,28 @@
 // Generates the audio fixtures: a second or so of silence in each format this
-// Mac makes without ffmpeg, with tags set (design §6.5, Appendix D), and
-// expected.json, what slunk's own readAudio() (legacy/slunk-be, with
-// music-metadata) reads from each. tests/audio.rs checks lofty's reading
-// against it.
+// Mac makes without ffmpeg, with tags set (design §6.5, Appendix D).
 //
-// Run from the repository root, on macOS, after
-// `npm install --prefix legacy/slunk-be`:
+// expected.json is what slunk's reader, with music-metadata, read from each
+// file, which tests/audio.rs checks lofty's reading against. It was written by
+// this script while slunk's backend was in the repository, and isn't written
+// again: the files this makes hold the same audio and tags each time. A new
+// fixture needs its expected durations and tags added by hand.
+//
+// Run from the repository root, on macOS:
 //
 //   node crates/slunk/tests/fixtures/audio/generate.ts
 //
 // The audio comes from afconvert, macOS's converter, except the MP3's, whose
-// silent frames are written here. The M4As hold afconvert's time of
-// creation, so they change each time this runs; the rest, and what slunk
-// reads, don't. The tags are written here too, byte by
-// byte, so they don't come from lofty, which the test checks: Vorbis
-// comments, ID3v2.3, ID3v2.4, ID3v1, MP4 atoms, RIFF INFO and AIFF's text
-// chunks.
+// silent frames are written here. The M4As hold afconvert's time of creation,
+// so they change each time this runs; the rest don't. The tags are written here
+// too, byte by byte, so they don't come from lofty, which the test checks:
+// Vorbis comments, ID3v2.3, ID3v2.4, ID3v1, MP4 atoms, RIFF INFO and AIFF's
+// text chunks.
 import { execFileSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { pathToFileURL } from "node:url"
-
-type ReadAudio = (path: string) => Promise<unknown>
 
 const HERE = import.meta.dirname
-const BACKEND = join(HERE, "../../../../../legacy/slunk-be")
-const { readAudio } = (await import(
-  pathToFileURL(join(BACKEND, "src/slunk/media/audio.ts")).href
-)) as { readAudio: ReadAudio }
 
 // 8 kHz mono keeps the files small. 8005 samples is 1000.625 ms, which
 // rounds up, where a duration cut to the millisecond wouldn't.
@@ -161,16 +155,9 @@ try {
     ),
   }
 
-  const expected: Record<string, unknown> = {}
   for (const [name, bytes] of Object.entries(fixtures)) {
-    const path = join(HERE, name)
-    writeFileSync(path, bytes)
-    expected[name] = await readAudio(path)
+    writeFileSync(join(HERE, name), bytes)
   }
-  writeFileSync(
-    join(HERE, "expected.json"),
-    JSON.stringify(expected, null, 2) + "\n"
-  )
 } finally {
   rmSync(temp, { recursive: true, force: true })
 }

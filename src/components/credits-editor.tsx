@@ -45,9 +45,9 @@ export function creditsInput(lines: CreditLine[]) {
 }
 
 /**
- * Credit lines, in display order (slunk's 2_credits.md §7): a role as printed, then
- * its artists. Underneath, a role and an artist add a line, or add the
- * artist to the line that already has the role.
+ * Credit lines, in display order: a role as printed, then its artists.
+ * Underneath, a role and an artist add a line, or add the artist to the line
+ * that already has the role.
  */
 export function CreditsEditor({
   credits,

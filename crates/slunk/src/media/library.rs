@@ -57,8 +57,7 @@ pub struct FileFacts {
     pub sha256: String,
 }
 
-/// The library around a database: paths are relative to its folder (slunk's
-/// design §4.1).
+/// The library around a database: paths are relative to its folder.
 #[derive(Debug, Clone)]
 pub struct Library {
     /// The database's folder, absolute and resolved
@@ -85,9 +84,8 @@ impl Library {
         Path::new(&self.root)
     }
 
-    /// A path relative to the database's folder, resolved (slunk's design
-    /// §4.1): `""` is that folder, and paths above it start with `../`. It
-    /// can be given absolute.
+    /// A path relative to the database's folder, resolved: `""` is that folder,
+    /// and paths above it start with `../`. It can be given absolute.
     pub fn normalize(&self, path: &str) -> String {
         relative(&self.root, &resolve(&self.root, path))
     }

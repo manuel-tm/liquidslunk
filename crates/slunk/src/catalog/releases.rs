@@ -1,6 +1,6 @@
 //! Releases: their details, alternate titles, artists as credited, labels,
-//! formats and media; their cover and file links; their credit lines and
-//! their tracks'; and what the release pages read (slunk's design §6).
+//! formats and media; their cover and file links; their credit lines and their
+//! tracks'; and what the release pages read.
 
 use std::collections::HashMap;
 
@@ -256,6 +256,11 @@ impl Catalog {
             search_of(q).as_deref(),
             ROLE_SUGGESTIONS,
         )
+    }
+
+    /// Releases with no artist, by title: the library check's.
+    pub fn releases_without_artists(&self) -> Result<Vec<Release>> {
+        releases::without_artists(&self.store.conn())
     }
 
     /// The catalog's totals, for the dashboard.

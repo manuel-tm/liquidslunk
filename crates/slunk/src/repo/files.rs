@@ -23,8 +23,7 @@ enum Files {
     Type,
 }
 
-/// Matches files nothing uses: the uses that block a delete (slunk's design
-/// §4.3).
+/// Matches files nothing uses: the uses that block a delete.
 const UNUSED: &str = "not exists (select 1 from tracks where file_id = files.id)
   and not exists (select 1 from releases where cover_picture = files.id)
   and not exists (select 1 from artists where picture = files.id)

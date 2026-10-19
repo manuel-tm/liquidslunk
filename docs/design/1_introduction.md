@@ -1,6 +1,6 @@
 # Introduction to liquidslunk
 
-> **Status: being built.**
+> **Status: complete.** All of this design's phases (§9, phases 0 to 6) were built by 2026-10-19.
 
 liquidslunk is a local music library manager, built as a desktop app on Tauri 2. It's a port of slunk, an earlier version of the same app: a Node backend and a web frontend that talked over GraphQL. liquidslunk keeps what slunk does and its database, rewrites the backend in Rust, and builds it into the app. slunk is frozen, and this repository stands on its own.
 

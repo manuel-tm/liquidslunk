@@ -17,6 +17,7 @@ use crate::library::{Libraries, Library};
 
 pub mod catalog;
 pub mod library;
+pub mod library_check;
 pub mod media;
 pub mod tagging;
 
@@ -107,6 +108,9 @@ pub fn builder() -> Builder<Wry> {
             tagging::set_release_tags,
             tagging::set_tag_on_releases,
             tagging::remove_tag_from_releases,
+            library_check::library_check,
+            library_check::relink_files,
+            library_check::rehash_files,
         ])
         // Ids are i64. SQLite's stay far below 2^53, so they're numbers.
         .dangerously_cast_bigints_to_number()

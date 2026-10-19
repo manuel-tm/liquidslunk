@@ -1,5 +1,5 @@
 //! Tracks: the track list, a track with everything saved with it, and a
-//! release's whole track list with its disc titles (slunk's design §6).
+//! release's whole track list with its disc titles.
 
 use std::collections::{HashMap, HashSet};
 
@@ -249,6 +249,40 @@ impl Catalog {
         })
     }
 
+    /// Tracks on various-artists releases that nobody performs: no artist of
+    /// their own but features. The library check's.
+    pub fn tracks_without_performers(&self) -> Result<Vec<Track>> {
+        tracks::without_performers(&self.store.conn())
+    }
+
+    /// Reads the durations again of the tracks whose audio these files are,
+    /// after the files changed on disk, and saves those that differ.
+    pub fn read_durations(&self, file_ids: &[i64]) -> Result<()> {
+        let (tracks, files) = {
+            let conn = self.store.conn();
+            let tracks = tracks::of_files(&conn, file_ids)?;
+            let ids: Vec<i64> = tracks.keys().copied().collect();
+            (tracks, files::get_many(&conn, &ids)?)
+        };
+        // Read without the connection
+        let read: Vec<(i64, Option<i64>)> = files
+            .iter()
+            .map(|file| (file.id, self.media.read_audio(file).duration_ms))
+            .collect();
+        let conn = self.store.conn();
+        for (file_id, duration_ms) in read {
+            let track = &tracks[&file_id];
+            if duration_ms != track.duration_ms {
+                let changes = TrackChanges {
+                    duration_ms: Some(duration_ms),
+                    ..TrackChanges::default()
+                };
+                tracks::update(&conn, track.id, &changes)?;
+            }
+        }
+        Ok(())
+    }
+
     /// A track's duration, read from its audio file, which has to be a
     /// registered music file.
     fn duration_of(&self, file_id: i64) -> Result<Option<i64>> {
@@ -295,9 +329,9 @@ impl Catalog {
     }
 }
 
-/// Who performs a track (slunk's design §4.3), as credited: its own
-/// artists, without features; on a regular release with none, the release's,
-/// with their credited names; on a various-artists release, only its own.
+/// Who performs a track, as credited: its own artists, without features; on a
+/// regular release with none, the release's, with their credited names; on a
+/// various-artists release, only its own.
 pub fn performers(
     release: &Release,
     own: &[TrackArtist],

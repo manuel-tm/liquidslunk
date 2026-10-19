@@ -41,10 +41,9 @@ function useArtistId() {
 }
 
 /**
- * The frame of every artist tab (slunk's design §7.7): the header with Edit and
- * Delete, the tabs with their counts, then the picture and name. It reads
- * `artistHeader`, which every tab shares, and shows the tab once its own
- * data is there.
+ * The frame of every artist tab: the header with Edit and Delete, the tabs with
+ * their counts, then the picture and name. It reads `artistHeader`, which every
+ * tab shares, and shows the tab once its own data is there.
  */
 function ArtistFrame({
   error: tabError,

@@ -1,5 +1,5 @@
-// Languages of names and titles: BCP 47 tags like ja or ja-Latn
-// (slunk's 3_alternate_names.md §4.2). The browser names them, so liquidslunk keeps no list.
+// Languages of names and titles: BCP 47 tags like ja or ja-Latn. The browser
+// names them, so liquidslunk keeps no list.
 
 const names = new Intl.DisplayNames(["en"], { type: "language" })
 
@@ -27,10 +27,9 @@ export function canonicalTag(text: string): string | null {
 }
 
 /**
- * The language a name's or title's script gives away, as the backend guesses
- * it for a credited name (slunk's 3_alternate_names.md §6): kana are only Japanese,
- * and Hangul only Korean. Han characters could be Chinese or Japanese, so
- * they give none.
+ * The language a name's or title's script gives away, as the backend guesses it
+ * for a credited name: kana are only Japanese, and Hangul only Korean. Han
+ * characters could be Chinese or Japanese, so they give none.
  */
 export function scriptLanguage(text: string): string | null {
   if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return "ja"
@@ -39,10 +38,9 @@ export function scriptLanguage(text: string): string | null {
 }
 
 /**
- * `lang` and `dir` for a name or title (slunk's 3_alternate_names.md §7.1). `lang`
- * picks the glyphs, since Japanese and Chinese share code points but not
- * shapes. `dir="auto"` keeps a right-to-left name from moving the dashes and
- * commas around it.
+ * `lang` and `dir` for a name or title. `lang` picks the glyphs, since Japanese
+ * and Chinese share code points but not shapes. `dir="auto"` keeps a
+ * right-to-left name from moving the dashes and commas around it.
  */
 export function textProps(language: string | null | undefined) {
   return { lang: language ?? undefined, dir: "auto" as const }

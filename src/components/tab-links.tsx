@@ -2,7 +2,7 @@ import { NavLink } from "react-router"
 
 import { cn } from "@/lib/utils"
 
-/** Tabs that are routes (slunk's design §7.2: each tab is a route). */
+/** Tabs that are routes (each tab is a route). */
 export function TabLinks({
   tabs,
 }: {

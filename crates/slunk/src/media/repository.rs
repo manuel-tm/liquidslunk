@@ -9,7 +9,7 @@ use crate::paging::Paging;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileRecord {
     pub id: i64,
-    /// Relative to the database's folder (slunk's design §4.1)
+    /// Relative to the database's folder
     pub path: String,
     pub file_type: FileType,
     pub size_bytes: i64,
@@ -110,7 +110,7 @@ pub struct FileTrack {
     pub title: String,
 }
 
-/// What a file link belongs to (slunk's design §4.3, File links).
+/// What a file link belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkOwner {
     Release,

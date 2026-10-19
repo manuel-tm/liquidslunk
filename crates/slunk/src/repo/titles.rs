@@ -1,6 +1,5 @@
-//! Alternate titles of releases, tracks and discs (slunk's
-//! 3_alternate_names.md §4.2), which have a table each, with the same
-//! columns.
+//! Alternate titles of releases, tracks and discs, which have a table each,
+//! with the same columns.
 
 use std::collections::HashMap;
 
@@ -101,7 +100,7 @@ pub fn set_alternate_titles(
 }
 
 /// The releases or tracks whose title or any alternate title contains the
-/// search, ignoring case, for a list's `q` (slunk's 3_alternate_names.md §6).
+/// search, ignoring case, for a list's `q`.
 pub fn title_matches(owner: TitleOwner, search: &str) -> Expr {
     let pattern = like_pattern(search);
     Expr::cust_with_values(

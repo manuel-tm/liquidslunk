@@ -19,7 +19,7 @@ import { idParam, useCommand } from "@/lib/query"
 import { tagFilterInput, tagFiltersOf } from "@/lib/tags"
 import { formatDateTime, formatDuration } from "@/lib/format"
 
-/** `/tracks` (slunk's design §7.8), with tag filters like the release list's. */
+/** `/tracks`, with tag filters like the release list's. */
 export function TrackList() {
   const list = useListParams()
   const tagFilters = tagFiltersOf(list.params)

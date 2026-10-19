@@ -9,7 +9,7 @@ import {
   type NamedLink,
 } from "@/lib/titles"
 
-/** A title, marked with its language (slunk's 3_alternate_names.md §7.1). */
+/** A title, marked with its language. */
 export function Title({
   title,
   language,
@@ -27,10 +27,10 @@ export function Title({
 }
 
 /**
- * The lines under a main title, one per alternate title, smaller and muted
- * (slunk's 3_alternate_names.md §7.1). With `artists`, the ones the main line names,
- * a line repeats them in its title's language when they'd read differently
- * there (§7.2): "福居良, 福居良トリオ – シーナリィ". There's no "=".
+ * The lines under a main title, one per alternate title, smaller and muted.
+ * With `artists`, the ones the main line names, a line repeats them in its
+ * title's language when they'd read differently there: "福居良, 福居良トリオ – シーナリィ".
+ * There's no "=".
  */
 export function AlternateTitleLines({
   titles,
@@ -83,8 +83,8 @@ function AlternateTitleText({ title }: { title: AlternateTitle }) {
 }
 
 /**
- * The alternate title a list row shows under its main one, cut to one line
- * (slunk's 3_alternate_names.md §7.4): the one the search matched, or the first.
+ * The alternate title a list row shows under its main one, cut to one line: the
+ * one the search matched, or the first.
  */
 export function ListedAlternateTitle({
   main,

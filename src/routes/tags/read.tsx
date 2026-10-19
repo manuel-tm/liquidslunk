@@ -32,8 +32,8 @@ export function TagRead() {
 }
 
 /**
- * A tag definition and how many releases and tracks have it (slunk's design §7.8). A
- * text tag also lists its values, with links to what has each.
+ * A tag definition and how many releases and tracks have it. A text tag also
+ * lists its values, with links to what has each.
  */
 function Tag({ type, id }: { type: TagType; id: number }) {
   const list = useListParams()

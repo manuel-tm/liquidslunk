@@ -7,9 +7,8 @@ import { textProps } from "@/lib/languages"
 type Named = { id: number | string; name: string; nameLanguage?: string | null }
 
 /**
- * Names that link to their pages, joined with commas: "A", "A, B", "A, B, C"
- * (slunk's 2_credits.md §7). An "&" is only ever part of a name. Each name has its
- * language's `lang` (slunk's 3_alternate_names.md §7.1).
+ * Names that link to their pages, joined with commas: "A", "A, B", "A, B, C".
+ * An "&" is only ever part of a name. Each name has its language's `lang`.
  *
  * An artist as credited shows the name printed, and hovering it shows the
  * artist's main name: "ALIKA" links to Alika, with no "*".
@@ -61,7 +60,7 @@ function shown(item: Named | CreditedLink) {
 
 /**
  * "as ALIKA", muted, when a link credits its artist under another name, for a
- * row that doesn't show the name itself (slunk's 3_alternate_names.md §7.5).
+ * row that doesn't show the name itself.
  */
 export function CreditedAsNote({
   creditedAs,

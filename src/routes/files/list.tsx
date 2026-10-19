@@ -41,7 +41,7 @@ const PER_PAGE = 50
 
 const TYPE_ITEMS = { all: "All types", ...FILE_TYPE_LABELS }
 
-/** `/files` (slunk's design §7.8) */
+/** `/files`: the registered files. */
 export function FileList() {
   const { params, page, sort, q, update } = useListParams()
   const type = (params.get("type") as FileType | null) ?? null

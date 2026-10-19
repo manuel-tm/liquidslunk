@@ -64,11 +64,10 @@ export function RowActions({
 }
 
 /**
- * Picked rows, in order: the order sets `position` (slunk's design §7.2). A picker
- * underneath adds one. With `credited`, the rows are artists, each with the
- * name it's credited with (slunk's 3_alternate_names.md §7.6). With `typed`, like
- * the import's tag names that picked no artist, the picker has each one typed
- * in, in turn (§7.7).
+ * Picked rows, in order: the order sets `position`. A picker underneath adds
+ * one. With `credited`, the rows are artists, each with the name it's credited
+ * with. With `typed`, like the import's tag names that picked no artist, the
+ * picker has each one typed in, in turn.
  */
 export function OrderedList({
   items,

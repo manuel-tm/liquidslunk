@@ -5,6 +5,7 @@
 //! - `paths`: Node's path functions, which slunk's paths were made with.
 //! - `file_types`: a file's type, from its extension.
 //! - `audio`: an audio file's duration and embedded tags.
+//! - `check`: the library check's file part, and its fixes.
 //! - `repository`: the records `repo::files` and `repo::file_links` store.
 
 use std::collections::{HashMap, HashSet};
@@ -19,12 +20,14 @@ use crate::repo::{file_links, files};
 use crate::{Error, Result};
 
 pub mod audio;
+mod check;
 pub mod file_types;
 pub mod library;
 pub mod paths;
 pub mod repository;
 
 pub use audio::{Audio, AudioTags};
+pub use check::{ChangedFile, FileCheck, FileMove, MissingFile, UnregisteredFolder};
 pub use file_types::{FileType, file_type_of};
 pub use library::{DiskFile, DiskFolder, DiskSubfolder, FileFacts, Library};
 pub use repository::*;

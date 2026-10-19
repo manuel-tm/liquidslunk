@@ -37,8 +37,7 @@ pub struct Tag {
     pub kind: TagType,
     pub id: i64,
     pub name: String,
-    /// Several values per release or track, or at most one (slunk's design
-    /// §4.3)
+    /// Several values per release or track, or at most one
     pub multiple: bool,
 }
 

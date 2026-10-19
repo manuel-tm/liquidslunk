@@ -18,8 +18,8 @@ import { formatDuration } from "@/lib/format"
 import { useCommand } from "@/lib/query"
 
 /**
- * `/` (slunk's design §7.5): the library's status, numbers that are cheap to
- * compute, and the latest additions.
+ * `/`: the library's status, numbers that are cheap to compute, and the latest
+ * additions.
  */
 export function Dashboard() {
   const totals = useCommand("catalogTotals")

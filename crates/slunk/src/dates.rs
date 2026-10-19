@@ -1,5 +1,5 @@
-//! Dates as the user types them, stored as epoch seconds at midnight UTC
-//! (slunk's design §4.3 Dates). Release dates and date tags both use them.
+//! Dates as the user types them, stored as epoch seconds at midnight UTC.
+//! Release dates and date tags both use them.
 //!
 //! slunk worked them out with JavaScript's `Date.UTC()` and `toISOString()`.
 //! These do the same with whole days, so they give the same epochs, refuse

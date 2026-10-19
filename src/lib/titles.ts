@@ -1,5 +1,5 @@
-// Alternate titles (slunk's 3_alternate_names.md §7): the lines under a main title,
-// each with the artists' names in that title's language.
+// Alternate titles: the lines under a main title, each with the artists' names
+// in that title's language.
 import type { CreditedLink } from "@/lib/credited"
 
 /** An alternate title, as queries return it. */
@@ -10,8 +10,8 @@ export type AlternateTitle = {
 }
 
 /**
- * The alternate title a list row shows under its main title (§7.4): the one
- * the search matched, when the main title didn't, or else the first.
+ * The alternate title a list row shows under its main title: the one the search
+ * matched, when the main title didn't, or else the first.
  */
 export function listedTitle<T extends { title: string }>(
   main: string,
@@ -30,9 +30,9 @@ export function listedTitle<T extends { title: string }>(
 
 /**
  * A tag's parts around " = ", as Discogs joins a title in two languages:
- * "Scenery = シーナリィ" (§7.7). The "=" needs spaces on both sides, so
- * "E=MC²" isn't split. Empty and repeated parts are left out. Null when
- * there's only one part.
+ * "Scenery = シーナリィ". The "=" needs spaces on both sides, so "E=MC²" isn't
+ * split. Empty and repeated parts are left out. Null when there's only one
+ * part.
  */
 export function titleParts(text: string): string[] | null {
   const parts = text
@@ -53,9 +53,9 @@ export type NamedLink = CreditedLink & {
 type Shown = { name: string; language?: string | null }
 
 /**
- * An artist's name in a language (§7.2): the first name in it, the main name
- * or an alternate one. Without one, the name it's credited with, unless
- * that's in another language. Otherwise, the main name.
+ * An artist's name in a language: the first name in it, the main name or an
+ * alternate one. Without one, the name it's credited with, unless that's in
+ * another language. Otherwise, the main name.
  */
 function nameIn(link: NamedLink, language: string): Shown {
   const { artist, creditedAs } = link
@@ -69,10 +69,10 @@ function nameIn(link: NamedLink, language: string): Shown {
 }
 
 /**
- * The artists on the line of an alternate title in `language` (§7.2), as
- * links `Names` shows: each in that language, with the main name on hover.
- * Null when the title has no language, or when every artist would read the
- * same as on the main line: the line then shows only the title.
+ * The artists on the line of an alternate title in `language`, as links `Names`
+ * shows: each in that language, with the main name on hover. Null when the
+ * title has no language, or when every artist would read the same as on the
+ * main line: the line then shows only the title.
  */
 export function artistsIn(
   links: NamedLink[],

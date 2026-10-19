@@ -11,10 +11,10 @@ import { textProps } from "@/lib/languages"
 import { useCommand } from "@/lib/query"
 
 /**
- * The name an artist is credited with, as printed (slunk's 3_alternate_names.md
- * §7.6). It suggests the artist's alternate names, like a role suggests the
- * roles in use, and whatever is typed is the name: blank is the main name,
- * and a name the artist doesn't have yet is added to its alternate names.
+ * The name an artist is credited with, as printed. It suggests the artist's
+ * alternate names, like a role suggests the roles in use, and whatever is typed
+ * is the name: blank is the main name, and a name the artist doesn't have yet
+ * is added to its alternate names.
  */
 export function CreditedAsInput({
   artist,

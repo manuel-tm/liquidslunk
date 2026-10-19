@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { CircleCheckIcon, RefreshCwIcon } from "lucide-react"
 import type { ReactNode } from "react"
 import { Link } from "react-router"
@@ -11,97 +11,25 @@ import { PageHeader } from "@/components/page-header"
 import { QueryError } from "@/components/query-error"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { graphql } from "@/gql"
-import type { LibraryCheckQuery } from "@/gql/graphql"
+import type { FileMoveInput, LibraryReport } from "@/bindings"
 import { formatDateTime, formatSize } from "@/lib/format"
+import { call, useCommand } from "@/lib/query"
 
-const LibraryCheckDocument = graphql(`
-  query LibraryCheck {
-    libraryCheck {
-      fileCount
-      missingFiles {
-        file {
-          id
-          path
-          type
-          uses {
-            kind
-            entityId
-            name
-            note
-          }
-        }
-        movedTo
-        likelyMove
-      }
-      changedFiles {
-        file {
-          id
-          path
-          sizeBytes
-          mtime
-        }
-        sizeBytes
-        mtime
-      }
-      unregisteredFolders {
-        path
-        files {
-          name
-          type
-        }
-      }
-      releasesWithoutArtists {
-        id
-        title
-      }
-      tracksWithoutPerformers {
-        id
-        title
-        cdNumber
-        trackNumber
-        release {
-          id
-          title
-        }
-      }
-    }
-  }
-`)
-
-const RelinkFiles = graphql(`
-  mutation RelinkFiles($moves: [FileMoveInput!]!) {
-    relinkFiles(moves: $moves) {
-      id
-      path
-    }
-  }
-`)
-
-const RehashFiles = graphql(`
-  mutation RehashFiles($ids: [ID!]!) {
-    rehashFiles(ids: $ids) {
-      id
-      sizeBytes
-      mtime
-    }
-  }
-`)
-
-type Check = LibraryCheckQuery["libraryCheck"]
+type Check = LibraryReport
 
 /**
- * `/library-check` (slunk's design §7.4, §8 phase 4): the library check's results,
- * grouped by kind of problem, each linking to what needs fixing. It runs
- * each time the page opens, and again after each fix.
+ * `/library-check`: the library check's results, grouped by kind of problem,
+ * each linking to what needs fixing. It runs each time the page opens, and
+ * again after each fix.
  */
 export function LibraryCheck() {
-  const { data, error, loading, refetch } = useQuery(LibraryCheckDocument, {
-    // It reads the disk, so a cached result would be out of date
-    fetchPolicy: "network-only",
-    notifyOnNetworkStatusChange: true,
-  })
-  const check = data?.libraryCheck
+  // It reads the disk, so a cached result would be out of date
+  const {
+    data: check,
+    error,
+    isFetching: loading,
+    refetch,
+  } = useCommand("libraryCheck", undefined, { fresh: true })
   const problems = check
     ? check.missingFiles.length +
       check.changedFiles.length +
@@ -141,8 +69,8 @@ export function LibraryCheck() {
                 ? "Everything's in order."
                 : `${problems} thing${problems === 1 ? "" : "s"} to look at.`}
             </p>
-            <MissingFiles check={check} onFixed={() => void refetch()} />
-            <ChangedFiles check={check} onFixed={() => void refetch()} />
+            <MissingFiles check={check} />
+            <ChangedFiles check={check} />
             <UnregisteredFiles check={check} />
             <Section
               title="Releases with no artist"
@@ -247,29 +175,26 @@ function Section({
   )
 }
 
-function MissingFiles({
-  check,
-  onFixed,
-}: {
-  check: Check
-  onFixed: () => void
-}) {
-  const [relink, { loading }] = useMutation(RelinkFiles)
+/** After a fix, every query is invalidated, so the check runs again. */
+function MissingFiles({ check }: { check: Check }) {
+  const relink = useMutation({
+    mutationFn: (moves: FileMoveInput[]) => call("relinkFiles", { moves }),
+  })
+  const loading = relink.isPending
   const likely = check.missingFiles.flatMap((missing) =>
     missing.likelyMove
       ? [{ fileId: missing.file.id, path: missing.likelyMove }]
       : []
   )
 
-  async function move(moves: { fileId: string; path: string }[]) {
+  async function move(moves: FileMoveInput[]) {
     try {
-      await relink({ variables: { moves } })
+      await relink.mutateAsync(moves)
       toast.success(
         moves.length === 1
           ? "Relinked the file"
           : `Relinked ${moves.length} files`
       )
-      onFixed()
     } catch (error) {
       toast.error((error as Error).message)
     }
@@ -348,24 +273,20 @@ function MissingFiles({
   )
 }
 
-function ChangedFiles({
-  check,
-  onFixed,
-}: {
-  check: Check
-  onFixed: () => void
-}) {
-  const [rehash, { loading }] = useMutation(RehashFiles)
+function ChangedFiles({ check }: { check: Check }) {
+  const rehash = useMutation({
+    mutationFn: (ids: number[]) => call("rehashFiles", { ids }),
+  })
+  const loading = rehash.isPending
 
-  async function read(ids: string[]) {
+  async function read(ids: number[]) {
     try {
-      await rehash({ variables: { ids } })
+      await rehash.mutateAsync(ids)
       toast.success(
         ids.length === 1
           ? "Read the file again"
           : `Read ${ids.length} files again`
       )
-      onFixed()
     } catch (error) {
       toast.error((error as Error).message)
     }

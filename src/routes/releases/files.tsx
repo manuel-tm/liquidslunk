@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { idParam, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
 
-/** `/releases/:id/files`: the cover, then the linked files (slunk's design §7.6). */
+/** `/releases/:id/files`: the cover, then the linked files. */
 export function ReleaseFiles() {
   const { id = "" } = useParams()
   const releaseId = idParam(id)

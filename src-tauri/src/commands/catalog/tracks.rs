@@ -78,9 +78,8 @@ pub struct TrackListItem {
     pub inserted_at: i64,
     pub updated_at: i64,
     pub release: ReleaseHeader,
-    /// Who performs it (slunk's design §4.3): its own artists; on a regular
-    /// release with none, the release's, as credited there; on a
-    /// various-artists release, nobody.
+    /// Who performs it: its own artists; on a regular release with none, the
+    /// release's, as credited there; on a various-artists release, nobody.
     pub performers: Vec<CreditedArtist>,
     pub file: TrackFile,
 }

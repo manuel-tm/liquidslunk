@@ -1,6 +1,5 @@
-//! Artists as credited, on releases and credit lines (slunk's
-//! 3_alternate_names.md §6), and credit lines as they're saved (slunk's
-//! 2_credits.md §6).
+//! Artists as credited, on releases and credit lines, and credit lines as
+//! they're saved.
 
 use std::collections::{HashMap, HashSet};
 
@@ -122,10 +121,10 @@ pub(super) fn first_of_each(links: &[CreditedArtistInput]) -> Vec<CreditedArtist
         .collect()
 }
 
-/// Credit lines as they're saved (slunk's 2_credits.md §6): roles cleaned,
-/// and an artist given twice on a line kept once, with the first name it's
-/// credited with. Refuses an empty role, a line with no artists, and two
-/// lines with the same role, ignoring case.
+/// Credit lines as they're saved: roles cleaned, and an artist given twice on a
+/// line kept once, with the first name it's credited with. Refuses an empty
+/// role, a line with no artists, and two lines with the same role, ignoring
+/// case.
 fn credit_lines(credits: &[CreditInput]) -> Result<Vec<(String, Vec<CreditedArtistInput>)>> {
     let mut roles = HashSet::new();
     credits

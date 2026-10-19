@@ -40,8 +40,8 @@ export function tagValuesInput(rows: TagRow[]): TagValuesInput[] {
 }
 
 /**
- * The tags set on a release or track, and a picker to add one (design
- * §7.6). A single-value tag is one input, and a multi-value tag is a list.
+ * The tags set on a release or track, and a picker to add one. A single-value
+ * tag is one input, and a multi-value tag is a list.
  */
 export function TagsEditor({
   rows,

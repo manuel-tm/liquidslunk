@@ -4,7 +4,7 @@ A local music library manager, as a desktop app. liquidslunk keeps its own datab
 
 liquidslunk is the next version of slunk, ported to Tauri 2 with its backend in Rust, so the whole app is one executable. It keeps slunk's database, so a library slunk made opens as it is. slunk is no longer developed.
 
-> **Status:** being built. The base design, [Introduction to liquidslunk](docs/design/1_introduction.md), plans the port in phases 0 to 6. Phases 0 to 4 are built: the app runs, chooses and remembers its library, and migrates it in Rust, and its dashboard, files, artists, labels, releases, release formats, release media and tags pages run on Rust commands, while slunk's backend still serves the tracks, the import and the library check, in development only. There are no release builds until the port is done.
+> **Status:** the port is done. The base design, [Introduction to liquidslunk](docs/design/1_introduction.md), planned it in phases 0 to 6, which are all built: the app chooses and remembers its library, migrates it, and runs every page on Rust commands, from the dashboard to the import and the library check. `npm run tauri build` makes the app and a disk image, signed ad hoc for this Mac.
 
 ## Documentation
 

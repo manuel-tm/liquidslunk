@@ -4,15 +4,15 @@
 
 use std::fs;
 use std::path::{self, Path, PathBuf};
-use std::process::{Command as Process, ExitCode};
+use std::process::ExitCode;
 use std::time::SystemTime;
 
 use clap::{Args, Parser, Subcommand};
 use slunk::repo::migrations::MIGRATIONS;
-use slunk::repo::{backups, migrator};
+use slunk::repo::{backups, connection, migrator, seeds};
 use slunk::{Error, Result};
 
-/// The repository's root, where the migrations and slunk's backend are.
+/// The repository's root, where the migrations are.
 fn root() -> PathBuf {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     root.canonicalize().unwrap_or(root)
@@ -60,7 +60,7 @@ enum Command {
         /// The migration's name, in snake_case
         name: String,
     },
-    /// Loads sample data, through slunk's backend, unless the database already has releases
+    /// Loads sample data, unless the database already has releases
     Seed(Database),
     /// Backs up and deletes the database, then migrates and seeds a new one
     Reset(Database),
@@ -205,21 +205,17 @@ fn generate(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Loads slunk's sample data, with slunk's backend: the seeds use its catalog,
-/// which isn't ported yet.
+/// Loads the sample data (`repo/seeds.rs`) into a migrated database.
 fn seed(db: &Path) -> Result<()> {
-    let backend = root().join("legacy/slunk-be");
-    let status = Process::new("node")
-        .args(["src/repo/cli.ts", "seed"])
-        .current_dir(&backend)
-        .env("SLUNK_DB", db)
-        .status()
-        .map_err(Error::io(&backend))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(Error::Invalid(format!("slunk's seed failed: {status}")))
+    let mut conn = connection::open(db)?;
+    match seeds::seed(&mut conn)? {
+        Some(seeded) => println!(
+            "Seeded {} releases, {} artists, {} labels and {} tags.",
+            seeded.releases, seeded.artists, seeded.labels, seeded.tags
+        ),
+        None => println!("Skipped seeding: the database already has releases."),
     }
+    Ok(())
 }
 
 /// Prints what ran.

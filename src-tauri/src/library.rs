@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use rusqlite::ErrorCode;
 use serde::Serialize;
 use slunk::catalog::Catalog;
+use slunk::library_check::LibraryCheck;
 use slunk::media::Media;
 use slunk::repo::connection::{self, DATABASE_FILE};
 use slunk::repo::migrator;
@@ -19,8 +20,6 @@ use specta::Type;
 
 use crate::error::CommandError;
 use crate::settings::{self, Settings};
-#[cfg(debug_assertions)]
-use crate::sidecar::Sidecar;
 
 /// The open library.
 pub struct Library {
@@ -31,8 +30,9 @@ pub struct Library {
     /// The app's one connection (design §5.4), which the contexts share.
     pub store: Arc<Store>,
     pub media: Arc<Media>,
-    pub catalog: Catalog,
+    pub catalog: Arc<Catalog>,
     pub tagging: Tagging,
+    pub library_check: LibraryCheck,
 }
 
 impl Library {
@@ -41,10 +41,12 @@ impl Library {
     pub fn new(db: &Path, conn: rusqlite::Connection) -> Library {
         let store = Arc::new(Store::new(conn));
         let media = Arc::new(Media::new(store.clone(), slunk::media::Library::new(db)));
+        let catalog = Arc::new(Catalog::new(store.clone(), media.clone()));
         Library {
             db: db.to_path_buf(),
             folder: folder_of(db),
-            catalog: Catalog::new(store.clone(), media.clone()),
+            library_check: LibraryCheck::new(media.clone(), catalog.clone()),
+            catalog,
             tagging: Tagging::new(store.clone()),
             media,
             store,
@@ -151,8 +153,6 @@ pub struct Libraries {
     settings_path: PathBuf,
     settings: Mutex<Settings>,
     open: Mutex<Option<Arc<Library>>>,
-    #[cfg(debug_assertions)]
-    sidecar: Mutex<Option<Sidecar>>,
     /// Held while a library opens or closes, so two can't interleave.
     switching: Mutex<()>,
 }
@@ -165,8 +165,6 @@ impl Libraries {
             settings: Mutex::new(Settings::load(&settings_path)),
             settings_path,
             open: Mutex::new(None),
-            #[cfg(debug_assertions)]
-            sidecar: Mutex::new(None),
             switching: Mutex::new(()),
         }
     }
@@ -239,19 +237,15 @@ impl Libraries {
         Ok(Created::Created { library, migration })
     }
 
-    /// Closes the open library: the sidecar, then the connection, which
-    /// checkpoints the WAL and removes the `-wal` and `-shm` files. The
-    /// settings still open it at the next launch.
+    /// Closes the open library: its connection closes, which checkpoints the
+    /// WAL and removes the `-wal` and `-shm` files. The settings still open it
+    /// at the next launch.
     pub fn close(&self) {
         let _switching = lock(&self.switching);
         self.close_open();
     }
 
     fn close_open(&self) {
-        // The sidecar stops first: SQLite only removes the -wal and -shm
-        // files when the app's connection is the last one to close.
-        #[cfg(debug_assertions)]
-        lock(&self.sidecar).take();
         lock(&self.open).take();
     }
 
@@ -261,12 +255,6 @@ impl Libraries {
         remember: bool,
         progress: impl Fn(OpenProgress),
     ) -> Result<Opened, CommandError> {
-        // The sidecar's port must be free, unless it's ours, which stops below
-        #[cfg(debug_assertions)]
-        if lock(&self.sidecar).is_none() {
-            Sidecar::check().map_err(CommandError::invalid)?;
-        }
-
         // Migrate, with its backup
         let keep_backups = lock(&self.settings).keep_backups;
         let pending = migrator::pending(db).map_err(opening_error)?;
@@ -287,15 +275,6 @@ impl Libraries {
             settings.remember(db);
             if let Err(error) = settings.save(&self.settings_path) {
                 eprintln!("Can't save {}: {error}", self.settings_path.display());
-            }
-        }
-
-        #[cfg(debug_assertions)]
-        match Sidecar::start(db) {
-            Ok(sidecar) => *lock(&self.sidecar) = Some(sidecar),
-            Err(message) => {
-                self.close_open();
-                return Err(CommandError::invalid(message));
             }
         }
 
