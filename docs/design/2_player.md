@@ -1,6 +1,6 @@
 # Music player
 
-> **Status: being built.**
+> **Status: complete.**
 
 liquidslunk catalogs music, and plays a track only where the track is listed. The release page has play buttons, and the track and file pages each have an audio element. Each one plays on its own, and stops when the page changes. This design adds a music player: one player for the whole app, in the sidebar between the library menu and Import. It has play and pause, previous and next, seeking and volume, and a queue that keeps playing from page to page.
 
@@ -296,6 +296,8 @@ Nothing else changes in the backend. The protocol already serves a file's bytes 
 
 ### 8.2 The Controls menu
 
+> Changed during implementation, see [Appendix E](#appendix-e-the-webview-keeps-its-shortcuts).
+
 The menu bar gets a Controls menu, between View and Window, as in Music. It has:
 - **Play** or **Pause,** as the player is;
 - **Next** and **Previous,** as the player's buttons (§4.3);
@@ -367,7 +369,7 @@ Each phase ends with something usable and documented, and every check in AGENTS.
 
 ## 10. Risks and checks
 
-> Changed during implementation, see [Appendix A](#appendix-a-webkit-seeks-flac-by-estimate).
+> Changed during implementation, see [Appendix A](#appendix-a-webkit-seeks-flac-by-estimate) and [Appendix E](#appendix-e-the-webview-keeps-its-shortcuts).
 
 Each of these is checked early in the phase that needs it. Anything that changes this design is recorded as an appendix.
 - **Playing in the background** (phase 0). macOS can throttle a hidden app (App Nap), and WebKit can refuse `play()` without a click. Check that the next track starts at `ended` with the window hidden, minimized, and behind another app. If WebKit refuses, the webview's autoplay setting is the first thing to try.
@@ -441,3 +443,14 @@ The first draft left these open. They were settled on 2026-10-19:
   - A row is dragged from anywhere on it to another place, with dnd-kit. The drag starts once the pointer has moved a few pixels, so clicking a row still plays it, and its links still work. The list scrolls while a row is dragged near its edges. The up and down buttons are gone, and a row's button still removes it.
   - A grip at the start of each row shows that it drags. With the grip focused, the up and down arrow keys move a row a place, the focus stays on it, and a live region says where it went. This doesn't use dnd-kit's keyboard sensor, which listens on the document: Base UI's dialog popup, which the sheet is, stops arrow keys from leaving it.
 - **Why:** the user asked for the queue to be dragged and dropped, from anywhere on a row, since a handle alone was too small a target.
+
+## Appendix E: The webview keeps its shortcuts
+
+- **Date:** 2026-10-19
+- **Affects:** §8.2 The Controls menu, §10 Risks and checks
+- **Was:** if a focused field still gets ⌘←, ⌘→, ⌘↑ and ⌘↓ before the menu does, the menu's items have them as key equivalents, and the webview's handlers for them go.
+- **Now:**
+  - A focused field does get them first. In the release list's search field, ⌘← and ⌘→ moved the caret to the start and the end, and the menu didn't act. So the items have them: ⌘→ for Next, ⌘← for Previous, ⌘↑ for Volume Up and ⌘↓ for Volume Down.
+  - The webview's handlers stay, though. Without the provider's handler, ⌘↓ on a page longer than the window scrolled it to its end, and the menu never got the key. With the handler, the volume went down, and the page stayed where it was.
+  - The handler calls `preventDefault()`, which tells WebKit the page used the key, so the menu doesn't act on it a second time. The menu acts on a key only where the page leaves it: with the handler held back, ⌘→ outside a field reached Next.
+- **Why:** WebKit gives the page every key first, and passes it on to the menu only when nothing in the page used it. Outside a field, WebKit uses ⌘↑ and ⌘↓ itself, to scroll to the top and the end of the page, so without the handlers, the volume keys would scroll most pages instead. The check sent the keys inside the app, the way AppKit routes a key equivalent: to the window, whose WKWebView hands it to the page, then to the menu if the page leaves it. No tool could press them on the keyboard: that needs Accessibility access.

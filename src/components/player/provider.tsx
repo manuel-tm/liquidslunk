@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useEffectEvent,
   useMemo,
   useReducer,
   useRef,
@@ -13,7 +14,12 @@ import {
 } from "react"
 import { toast } from "sonner"
 
-import type { PlayerTrack } from "@/bindings"
+import {
+  commands,
+  events,
+  type PlayerControl,
+  type PlayerTrack,
+} from "@/bindings"
 import { shownName } from "@/lib/credited"
 import { fileUrl, useCommand } from "@/lib/query"
 import {
@@ -33,7 +39,8 @@ const VOLUME = "slunk.player.volume"
 const SHUFFLE = "slunk.player.shuffle"
 const REPEAT = "slunk.player.repeat"
 const QUEUE = "slunk.player.queue"
-// ⌘↑ and ⌘↓ change the volume by this much
+// ⌘↑ and ⌘↓, and the Controls menu's Volume Up and Down, change the volume
+// by this much
 const VOLUME_STEP = 0.1
 
 type Volume = { volume: number; muted: boolean }
@@ -328,10 +335,11 @@ export function PlayerProvider({
     () => dispatch({ type: "setRepeat", repeat: nextRepeat(queue.repeat) }),
     [queue.repeat]
   )
+  // In hundredths, so steps of 10% don't drift: 0.8 - 0.1 is 0.7000000000000001
   const setVolume = useCallback(
     (volume: number) =>
       setVolumeState({
-        volume: Math.min(1, Math.max(0, volume)),
+        volume: Math.round(Math.min(1, Math.max(0, volume)) * 100) / 100,
         muted: false,
       }),
     []
@@ -341,7 +349,9 @@ export function PlayerProvider({
     []
   )
 
-  // Space, ⌘→, ⌘←, ⌘↑ and ⌘↓, as in Music (2_player.md §4.4)
+  // Space, ⌘→, ⌘←, ⌘↑ and ⌘↓, as in Music (2_player.md §4.4). The Controls
+  // menu shows the ⌘ ones, but only gets a key the page leaves: these take it
+  // first, before WebKit scrolls to the end of a page for ⌘↓ (Appendix E).
   const queued = current !== null
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -452,6 +462,52 @@ export function PlayerProvider({
       session.playbackState = "none"
     }
   }, [setActions])
+
+  // The Controls menu (2_player.md §8.2) shows the player as it is. It's off
+  // with nothing queued, and so at Welcome, when the provider unmounts.
+  useEffect(() => {
+    void commands.setControlsMenu({
+      playing: queue.playing,
+      queued,
+      shuffle: queue.shuffle,
+      repeat: queue.repeat,
+    })
+  }, [queue.playing, queued, queue.shuffle, queue.repeat])
+  useEffect(
+    () => () =>
+      void commands.setControlsMenu({
+        playing: false,
+        queued: false,
+        shuffle: false,
+        repeat: "off",
+      }),
+    []
+  )
+  // Its items do what the player's buttons do, with the sidebar hidden too
+  const onControl = useEffectEvent((control: PlayerControl) => {
+    switch (control.type) {
+      case "toggle":
+        return toggle()
+      case "next":
+        return next()
+      case "previous":
+        return previous()
+      case "shuffle":
+        return toggleShuffle()
+      case "repeat":
+        return dispatch({ type: "setRepeat", repeat: control.mode })
+      case "volumeUp":
+        return setVolume(volume + VOLUME_STEP)
+      case "volumeDown":
+        return setVolume(volume - VOLUME_STEP)
+    }
+  })
+  useEffect(() => {
+    const listening = events.playerControl.listen((event) =>
+      onControl(event.payload)
+    )
+    return () => void listening.then((unlisten) => unlisten())
+  }, [])
 
   // A track that can't play is skipped (2_player.md §7.1)
   function onError(event: SyntheticEvent<HTMLAudioElement>) {

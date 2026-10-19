@@ -9,7 +9,8 @@ Each design doc plans one topic, numbered in the order it's written: `N_topic.md
 | Document | Covers | Status |
 |---|---|---|
 | [1_introduction.md](1_introduction.md) | The base design: what liquidslunk keeps from slunk, the Rust backend and its commands, choosing the library, TanStack Query, and the phases of the port | Complete |
-| [2_player.md](2_player.md) | The music player: playback in the sidebar, between the library menu and Import, with a queue and shortcuts; macOS's Now Playing and media keys; and a Controls menu in the menu bar | Being built |
+| [2_player.md](2_player.md) | The music player: playback in the sidebar, between the library menu and Import, with a queue and shortcuts; macOS's Now Playing and media keys; and a Controls menu in the menu bar | Complete |
+| [3_gapless.md](3_gapless.md) | Gapless playback: the next track loaded ahead in a second element, and started just before the current one ends | In design |
 
 Planned, not written yet: **external libraries**, exporting music to other libraries. It takes the next free number when it's written.
 

@@ -11,7 +11,7 @@ The backend is Rust, built into the app. It was ported from slunk's Node backend
 - **Phase 5:** the catalog context's tracks: the track list, a track with everything saved with it, and a release's whole track list with its disc titles; what a folder suggests for importing it; and adding one alternate name to an artist.
 - **Phase 6:** the library check and its fixes, and the sample data. slunk's backend was removed, with what ran it.
 
-Since the port, later designs add to it: phase 0 of [2_player.md](../design/2_player.md) added `player_tracks`, what the music player shows of the tracks it queues, and phase 1 added `release_track_ids`, a release's tracks for the release table's play button ([Commands](#commands)).
+Since the port, later designs add to it: phase 0 of [2_player.md](../design/2_player.md) added `player_tracks`, what the music player shows of the tracks it queues, phase 1 added `release_track_ids`, a release's tracks for the release table's play button ([Commands](#commands)), and phase 2 added the menu bar's Controls menu, with `set_controls_menu` and the `PlayerControl` event ([The menu bar](#the-menu-bar)).
 
 Each rule on this page has a test.
 
@@ -20,10 +20,11 @@ Each rule on this page has a test.
 | Piece | Choice |
 |---|---|
 | Shell | Tauri 2 |
-| Commands | Tauri commands, typed by tauri-specta |
+| Commands | Tauri commands and events, typed by tauri-specta |
 | SQLite | rusqlite, with the `bundled` feature: SQLite is compiled in |
 | Queries | Plain SQL, and sea-query for lists with dynamic filters and sorts |
 | Errors | thiserror |
+| Menu bar | Tauri's menus |
 | Plugins | tauri-plugin-dialog (choosing a library), tauri-plugin-opener (Finder, opening files), tauri-plugin-single-instance |
 | Content types | mime_guess |
 | Audio | lofty |
@@ -115,11 +116,13 @@ src-tauri/
   tauri.conf.json            the app's name, identifier, window, CSP and bundle
   capabilities/default.json  what the window may call
   icons/                     the app's icons, and icon.svg, their source
-  src/lib.rs                 the builder: plugins, state, protocol, commands
+  src/lib.rs                 the builder: plugins, state, protocol, commands,
+                             menu bar
   src/error.rs               the commands' error, and SQLite's errors in words
   src/settings.rs            the settings file
   src/library.rs             opening, creating, switching and closing libraries
   src/protocol.rs            slunk://localhost/files/:id
+  src/menu.rs                the menu bar, with the Controls menu
   src/commands/              the commands and their DTOs, one module per context;
                              catalog/ has one per entity
 ```
@@ -447,10 +450,11 @@ The frontend calls the backend through Tauri commands, in `src-tauri/src/command
   - `import.rs` ([Import suggestions](#import-suggestions)): the import's reads, `release_suggestion` and `import_files`, the release's cover and links with the folder's files;
   - `mod.rs`: `languages`, and what they share: the DTOs of what a release refers to, and `Related`, which loads it;
 - `library_check.rs` ([The library check](#the-library-check)): `library_check`, and its fixes, `relink_files` and `rehash_files`;
+- `menu.rs` ([The menu bar](#the-menu-bar)): `set_controls_menu`;
 - `tagging.rs` ([The tagging context](#the-tagging-context)): `tags`, `tag`, `tag_options`, `tags_by_ref`, `tag_values`, `tag_value_options`, `create_tag`, `update_tag` and `delete_tag`, which name a tag by its `type` and id; a release's tags, `release_tags` and `set_release_tags`; and the bulk edits, `set_tag_on_releases` and `remove_tag_from_releases`.
 
 Their conventions:
-- **Async.** Every command is `async`, and does its database and disk work on Tokio's blocking pool, with `blocking()`, or `on_library()` for one that needs the open library, which is `noLibrary` without one. A command that isn't `async` runs on the main thread, and freezes the window while it works.
+- **Async.** Every command is `async`, and does its database and disk work on Tokio's blocking pool, with `blocking()`, or `on_library()` for one that needs the open library, which is `noLibrary` without one. A command that isn't `async` runs on the main thread, and freezes the window while it works. The one exception is `set_controls_menu`, whose work belongs on the main thread: the menu is there.
 - **Thin.** A command that uses the library is a wrapper over a plain function that takes it, like `media::register(library, args)` or `catalog::artists::create(library, args)`, which maps the context's records to DTOs.
 - **Results.** Every command returns `Result<_, CommandError>`.
 - **Arguments.** A command takes its arguments as one struct, `args`, like `open_file`'s `FileArgs`, so the frontend passes them as an object, as `useCommand()` expects: `call("openFile", { id })`. A command can also take a `Channel` to report progress, as `open_library` does with a path.
@@ -462,7 +466,7 @@ Their conventions:
 - **Optional arguments** are `Option`s with `#[serde(default)]` and `#[specta(optional)]`, so the frontend leaves them out: `useCommand("files", { sort: "path" })`.
 - **Ids** are `i64`, exported to TypeScript as `number` (`dangerously_cast_bigints_to_number()`): SQLite's ids stay far below 2^53.
 
-**The bindings.** tauri-specta writes `src/bindings.ts` from the commands and their DTOs whenever a debug build starts (`lib.rs`). It's committed, so start a debug build after changing a command, and commit what it writes. It wraps each result as `{ status: "ok", data } | { status: "error", error }`, which the frontend's `useCommand()` unwraps.
+**The bindings.** tauri-specta writes `src/bindings.ts` from the commands, the events and their DTOs whenever a debug build starts (`lib.rs`). It's committed, so start a debug build after changing a command, and commit what it writes. It wraps each result as `{ status: "ok", data } | { status: "error", error }`, which the frontend's `useCommand()` unwraps.
 
 **Errors.** `CommandError` is `{ kind, message }`, where `kind` is:
 - `noLibrary`: no library is open, and the frontend goes to Welcome;
@@ -511,6 +515,14 @@ Each failure is an `invalid` error, in words. An I/O or locking error adds that 
 - Range requests get a 206 with `Content-Range`, so audio can seek. A response is a whole body in memory, so a range with no end (`bytes=0-`) gets 1 MB, and the media element asks for the rest as it plays. A request with no range gets the whole file.
 
 The app's CSP allows `slunk:` and `http://slunk.localhost` in `img-src` and `media-src`. A page's `fetch()` can't read them: they're for media elements.
+
+### The menu bar
+
+`menu.rs` builds the menu bar ([2_player.md §8.2](../design/2_player.md#82-the-controls-menu)): Tauri's default menu, with a Controls menu between View and Window, as in Music. The player is in the webview, so the menu only passes clicks to it, and shows what it's told.
+- **Its items:** Play, or Pause while the player plays; Next and Previous; Shuffle, checked while it's on; Repeat, a submenu of Off, All and One, the current one checked; and Volume Up and Volume Down. They're all off while nothing is queued, and at launch, until the player says otherwise.
+- **Key equivalents:** ⌘→ for Next, ⌘← for Previous, ⌘↑ and ⌘↓ for the volume. Play has none, since Space would take it from every field. WebKit gives the page a key first, and the menu gets it only if the page leaves it: a field moves its caret, and the player handles the rest itself ([The player](frontend.md#the-player)).
+- **A click** emits `PlayerControl`, a typed event, to the webview: `{ type: "toggle" }`, `next`, `previous`, `shuffle`, `{ type: "repeat", mode }`, `volumeUp` or `volumeDown`. It's tauri-specta's, so it's in the bindings, as `events.playerControl`. A check item checks or unchecks itself when it's clicked, so the click handler puts it back as it was, and the player then says what's changed.
+- **`set_controls_menu({ playing, queued, shuffle, repeat })`** sets what the items show. The items are in the app's state, as `ControlsMenu`. The command isn't `async`: it runs on the main thread, where the menu is, so the player's calls change it in the order they're made.
 
 ### Opening files
 

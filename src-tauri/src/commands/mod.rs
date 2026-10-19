@@ -3,14 +3,15 @@
 //! debug build starts.
 //!
 //! - Every command is `async`, and does its database and disk work on Tokio's
-//!   blocking pool: a command that isn't `async` runs on the main thread.
+//!   blocking pool: a command that isn't `async` runs on the main thread. The
+//!   exception is `set_controls_menu`, which belongs there, with the menu.
 //! - Every command returns `Result<_, CommandError>`, which the bindings wrap
 //!   as `{ status: "ok", data } | { status: "error", error }`.
 //! - A query command takes its arguments as one struct, `args`, so the
 //!   frontend calls `useCommand("releasePage", { id })`.
 
 use tauri::{AppHandle, Manager, Wry};
-use tauri_specta::{Builder, collect_commands};
+use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::error::CommandError;
 use crate::library::{Libraries, Library};
@@ -19,9 +20,10 @@ pub mod catalog;
 pub mod library;
 pub mod library_check;
 pub mod media;
+pub mod menu;
 pub mod tagging;
 
-/// Every command, for the invoke handler and the bindings.
+/// Every command and event, for the invoke handler and the bindings.
 pub fn builder() -> Builder<Wry> {
     Builder::<Wry>::new()
         .commands(collect_commands![
@@ -113,7 +115,9 @@ pub fn builder() -> Builder<Wry> {
             library_check::library_check,
             library_check::relink_files,
             library_check::rehash_files,
+            menu::set_controls_menu,
         ])
+        .events(collect_events![crate::menu::PlayerControl])
         // Ids are i64. SQLite's stay far below 2^53, so they're numbers.
         .dangerously_cast_bigints_to_number()
 }

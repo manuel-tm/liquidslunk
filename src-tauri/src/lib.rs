@@ -1,5 +1,5 @@
 //! The app (design §5.2): the Tauri builder, with its plugins, the open
-//! library in its state, the file protocol and the commands. The domain is in
+//! library in its state, the file protocol, the commands and the menu bar. The domain is in
 //! `crates/slunk`, which doesn't depend on Tauri.
 
 use tauri::{Manager, RunEvent};
@@ -7,6 +7,7 @@ use tauri::{Manager, RunEvent};
 mod commands;
 mod error;
 mod library;
+mod menu;
 mod protocol;
 mod settings;
 
@@ -41,6 +42,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .register_asynchronous_uri_scheme_protocol(protocol::SCHEME, protocol::handle)
+        .menu(menu::build)
+        .on_menu_event(menu::on_event)
         .invoke_handler(commands.invoke_handler())
         .setup(move |app| {
             commands.mount_events(app);
