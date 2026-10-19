@@ -1,4 +1,3 @@
-import { useQuery } from "@apollo/client/react"
 import { useMutation } from "@tanstack/react-query"
 import { CheckIcon, CircleAlertIcon } from "lucide-react"
 import { type ReactNode, useState } from "react"
@@ -22,13 +21,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { graphql } from "@/gql"
+import type { FileRefInput, ImportFiles } from "@/bindings"
 import { shownName } from "@/lib/credited"
-import type { ImportFilesQuery } from "@/gql/graphql"
 import { formatSize } from "@/lib/format"
 import { offeredNames, pickedArtists, unpicked } from "@/lib/import"
-import { call } from "@/lib/query"
+import { call, idParam, useCommand } from "@/lib/query"
 import { cn } from "@/lib/utils"
+import { NotFound } from "@/routes/not-found"
 import { DetailsTab } from "@/routes/releases/edit"
 import { ReleaseCreditsForm } from "@/routes/releases/forms/credits"
 import {
@@ -159,44 +158,6 @@ export function ImportFolder() {
   )
 }
 
-const ReleaseSuggestionQuery = graphql(`
-  query ReleaseSuggestion($folder: String!) {
-    releaseSuggestion(folder: $folder) {
-      title
-      released
-      music
-      images
-      others
-      artists {
-        name
-        matches
-        creditedAs
-        otherNames
-        artist {
-          id
-          name
-          nameLanguage
-        }
-      }
-      sameTitle {
-        id
-        title
-        artists {
-          artist {
-            id
-            name
-            nameLanguage
-          }
-          creditedAs {
-            name
-            language
-          }
-        }
-      }
-    }
-  }
-`)
-
 /**
  * Step 2, `/import/release?folder=…`: creates the release, prefilled from
  * the files' tags or the folder's name. Saving replaces this history entry
@@ -206,11 +167,12 @@ export function ImportNewRelease() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const folder = params.get("folder") ?? ""
-  const { data, error } = useQuery(ReleaseSuggestionQuery, {
-    variables: { folder },
-    fetchPolicy: "network-only",
-  })
-  const suggestion = data?.releaseSuggestion
+  // What's on disk now (design §7.2)
+  const { data: suggestion, error } = useCommand(
+    "releaseSuggestion",
+    { folder },
+    { fresh: true }
+  )
   const unpickedArtists = unpicked(suggestion?.artists ?? [])
   const plural = (n: number, noun: string) =>
     `${n} ${noun}${n === 1 ? "" : "s"}`
@@ -323,33 +285,6 @@ export function ImportTracks() {
   )
 }
 
-const ImportFilesQueryDocument = graphql(`
-  query ImportFiles($id: ID!, $folder: String!) {
-    release(id: $id) {
-      id
-      cover {
-        id
-        path
-      }
-      files {
-        note
-        file {
-          id
-          path
-        }
-      }
-    }
-    folderFiles(path: $folder) {
-      path
-      type
-      sizeBytes
-      file {
-        id
-      }
-    }
-  }
-`)
-
 /**
  * Step 4: the cover is chosen from the folder's images, and each file to
  * link gets a checkbox and a note. Next registers and links them.
@@ -359,21 +294,25 @@ export function ImportFiles() {
   const { id = "" } = useParams()
   const [params] = useSearchParams()
   const folder = params.get("folder")
-  const { data, error } = useQuery(ImportFilesQueryDocument, {
-    variables: { id, folder: folder ?? "" },
-    fetchPolicy: "network-only",
-  })
+  const releaseId = idParam(id)
+  // What's on disk and in the database now (design §7.2)
+  const { data, error } = useCommand(
+    "importFiles",
+    { id: releaseId ?? 0, folder: folder ?? "" },
+    { fresh: true, enabled: releaseId !== null }
+  )
 
+  if (releaseId === null || data === null) return <NotFound />
   return (
     <ImportFrame step="Cover & files" id={id} folder={folder}>
       {error ? (
         <QueryError error={error} title="Can't read the folder" />
-      ) : !data?.release ? (
+      ) : !data ? (
         <Skeleton className="h-64 w-full" />
       ) : (
         <FolderFilesForm
-          releaseId={id}
-          data={data}
+          key={data.id}
+          release={data}
           onSaved={() => navigate(stepUrl("Credits", id, folder))}
         />
       )}
@@ -383,7 +322,7 @@ export function ImportFiles() {
 
 type FolderFileRow = {
   path: string
-  fileId?: string
+  fileId?: number
   type: string
   sizeBytes: number
   linked: boolean
@@ -391,20 +330,17 @@ type FolderFileRow = {
 }
 
 function FolderFilesForm({
-  releaseId,
-  data,
+  release,
   onSaved,
 }: {
-  releaseId: string
-  data: ImportFilesQuery
+  release: ImportFiles
   onSaved: () => void
 }) {
-  const release = data.release!
   const linked = new Map(
     release.files.map((link) => [link.file.path, link.note ?? ""])
   )
   const [rows, setRows] = useState<FolderFileRow[]>(() =>
-    data.folderFiles
+    release.folderFiles
       .filter((file) => file.type !== "music")
       .map((file) => ({
         path: file.path,
@@ -428,21 +364,11 @@ function FolderFilesForm({
   const kept = release.files.filter(
     (link) => !rows.some((row) => row.path === link.file.path)
   )
-  // The folder's files come from GraphQL until phase 5, and are saved with
-  // a command: GraphQL's ids are strings
   const save = useMutation({
     mutationFn: (input: {
-      cover: { fileId?: string; path?: string } | null
-      files: { fileId?: string; path?: string; note?: string | null }[]
-    }) =>
-      call("setReleaseFiles", {
-        id: Number(releaseId),
-        cover: input.cover && fileRef(input.cover),
-        files: input.files.map((link) => ({
-          ...fileRef(link),
-          note: link.note,
-        })),
-      }),
+      cover: FileRefInput | null
+      files: (FileRefInput & { note?: string | null })[]
+    }) => call("setReleaseFiles", { id: release.id, ...input }),
   })
   const edit = (path: string, changes: Partial<FolderFileRow>) =>
     setRows((current) =>
@@ -596,9 +522,4 @@ export function ImportTags() {
       />
     </ImportFrame>
   )
-}
-
-/** A file by id or by path, as a command takes it. */
-function fileRef({ fileId, path }: { fileId?: string; path?: string }) {
-  return fileId ? { fileId: Number(fileId) } : { path }
 }

@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router"
 
@@ -44,120 +44,11 @@ import {
 } from "@/components/alternate-titles-editor"
 import { LanguagePicker } from "@/components/language-picker"
 import { Skeleton } from "@/components/ui/skeleton"
-import { graphql } from "@/gql"
+import type { TrackInput } from "@/bindings"
 import { creditedInput, creditedOption } from "@/lib/credited"
 import { textProps } from "@/lib/languages"
+import { call, idParam, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
-
-const TrackFormQuery = graphql(`
-  query TrackForm(
-    $id: ID!
-    $isEdit: Boolean!
-    $releaseId: ID!
-    $withRelease: Boolean!
-    $fileId: ID!
-    $withFile: Boolean!
-  ) {
-    track(id: $id) @include(if: $isEdit) {
-      id
-      title
-      titleLanguage
-      alternateTitles {
-        title
-        language
-        printed
-      }
-      cdNumber
-      trackNumber
-      release {
-        id
-        name: title
-      }
-      file {
-        id
-        name: path
-      }
-      artists {
-        artist {
-          id
-          name
-          nameLanguage
-        }
-        creditedAs {
-          name
-          language
-        }
-      }
-      features {
-        artist {
-          id
-          name
-          nameLanguage
-        }
-        creditedAs {
-          name
-          language
-        }
-      }
-      credits {
-        role
-        artists {
-          artist {
-            id
-            name
-            nameLanguage
-          }
-          creditedAs {
-            name
-            language
-          }
-        }
-      }
-      files {
-        note
-        file {
-          id
-          name: path
-        }
-      }
-      tags {
-        tag {
-          id
-          type
-          name
-          multiple
-        }
-        values
-      }
-    }
-    prefillRelease: release(id: $releaseId) @include(if: $withRelease) {
-      id
-      name: title
-    }
-    prefillFile: file(id: $fileId) @include(if: $withFile) {
-      id
-      name: path
-      fileName: name
-    }
-  }
-`)
-
-const CreateTrack = graphql(`
-  mutation CreateTrack($input: TrackInput!) {
-    createTrack(input: $input) {
-      id
-    }
-  }
-`)
-
-const UpdateTrack = graphql(`
-  mutation UpdateTrack($id: ID!, $input: TrackInput!) {
-    updateTrack(id: $id, input: $input) {
-      id
-      title
-    }
-  }
-`)
 
 type Values = {
   release: Option | null
@@ -182,28 +73,32 @@ type Values = {
 export function TrackForm() {
   const { id } = useParams()
   const [params] = useSearchParams()
-  const releaseId = params.get("release")
-  const fileId = params.get("file")
-  const { data, error } = useQuery(TrackFormQuery, {
-    variables: {
-      id: id ?? "",
-      isEdit: id !== undefined,
-      releaseId: releaseId ?? "",
-      withRelease: releaseId !== null,
-      fileId: fileId ?? "",
-      withFile: fileId !== null,
-    },
-  })
+  const trackId = id === undefined ? undefined : idParam(id)
+  // A form starts from fresh data (design §7.2)
+  const { data, error } = useCommand(
+    "trackForm",
+    trackId === undefined
+      ? {
+          release: idParam(params.get("release") ?? undefined) ?? undefined,
+          file: idParam(params.get("file") ?? undefined) ?? undefined,
+        }
+      : { id: trackId ?? 0 },
+    { fresh: true, enabled: trackId !== null }
+  )
 
-  if (id && data && !data.track) return <NotFound />
+  if (trackId === null || (trackId !== undefined && data && !data.track)) {
+    return <NotFound />
+  }
   const track = data?.track
+  // Options' ids are strings, as the pickers' are
+  const option = (id: number, name: string) => ({ id: String(id), name })
 
   const initial: Values | null = !data
     ? null
     : track
       ? {
-          release: track.release,
-          file: track.file,
+          release: option(track.release.id, track.release.title),
+          file: option(track.file.id, track.file.path),
           cdNumber: track.cdNumber,
           trackNumber: track.trackNumber,
           title: track.title,
@@ -216,18 +111,22 @@ export function TrackForm() {
             artists: artists.map(creditedOption),
           })),
           links: track.files.map((link) => ({
-            file: link.file,
+            file: option(link.file.id, link.file.path),
             note: link.note ?? "",
           })),
           tags: tagRows(track.tags),
         }
       : {
-          release: data.prefillRelease ?? null,
-          file: data.prefillFile ?? null,
+          release: data.prefillRelease
+            ? option(data.prefillRelease.id, data.prefillRelease.title)
+            : null,
+          file: data.prefillFile
+            ? option(data.prefillFile.id, data.prefillFile.path)
+            : null,
           cdNumber: 1,
           trackNumber: "",
           title:
-            data.prefillFile?.fileName
+            data.prefillFile?.name
               .replace(/\.[^.]+$/, "")
               .replace(/^\d+[\s._-]+/, "") ?? "",
           titleLanguage: null,
@@ -261,21 +160,24 @@ export function TrackForm() {
         ) : !initial ? (
           <Skeleton className="h-64 w-full" />
         ) : (
-          <Form id={id} initial={initial} />
+          <Form id={trackId} initial={initial} />
         )}
       </div>
     </>
   )
 }
 
-function Form({ id, initial }: { id?: string; initial: Values }) {
+function Form({ id, initial }: { id?: number; initial: Values }) {
   const navigate = useNavigate()
   const [values, setValues] = useState(initial)
   const set = (changes: Partial<Values>) =>
     setValues((v) => ({ ...v, ...changes }))
-  const [create, created] = useMutation(CreateTrack)
-  const [update, updated] = useMutation(UpdateTrack)
-  const error = created.error ?? updated.error
+  const save = useMutation({
+    mutationFn: (input: TrackInput) =>
+      id === undefined
+        ? call("createTrack", input)
+        : call("updateTrack", { id, ...input }),
+  })
 
   return (
     <form
@@ -283,8 +185,9 @@ function Form({ id, initial }: { id?: string; initial: Values }) {
         event.preventDefault()
         if (!values.release || !values.file || values.trackNumber === "") return
         const input = {
-          releaseId: values.release.id,
-          fileId: values.file.id,
+          // Options' ids are strings, as the pickers' are
+          releaseId: Number(values.release.id),
+          fileId: Number(values.file.id),
           cdNumber: values.cdNumber,
           trackNumber: values.trackNumber,
           title: values.title,
@@ -297,9 +200,7 @@ function Form({ id, initial }: { id?: string; initial: Values }) {
           tags: tagValuesInput(values.tags),
         }
         try {
-          const saved = id
-            ? (await update({ variables: { id, input } })).data!.updateTrack
-            : (await create({ variables: { input } })).data!.createTrack
+          const saved = await save.mutateAsync(input)
           navigate(`/tracks/${saved.id}`)
         } catch {
           // The form shows the error
@@ -307,7 +208,7 @@ function Form({ id, initial }: { id?: string; initial: Values }) {
       }}
     >
       <FieldGroup>
-        {error && <QueryError error={error} title="Can't save" />}
+        {save.error && <QueryError error={save.error} title="Can't save" />}
         <Field>
           <FieldLabel htmlFor="release">Release</FieldLabel>
           <ReleasePicker
@@ -436,8 +337,7 @@ function Form({ id, initial }: { id?: string; initial: Values }) {
           <Button
             type="submit"
             disabled={
-              created.loading ||
-              updated.loading ||
+              save.isPending ||
               !values.release ||
               !values.file ||
               !creditsValid(values.credits) ||

@@ -11,7 +11,7 @@
 
 use std::path::Path;
 
-use liquidslunk_lib::commands::catalog::{self, artists, labels, lists, releases};
+use liquidslunk_lib::commands::catalog::{self, artists, import, labels, lists, releases, tracks};
 use liquidslunk_lib::commands::{media, tagging};
 use liquidslunk_lib::error::CommandError;
 use liquidslunk_lib::library::Library;
@@ -72,6 +72,7 @@ fn run(library: &Library, command: &str, args: Value) -> Result<Value, CommandEr
         "createArtist" => json(artists::create(library, parse(args)?)?),
         "updateArtist" => json(artists::update(library, parse(args)?)?),
         "setArtistPicture" => json(artists::set_picture(library, parse(args)?)?),
+        "addArtistName" => json(artists::add_name(library, parse(args)?)?),
         "deleteArtist" => json(artists::delete(library, parse(args)?)?),
         "artistHeader" => json(artists::header(library, parse(args)?)?),
         "artistReleases" => json(artists::releases_of(library, parse(args)?)?),
@@ -101,6 +102,16 @@ fn run(library: &Library, command: &str, args: Value) -> Result<Value, CommandEr
         "setReleaseCredits" => json(releases::set_credits(library, parse(args)?)?),
         "creditRoles" => json(releases::roles(library, parse(args)?)?),
         "catalogTotals" => json(releases::totals(library)?),
+        "tracks" => json(tracks::list(library, parse(args)?)?),
+        "trackPage" => json(tracks::page(library, parse(args)?)?),
+        "trackForm" => json(tracks::form(library, parse(args)?)?),
+        "createTrack" => json(tracks::create(library, parse(args)?)?),
+        "updateTrack" => json(tracks::update(library, parse(args)?)?),
+        "deleteTrack" => json(tracks::delete(library, parse(args)?)?),
+        "releaseTracks" => json(tracks::of_release(library, parse(args)?)?),
+        "setReleaseTracks" => json(tracks::set_tracks(library, parse(args)?)?),
+        "releaseSuggestion" => json(import::suggest_release(library, parse(args)?)?),
+        "importFiles" => json(import::files(library, parse(args)?)?),
         "languages" => json(catalog::in_use(library)?),
         "tags" => json(tagging::list(library, parse(args)?)?),
         "tag" => json(tagging::details(library, parse(args)?)?),

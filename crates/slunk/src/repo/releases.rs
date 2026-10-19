@@ -17,6 +17,7 @@ use crate::catalog::{
 };
 use crate::dates::DatePrecision;
 use crate::tagging::TagOwner;
+use crate::text::trim;
 
 const COLUMNS: &str = r#""id", "title", "title_language", "release_date", "release_date_precision", "catalog_number", "cover_picture", "various_artists", "inserted_at", "updated_at""#;
 
@@ -150,6 +151,23 @@ pub fn get_many(conn: &Connection, ids: &[i64]) -> Result<Vec<Release>> {
         }
     }
     Ok(found)
+}
+
+/// Releases with this title, or this alternate title, ignoring case, in no
+/// particular order: the import checks it so a release isn't imported
+/// twice. The title is trimmed as JavaScript trims.
+pub fn find_by_title(conn: &Connection, title: &str) -> Result<Vec<Release>> {
+    let sql = format!(
+        r#"select {COLUMNS} from "releases" where title = ?1 collate nocase or id in (
+          select release_id from release_alternate_titles
+          where title = ?1 collate nocase
+        )"#
+    );
+    let mut statement = conn.prepare(&sql)?;
+    let rows = statement
+        .query_map([trim(title)], release)?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
 }
 
 /// A new release, with no cover.
@@ -359,6 +377,26 @@ pub fn disc_titles_of(
         })
         .collect();
     Ok(group_by(rows, |(release, _)| *release, |(_, disc)| disc))
+}
+
+/// Replaces a release's disc titles, with their alternate titles. Run it
+/// after its tracks are saved: a title needs a track on its disc.
+pub fn set_disc_titles(conn: &Connection, release_id: i64, titles: &[DiscTitle]) -> Result<()> {
+    // A disc's alternate titles go with its title (CASCADE)
+    conn.execute(
+        r#"delete from "release_disc_titles" where "release_id" = ?"#,
+        [release_id],
+    )?;
+    for disc in titles {
+        let id: i64 = conn.query_row(
+            r#"insert into "release_disc_titles" ("release_id", "cd_number", "title", "language")
+            values (?, ?, ?, ?) returning "id""#,
+            params![release_id, disc.cd_number, disc.title, disc.language],
+            |row| row.get(0),
+        )?;
+        titles::set_alternate_titles(conn, TitleOwner::Disc, id, &disc.alternate_titles)?;
+    }
+    Ok(())
 }
 
 /// How many tracks the release has.

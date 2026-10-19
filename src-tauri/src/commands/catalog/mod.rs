@@ -1,10 +1,11 @@
-//! The catalog context's commands (slunk's `catalog.graphql`). Ported so far:
-//! artists, labels, the lists the user manages, the languages in use (phase
-//! 2), and releases (phase 4).
+//! The catalog context's commands (slunk's `catalog.graphql`): artists,
+//! labels, the lists the user manages, the languages in use (phase 2),
+//! releases (phase 4), tracks and the import's reads (phase 5).
 //!
-//! - `artists`, `labels`, `lists` and `releases` each hold their commands
-//!   and DTOs, and the plain functions behind them, which the write parity
-//!   script calls too, like `artists::create(library, args)`.
+//! - `artists`, `labels`, `lists`, `releases`, `tracks` and `import` each
+//!   hold their commands and DTOs, and the plain functions behind them,
+//!   which the write parity script calls too, like
+//!   `artists::create(library, args)`.
 //! - This module holds what they share: arguments, the DTOs of what a
 //!   release refers to, and `Related`, which loads it.
 
@@ -23,9 +24,11 @@ use crate::error::CommandError;
 use crate::library::Library;
 
 pub mod artists;
+pub mod import;
 pub mod labels;
 pub mod lists;
 pub mod releases;
+pub mod tracks;
 
 /// Pickers offer the first 20 matches (slunk's design §7.3).
 pub(crate) const OPTIONS: i64 = 20;

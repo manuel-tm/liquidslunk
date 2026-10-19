@@ -22,6 +22,7 @@ import {
   cpSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -36,8 +37,9 @@ import { catalog } from "./catalog.ts"
 import { type Phase, media } from "./media.ts"
 import { releases } from "./releases.ts"
 import { tagging } from "./tagging.ts"
+import { tracks } from "./tracks.ts"
 
-const PHASES: Phase[] = [media, catalog, tagging, releases]
+const PHASES: Phase[] = [media, catalog, tagging, releases, tracks]
 
 // Copies keep their files' times and their symlinks
 const COPY = {
@@ -175,6 +177,44 @@ function makeFiles(folder: string, shared: string) {
     ["music/Drake/logo.png", Buffer.from("not really a png")],
     ["music/Drake/notes.txt", "Notes"],
     ["music/Drake/interview.pdf", "An interview"],
+    // Phase 5's import: titles and artist tags with " = " in them, and
+    // artists tagged by other names, in other cases
+    [
+      "music/Import/01 It Could Happen to You.flac",
+      tagged([
+        [
+          "TITLE",
+          "It Could Happen to You = イット・クッド・ハプン・トゥ・ユー",
+        ],
+        ["ALBUM", "Scenery = シーナリィ"],
+        ["ALBUMARTIST", "Ryo Fukui = 福居良 = Fukui Ryo"],
+        ["ARTIST", "R. Fukui"],
+        ["ARTIST", "alika"],
+        ["ARTIST", "Zac Efron"],
+        ["ARTIST", "Nobody"],
+        ["ARTIST", "いとう・まさたか = Masataka Ito"],
+        ["TRACKNUMBER", "1"],
+        ["DISCNUMBER", "1"],
+        ["DISCSUBTITLE", "Side A = A面"],
+        ["DATE", "1976"],
+      ]),
+    ],
+    [
+      "music/Import/02 Early Summer.flac",
+      tagged([
+        ["TITLE", "Early Summer = 初夏"],
+        ["ALBUM", "Scenery = シーナリィ"],
+        ["ALBUMARTIST", "Ryo Fukui = 福居良 = Fukui Ryo"],
+        ["ARTIST", "ryo fukui trio"],
+        ["TRACKNUMBER", "2"],
+        ["DISCNUMBER", "1"],
+        ["DATE", "1976"],
+      ]),
+    ],
+    ["music/Import/CD2/03 Mellow Dream.flac", audio("untagged.flac")],
+    ["music/Import/folder.jpg", Buffer.from("not really a jpeg")],
+    ["music/Import/back.png", Buffer.from("not really a png")],
+    ["music/Import/notes.txt", "Notes"],
   ]
   for (const [path, content] of files) {
     const file = join(folder, path)
@@ -193,6 +233,47 @@ function makeFiles(folder: string, shared: string) {
   mkdirSync(join(shared, "sub"), { recursive: true })
   copyFileSync(audio("aac.m4a"), join(shared, "a.m4a"))
   writeFileSync(join(shared, "sub/b.png"), "not really a png")
+}
+
+/**
+ * untagged.flac with these Vorbis comments, in a block after STREAMINFO, as
+ * `crates/slunk/tests/fixtures/audio/generate.ts` writes them.
+ */
+function tagged(comments: [string, string][]): Buffer {
+  const file = readFileSync(join(AUDIO, "untagged.flac"))
+  const blocks: { type: number; body: Buffer }[] = []
+  let offset = 4
+  let last = false
+  while (!last) {
+    last = (file[offset] & 0x80) !== 0
+    const length = file.readUIntBE(offset + 1, 3)
+    blocks.push({
+      type: file[offset] & 0x7f,
+      body: file.subarray(offset + 4, offset + 4 + length),
+    })
+    offset += 4 + length
+  }
+  const u32 = (n: number) => {
+    const buffer = Buffer.alloc(4)
+    buffer.writeUInt32LE(n)
+    return buffer
+  }
+  const vendor = Buffer.from("liquidslunk write parity")
+  const parts = [u32(vendor.length), vendor, u32(comments.length)]
+  for (const [key, value] of comments) {
+    const comment = Buffer.from(`${key}=${value}`)
+    parts.push(u32(comment.length), comment)
+  }
+  const kept = blocks.filter((block) => block.type !== 4)
+  kept.splice(1, 0, { type: 4, body: Buffer.concat(parts) })
+  const out: Buffer[] = [Buffer.from("fLaC")]
+  kept.forEach((block, i) => {
+    const header = Buffer.alloc(4)
+    header[0] = (i === kept.length - 1 ? 0x80 : 0) | block.type
+    header.writeUIntBE(block.body.length, 1, 3)
+    out.push(header, block.body)
+  })
+  return Buffer.concat([...out, file.subarray(offset)])
 }
 
 /** Runs `work` with slunk's backend serving the library, then stops it. */

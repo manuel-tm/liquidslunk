@@ -123,6 +123,11 @@ export const commands = {
 	 */
 	setArtistPicture: (args: SetPictureArgs) => typedError<Artist, CommandError>(__TAURI_INVOKE("set_artist_picture", { args })),
 	/**
+	 *  Adds an alternate name after the others, like one the import offers from
+	 *  a tag's other parts. Fails if the artist has the name already.
+	 */
+	addArtistName: (args: AddArtistNameArgs) => typedError<Artist, CommandError>(__TAURI_INVOKE("add_artist_name", { args })),
+	/**
 	 *  Deletes an artist, with its alternate names and file links, and returns
 	 *  its id. It fails while the artist is a release or track artist, or
 	 *  credited.
@@ -302,6 +307,86 @@ export const commands = {
 	 *  playing time.
 	 */
 	catalogTotals: () => typedError<CatalogTotals, CommandError>(__TAURI_INVOKE("catalog_totals")),
+	/**  Tracks, with the release filter's title. The filters combine. */
+	tracks: (args: TracksArgs) => typedError<TrackPage, CommandError>(__TAURI_INVOKE("tracks", { args })),
+	/**  The track page, or null for an unknown id. */
+	trackPage: (args: IdArgs) => typedError<{
+	id: number,
+	title: string,
+	titleLanguage: string | null,
+	alternateTitles: AlternateTitle[],
+	durationMs: number | null,
+	cdNumber: number,
+	trackNumber: number,
+	release: ReleaseHeader,
+	/**  Who performs it, each with its alternate names */
+	performers: NamedCreditedArtist[],
+	/**  Guests, shown as "(feat. …)" */
+	features: CreditedArtist[],
+	credits: Credit[],
+	file: TrackFile,
+	/**  By tag name */
+	tags: TagValues[],
+	files: FileLink[],
+} | null, CommandError>(__TAURI_INVOKE("track_page", { args })),
+	/**
+	 *  What the track form starts from: the track to edit, or a new one's
+	 *  release and audio file.
+	 */
+	trackForm: (args: TrackFormArgs) => typedError<TrackForm, CommandError>(__TAURI_INVOKE("track_form", { args })),
+	/**  Creates a track from a registered audio file, reading its duration. */
+	createTrack: (args: TrackInput) => typedError<Track, CommandError>(__TAURI_INVOKE("create_track", { args })),
+	/**
+	 *  Saves a track and everything saved with it. A new audio file is read for
+	 *  its duration.
+	 */
+	updateTrack: (args: UpdateTrackArgs) => typedError<Track, CommandError>(__TAURI_INVOKE("update_track", { args })),
+	/**
+	 *  Deletes a track, its artists, credits and file links, and returns its id.
+	 *  Its audio file stays registered.
+	 */
+	deleteTrack: (args: IdArgs) => typedError<number, CommandError>(__TAURI_INVOKE("delete_track", { args })),
+	/**
+	 *  A release's tracks and disc titles, as its Tracks tab edits them, or
+	 *  null for an unknown release. With a folder, the import's rows for its
+	 *  audio files too. A folder that can't be read is an error.
+	 */
+	releaseTracks: (args: ReleaseTracksArgs) => typedError<{
+	id: number,
+	title: string,
+	variousArtists: boolean,
+	/**  As credited */
+	artists: CreditedArtist[],
+	/**  By disc number. Only discs with a title are listed. */
+	discTitles: DiscTitle[],
+	/**  In order: disc, then number */
+	tracks: EditedTrack[],
+	/**
+	 *  With a folder, the import's: a row for each of its audio files. Null
+	 *  without one.
+	 */
+	trackSuggestions: TrackSuggestion[] | null,
+} | null, CommandError>(__TAURI_INVOKE("release_tracks", { args })),
+	/**
+	 *  Saves the whole track list, registering files given by path, then the
+	 *  disc titles.
+	 */
+	setReleaseTracks: (args: SetReleaseTracksArgs) => typedError<Release, CommandError>(__TAURI_INVOKE("set_release_tracks", { args })),
+	/**
+	 *  What a folder suggests for a new release: the most common album, date
+	 *  and album artist tags, or else the folder's name, the releases with that
+	 *  title already, and how many audio files, images and other files it holds.
+	 */
+	releaseSuggestion: (args: ReleaseSuggestionArgs) => typedError<ReleaseSuggestion, CommandError>(__TAURI_INVOKE("release_suggestion", { args })),
+	/**
+	 *  The import's files step: the release's cover and links, and the folder's
+	 *  files, or null for an unknown release. A folder that can't be read is an
+	 *  error.
+	 */
+	importFiles: (args: ImportFilesArgs) => typedError<({
+	/**  Every file in the folder and its subfolders, by path */
+	folderFiles: FolderFile[],
+}) & (ReleaseFiles) | null, CommandError>(__TAURI_INVOKE("import_files", { args })),
 	/**
 	 *  Language tags in use on names and titles, the most used first, for the
 	 *  language picker.
@@ -371,6 +456,15 @@ export const commands = {
 };
 
 /* Types */
+/**  An alternate name to add after the artist's others. */
+export type AddArtistNameArgs = {
+	id: number,
+	/**  Trimmed. Compared exactly, case included. */
+	name: string,
+	/**  A BCP 47 tag, stored in canonical form. Blank means unknown. */
+	language?: string | null,
+};
+
 /**
  *  A title besides the main one, of a release, a track or a disc (slunk's
  *  3_alternate_names.md §4.2).
@@ -565,6 +659,36 @@ export type ArtistReleasesArgs = {
 	format?: number | null,
 };
 
+/**
+ *  An artist tag, and the artist it names. It's matched in turn by main
+ *  name, by alternate name, and by either one ignoring case. The first step
+ *  that finds anyone decides, and finding more than one artist picks none.
+ */
+export type ArtistSuggestion = {
+	/**
+	 *  The name matched: the tag, or its first part when it has " = " in it,
+	 *  like "Ryo Fukui = 福居良"
+	 */
+	name: string,
+	/**  The artist, when exactly one matches */
+	artist: ArtistRef | null,
+	/**
+	 *  The name to credit the artist with, when it isn't the main name: the
+	 *  alternate name it matched, or the tag when only case differs
+	 */
+	creditedAs: string | null,
+	/**
+	 *  How many artists matched equally well. More than one means none is
+	 *  picked.
+	 */
+	matches: number,
+	/**
+	 *  The tag's other parts, after " = ", that the artist doesn't have as
+	 *  names yet, to offer as its alternate names
+	 */
+	otherNames: string[],
+};
+
 export type CatalogTotals = {
 	releases: number,
 	artists: number,
@@ -651,6 +775,33 @@ export type DiscTitle = {
 	/**  Null: the release's title language */
 	language: string | null,
 	alternateTitles: AlternateTitle[],
+};
+
+/**  A disc's title, to save. */
+export type DiscTitleInput = {
+	cdNumber: number,
+	/**
+	 *  Trimmed. Blank means no title, and then it can't have alternate
+	 *  titles.
+	 */
+	title: string,
+	/**  Blank: the release's title language */
+	language?: string | null,
+	alternateTitles?: AlternateTitleInput[],
+};
+
+/**  A track, as the Tracks tab edits it. */
+export type EditedTrack = {
+	id: number,
+	cdNumber: number,
+	trackNumber: number,
+	title: string,
+	titleLanguage: string | null,
+	alternateTitles: AlternateTitle[],
+	durationMs: number | null,
+	file: TrackFile,
+	artists: CreditedArtist[],
+	features: CreditedArtist[],
 };
 
 /**  What went wrong, for the frontend to act on. */
@@ -826,6 +977,17 @@ export type FormatCount = {
 
 export type IdArgs = {
 	id: number,
+};
+
+/**  A release's cover and links, and the folder's files to link. */
+export type ImportFiles = {
+	/**  Every file in the folder and its subfolders, by path */
+	folderFiles: FolderFile[],
+} & ReleaseFiles;
+
+export type ImportFilesArgs = {
+	id: number,
+	folder: string,
 };
 
 export type Label = {
@@ -1192,6 +1354,28 @@ export type ReleasePage = {
 	filterLabel: NamedItem | null,
 };
 
+/**
+ *  What a folder suggests for a new release, from its files' embedded tags,
+ *  or else its name.
+ */
+export type ReleaseSuggestion = {
+	/**  The album tag, or else the folder's name */
+	title: string,
+	released: string | null,
+	/**  The album artist tags, or the artist tags */
+	artists: ArtistSuggestion[],
+	/**  Releases with that title already, so the folder isn't imported twice */
+	sameTitle: SameTitle[],
+	music: number,
+	images: number,
+	others: number,
+};
+
+export type ReleaseSuggestionArgs = {
+	/**  Relative to the database's folder */
+	folder: string,
+};
+
 /**  A release, as a row of the artist's appearances. */
 export type ReleaseSummary = {
 	id: number,
@@ -1219,6 +1403,54 @@ export type ReleaseTrack = {
 	/**  Guests, shown as "(feat. …)" */
 	features: CreditedArtist[],
 	credits: Credit[],
+};
+
+/**
+ *  A row of a release's tracks: `id` for one it has, else `fileId` or
+ *  `path` for a new one.
+ */
+export type ReleaseTrackInput = {
+	id?: number | null,
+	fileId?: number | null,
+	/**  A file to register first */
+	path?: string | null,
+	/**  Default 1 */
+	cdNumber?: number,
+	trackNumber: number,
+	title: string,
+	/**  Left out, it stays as it is. Blank: the release's title language. */
+	titleLanguage?: string | null,
+	/**
+	 *  Replaces the alternate titles, in order. Left out, they stay as they
+	 *  are, except one that's now the main title.
+	 */
+	alternateTitles?: AlternateTitleInput[] | null,
+	artists?: CreditedArtistInput[],
+	features?: CreditedArtistInput[],
+};
+
+/**  A release's tracks, as its Tracks tab edits them. */
+export type ReleaseTracks = {
+	id: number,
+	title: string,
+	variousArtists: boolean,
+	/**  As credited */
+	artists: CreditedArtist[],
+	/**  By disc number. Only discs with a title are listed. */
+	discTitles: DiscTitle[],
+	/**  In order: disc, then number */
+	tracks: EditedTrack[],
+	/**
+	 *  With a folder, the import's: a row for each of its audio files. Null
+	 *  without one.
+	 */
+	trackSuggestions: TrackSuggestion[] | null,
+};
+
+export type ReleaseTracksArgs = {
+	id: number,
+	/**  The import's folder: its audio files get rows too */
+	folder?: string | null,
 };
 
 /**  The release page: everything it shows. */
@@ -1279,6 +1511,14 @@ export type RenameListItemArgs = {
 	name: string,
 };
 
+/**  A release with the title a folder suggests already. */
+export type SameTitle = {
+	id: number,
+	title: string,
+	/**  As credited */
+	artists: CreditedArtist[],
+};
+
 export type SavedLibrary = {
 	path: string,
 	/**
@@ -1330,6 +1570,22 @@ export type SetReleaseTagsArgs = {
 	tags: TagValuesInput[],
 };
 
+export type SetReleaseTracksArgs = {
+	id: number,
+	/**
+	 *  The whole list: rows with an id update those tracks, the others
+	 *  create tracks, and tracks left out are deleted. Their files stay
+	 *  registered.
+	 */
+	tracks: ReleaseTrackInput[],
+	/**
+	 *  Replaces the disc titles. A blank title is left out. Left out, they
+	 *  stay as they are, except on a disc left without tracks, which loses
+	 *  its title.
+	 */
+	discTitles?: DiscTitleInput[] | null,
+};
+
 /**  A tag and a value, to set on many releases. */
 export type SetTagOnReleasesArgs = {
 	/**  Releases that aren't there are skipped. */
@@ -1344,6 +1600,12 @@ export type Subfolder = {
 	path: string,
 	/**  Whether it, or a folder inside it, holds registered files */
 	hasRegisteredFiles: boolean,
+};
+
+/**  The track a file is already the audio of, on any release. */
+export type SuggestedTrack = {
+	id: number,
+	release: ReleaseHeader,
 };
 
 /**  A tag definition, like Genre or Score. */
@@ -1490,6 +1752,25 @@ export type TitledPage = {
 	total: number,
 };
 
+/**  A track, as a save returns it. */
+export type Track = {
+	id: number,
+	title: string,
+	/**  Null: the release's */
+	titleLanguage: string | null,
+	/**  Read from the audio file. Null when it can't be read. */
+	durationMs: number | null,
+	cdNumber: number,
+	trackNumber: number,
+	releaseId: number,
+	/**  The audio file */
+	fileId: number,
+	/**  Epoch seconds */
+	insertedAt: number,
+	/**  Epoch seconds */
+	updatedAt: number,
+};
+
 /**  A track's credit lines, as the Credits tab edits them. */
 export type TrackCredits = {
 	id: number,
@@ -1504,10 +1785,162 @@ export type TrackCreditsInput = {
 	credits: CreditInput[],
 };
 
+/**  A track, as its form edits it. */
+export type TrackDetails = {
+	id: number,
+	title: string,
+	titleLanguage: string | null,
+	alternateTitles: AlternateTitle[],
+	cdNumber: number,
+	trackNumber: number,
+	release: ReleaseHeader,
+	file: TrackFile,
+	/**  Its own performers, without features */
+	artists: CreditedArtist[],
+	features: CreditedArtist[],
+	credits: Credit[],
+	files: FileLink[],
+	tags: TagValues[],
+};
+
 /**  A track's audio file. */
 export type TrackFile = {
 	id: number,
 	path: string,
+};
+
+/**
+ *  What the track form starts from: the track it edits, or what a new one
+ *  is prefilled with. Each is null when it wasn't asked for, or isn't there.
+ */
+export type TrackForm = {
+	track: TrackDetails | null,
+	prefillRelease: ReleaseHeader | null,
+	prefillFile: File | null,
+};
+
+/**  The track to edit, or what a new one is prefilled with. */
+export type TrackFormArgs = {
+	/**  The track to edit. Left out for a new one. */
+	id?: number | null,
+	/**  A new track's release */
+	release?: number | null,
+	/**  A new track's audio file */
+	file?: number | null,
+};
+
+/**  A track, with everything saved with it. */
+export type TrackInput = {
+	releaseId: number,
+	/**  A registered audio file. Its duration is read from it. */
+	fileId: number,
+	/**  Default 1 */
+	cdNumber?: number,
+	trackNumber: number,
+	title: string,
+	/**
+	 *  A BCP 47 tag. Blank: the release's title language. Left out, an
+	 *  update keeps it as it is.
+	 */
+	titleLanguage?: string | null,
+	/**
+	 *  Replaces the alternate titles, in order. Left out, they stay as they
+	 *  are, except one that's now the main title.
+	 */
+	alternateTitles?: AlternateTitleInput[] | null,
+	artists?: CreditedArtistInput[],
+	features?: CreditedArtistInput[],
+	credits?: CreditInput[],
+	files?: FileLinkInput[],
+	/**  Replaces the track's tags. Left out, they stay as they are. */
+	tags?: TagValuesInput[] | null,
+};
+
+/**  A track in the track list. */
+export type TrackListItem = {
+	id: number,
+	title: string,
+	titleLanguage: string | null,
+	alternateTitles: AlternateTitle[],
+	durationMs: number | null,
+	cdNumber: number,
+	trackNumber: number,
+	insertedAt: number,
+	updatedAt: number,
+	release: ReleaseHeader,
+	/**
+	 *  Who performs it (slunk's design §4.3): its own artists; on a regular
+	 *  release with none, the release's, as credited there; on a
+	 *  various-artists release, nobody.
+	 */
+	performers: CreditedArtist[],
+	file: TrackFile,
+};
+
+/**
+ *  A page of tracks, and the release filter's title, for its picker: null
+ *  when it wasn't asked for, or isn't there.
+ */
+export type TrackPage = {
+	items: TrackListItem[],
+	total: number,
+	filterRelease: NamedItem | null,
+};
+
+/**
+ *  A row for an audio file in a folder or its subfolders: from its embedded
+ *  tags, or else its path (`CD2/03 Title.flac` is disc 2, track 3).
+ */
+export type TrackSuggestion = {
+	path: string,
+	/**  The file's registration, if it's registered */
+	file: FileRef | null,
+	track: SuggestedTrack | null,
+	cdNumber: number,
+	/**  The disc's title tag: DISCSUBTITLE, or TSST in MP3s */
+	discTitle: string | null,
+	trackNumber: number,
+	title: string,
+	artists: ArtistSuggestion[],
+	durationMs: number | null,
+};
+
+/**  The track page: everything it shows. */
+export type TrackView = {
+	id: number,
+	title: string,
+	titleLanguage: string | null,
+	alternateTitles: AlternateTitle[],
+	durationMs: number | null,
+	cdNumber: number,
+	trackNumber: number,
+	release: ReleaseHeader,
+	/**  Who performs it, each with its alternate names */
+	performers: NamedCreditedArtist[],
+	/**  Guests, shown as "(feat. …)" */
+	features: CreditedArtist[],
+	credits: Credit[],
+	file: TrackFile,
+	/**  By tag name */
+	tags: TagValues[],
+	files: FileLink[],
+};
+
+export type TracksArgs = {
+	/**  From 1. Default 1. */
+	page?: number | null,
+	/**  Default 50, at most 200 */
+	perPage?: number | null,
+	/**
+	 *  `title` or `id`, with `-` in front for descending. Default `-id`,
+	 *  newest first.
+	 */
+	sort?: string | null,
+	/**  Part of the title or of an alternate title, ignoring case */
+	q?: string | null,
+	release?: number | null,
+	/**  Every filter has to match. */
+	tags?: TagFilterInput[],
 };
 
 export type UpdateArtistArgs = {
@@ -1537,6 +1970,10 @@ export type UpdateTagArgs = {
 	type: TagType,
 	id: number,
 } & TagInput;
+
+export type UpdateTrackArgs = {
+	id: number,
+} & TrackInput;
 
 /**  An alternate name, with the links credited with it. */
 export type UsedArtistName = {

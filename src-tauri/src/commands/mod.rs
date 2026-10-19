@@ -53,6 +53,7 @@ pub fn builder() -> Builder<Wry> {
             catalog::artists::create_artist,
             catalog::artists::update_artist,
             catalog::artists::set_artist_picture,
+            catalog::artists::add_artist_name,
             catalog::artists::delete_artist,
             catalog::artists::artist_header,
             catalog::artists::artist_releases,
@@ -82,6 +83,16 @@ pub fn builder() -> Builder<Wry> {
             catalog::releases::set_release_credits,
             catalog::releases::credit_roles,
             catalog::releases::catalog_totals,
+            catalog::tracks::tracks,
+            catalog::tracks::track_page,
+            catalog::tracks::track_form,
+            catalog::tracks::create_track,
+            catalog::tracks::update_track,
+            catalog::tracks::delete_track,
+            catalog::tracks::release_tracks,
+            catalog::tracks::set_release_tracks,
+            catalog::import::release_suggestion,
+            catalog::import::import_files,
             catalog::languages,
             tagging::tags,
             tagging::tag,
@@ -147,6 +158,10 @@ mod tests {
         );
         assert!(
             bindings.contains("updateRelease: (args: UpdateReleaseArgs)"),
+            "{bindings}"
+        );
+        assert!(
+            bindings.contains("setReleaseTracks: (args: SetReleaseTracksArgs)"),
             "{bindings}"
         );
         if let Ok(copy) = std::env::var("LIQUIDSLUNK_BINDINGS_COPY") {

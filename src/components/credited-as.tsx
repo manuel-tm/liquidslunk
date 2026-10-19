@@ -31,7 +31,7 @@ export function CreditedAsInput({
   const [focused, setFocused] = useState(false)
   const { data: names = [] } = useCommand(
     "artistNames",
-    // Pickers' ids are strings, for the forms that still send GraphQL
+    // Options' ids are strings, as the Picker's are
     { id: Number(artist.id) },
     { enabled: focused }
   )

@@ -8,6 +8,7 @@ The backend is Rust, built into the app. It's being ported from slunk's Node bac
 - **Phase 2:** the catalog context's artists and labels, with their alternate names, pictures and logos, and an artist's file links; release formats and release media; and language tags.
 - **Phase 3:** the tagging context: tag definitions, their values on releases and tracks, list filters and bulk edits; and dates.
 - **Phase 4:** the catalog context's releases: their details, alternate titles, artists as credited, labels, formats and media, cover and file links, and credit lines, theirs and their tracks'; the release list's filters; what the release, artist and label pages read, a release's tracks among it; and the catalog's totals.
+- **Phase 5:** the catalog context's tracks: the track list, a track with everything saved with it, and a release's whole track list with its disc titles; what a folder suggests for importing it; and adding one alternate name to an artist.
 
 The rest of slunk's catalog context (saving tracks, their disc titles and their tags, the import's suggestions, adding an artist's name) and its library check aren't ported yet, nor the media context's part of the library check (`checkFiles`, `relinkFiles`, `rehashFiles`). Their rules are in slunk's backend doc, `legacy/docs/development/backend.md`, and a rule moves here only once Rust does it, with a test.
 
@@ -53,11 +54,13 @@ crates/slunk/                the domain and its database, with no Tauri dependen
     file_types.rs            a file's type, from its extension
     repository.rs            the records the media context stores
     audio/                   an audio file's duration and tags
-  src/catalog/               the catalog context, so far: artists, labels, lists,
-                             releases
+  src/catalog/               the catalog context: artists, labels, lists,
+                             releases, tracks
     mod.rs                   Catalog: lists, artists, labels, pictures, deletes
     names.rs                 alternate names, and the links credited with them
     releases.rs              releases: details, links, cover, files, credits
+    tracks.rs                tracks, and a release's track list and disc titles
+    suggestions.rs           what the import makes of a folder's tags and names
     credited.rs              artists as credited, and credit lines as saved
     titles.rs                alternate titles as they're saved
     repository.rs            the records the catalog stores
@@ -79,7 +82,7 @@ crates/slunk/                the domain and its database, with no Tauri dependen
     lists.rs                 release formats and release media
     releases.rs              releases, and their artists, labels, formats, media
     titles.rs                alternate titles of releases, tracks and discs
-    tracks.rs                tracks, read for the release pages
+    tracks.rs                tracks, and who performs them
     credits.rs               credit lines, and the roles in use
     stats.rs                 the languages in use, and the catalog's totals
     tags.rs                  tag definitions, their values, and list filters
@@ -90,6 +93,7 @@ crates/slunk/                the domain and its database, with no Tauri dependen
   tests/audio.rs             durations and tags, checked against slunk's
   tests/catalog.rs           the catalog context's rules: artists, labels, lists
   tests/releases.rs          the catalog context's rules for releases
+  tests/tracks.rs            the rules for tracks and the import's suggestions
   tests/languages.rs         language tags, checked against Node's
   tests/tagging.rs           the tagging context's rules
   tests/fixtures/parity/     what slunk's runner made, and the script that made it
@@ -156,7 +160,7 @@ legacy/slunk-be/             slunk's backend, run as the sidecar
 
 ### Audio
 
-`media/audio/` reads an audio file's duration and embedded tags, as suggestions for the import (phase 5): title, artists, album, album artists, track and disc numbers, the disc's title, and a date (`2006`, `2006-01` or `2006-01-10`). A file it can't read has no duration and no tags.
+`media/audio/` reads an audio file's duration and embedded tags, as suggestions for the import ([Import suggestions](#import-suggestions)): title, artists, album, album artists, track and disc numbers, the disc's title, and a date (`2006`, `2006-01` or `2006-01-10`). A file it can't read has no duration and no tags.
 
 slunk read them with music-metadata. liquidslunk reads each format's own tags with lofty, with its implicit conversions off, so ID3v2.3's frames stay as they are, and `Collector` picks the values from them as music-metadata did:
 - **Which keys:** Vorbis comments (FLAC, Ogg, Opus), ID3v2.2, 2.3 and 2.4, ID3v1, MP4 atoms, APEv2, RIFF INFO and AIFF's text chunks each have music-metadata's table for the fields above: `ALBUMARTIST` or `ALBUM ARTIST`, `TPE2` or `aART` for album artists; `DISCSUBTITLE`, `TSST` or `----:com.apple.iTunes:DISCSUBTITLE` for the disc's title; `DATE`, `TDRC` or `©day` for dates, and `TYER` or `YEAR` for a year.
@@ -179,7 +183,7 @@ node crates/slunk/tests/fixtures/audio/generate.ts
 
 ## The catalog context
 
-`crates/slunk/src/catalog/` holds what the user catalogs. So far it has artists and labels, the two lists the user manages, release formats and release media, and releases ([Releases](#releases)). Each rule here has a test in `tests/catalog.rs` or `tests/releases.rs`, or next to its code, and the write parity script checks them against slunk's backend.
+`crates/slunk/src/catalog/` holds what the user catalogs: artists and labels, the two lists the user manages, release formats and release media, releases ([Releases](#releases)) and tracks ([Tracks](#tracks)), and what a folder suggests for importing it ([Import suggestions](#import-suggestions)). Each rule here has a test in `tests/catalog.rs`, `tests/releases.rs` or `tests/tracks.rs`, or next to its code, and the write parity script checks them against slunk's backend.
 
 - **Lists** share one repository (`repo/lists.rs`) and one set of functions, with a `ListKind`. Names are cleaned like other text, and unique in their list ignoring case, which the database enforces: "There's already one with that name, ignoring case". Renaming an unknown one is `NotFound`: "There's no format 12".
 - **Listing** sorts by `name`, ignoring case, or by `id`, and searches the name ignoring ASCII case. Artists and labels then sort by id, and their search matches an alternate name too, so "福居" finds Ryo Fukui. Lists of each have their own sort error: "Artists can't be sorted by picture".
@@ -197,6 +201,7 @@ node crates/slunk/tests/fixtures/audio/generate.ts
   - With the list left out, renaming the artist to one of its alternate names promotes it: its links lose their credited name, and the name goes, unless it's a real name, which stays as one. Its links then show the main name, the same text.
   - So "Make main", which sends the old main name as a new row, drops the promoted name and sets `keepOldName`, swaps the two names, and every link shows what it did.
   - `artist_name_uses()` counts the links credited with each name, and `main_name_uses()` those that show the main name.
+- **One more name** (`add_artist_name()`) is added after an artist's others, as the import adds a tag's other names: cleaned, in its language, canonical, and never a real name. It's refused when it's blank ("The name is blank"), when it's the main name (`"Ryo Fukui" is already the artist's main name`), and when the artist has it already (`Ryo Fukui already has the name "福居良"`).
 - **Pictures and logos** can be set on their own (`set_artist_picture`, `set_label_picture`), from a file id or a path. A path that isn't registered yet is registered in the same transaction, so a file the database refuses ("an artist picture must be an image") isn't left registered, and neither is one for an artist or label that isn't there. A ref with neither: "A file needs an id or a path".
 - **An artist's file links** are saved with it, replacing the old ones, in their order, with paths registered in the same transaction. Notes are cleaned, and a blank one is none.
 - **Saving** an artist or label checks its language first, then reads the files given by path, then writes everything in one transaction, so a failure saves nothing and registers nothing. An unknown id is `NotFound`: "There's no artist 12". A blank name is the database's CHECK: "The name can't be empty".
@@ -205,7 +210,7 @@ node crates/slunk/tests/fixtures/audio/generate.ts
 
 ### Releases
 
-`catalog/releases.rs` saves a release's details and what hangs off it, and reads what the release pages show. Tracks are only read so far: saving them is still slunk's backend's.
+`catalog/releases.rs` saves a release's details and what hangs off it, and reads what the release pages show. Its tracks are saved by `catalog/tracks.rs` ([Tracks](#tracks)).
 - **Details** are saved together: the title, cleaned; its language, canonical ([Languages](#languages)), which an update leaves as it is when it's left out; the date as typed, `2006`, `2006-01` or `2006-01-10`, stored with its precision ([Dates](#dates)), and a blank one is none; the catalog number, cleaned, and a blank one is none; and whether it's various artists. They're checked before anything is written: the language first, then the date. An unknown id is `NotFound`: "There's no release 12".
 - **Artists** are saved as credited, each once, the first time it's given (`catalog/credited.rs`): blank, or the artist's main name, is the main name; one of the artist's alternate names is that name; anything else is added to its alternate names, in the language its script gives away ([Languages](#languages)), and remembered, so two links in one save share it. Names compare exactly, case included. An unknown artist is `NotFound`: "There's no artist 12".
 - **Labels** keep the order they're given in, each once. **Formats and media** each once too, and they're listed by their own id, not in the order given: slunk's query ordered them by `id`, which SQLite read as its alias for the format's or medium's id.
@@ -215,6 +220,32 @@ node crates/slunk/tests/fixtures/audio/generate.ts
 - **Credit lines** (slunk's 2_credits.md) are saved with the release's tracks' (`set_release_credits()`), each replacing its owner's. A role is cleaned, and an artist given twice on a line is kept once, with the first name it's credited with. A save is refused for a blank role ("A credit needs a role"), a line with no artist ("The Piano credit needs an artist"), two roles that differ only in case ("Two credits have the role PIANO, ignoring case. Put their artists on one line."), and another release's track ("Track 12 isn't on this release"). `credit_roles()` suggests the roles in use, the first 20 with what's typed in them, the most used first, each spelling its own.
 - **Deleting** a release fails while it has tracks: "The release still has 2 tracks. Delete them first." `release_blockers()` says it ahead of time: "Has 2 tracks". Its links, titles, credits, tags and file links go with it, and its files stay registered. An unknown id deletes nothing, as in slunk.
 - **What the pages read:** a release's tracks, by disc then number, with their alternate titles, artists, features and credit lines; its disc titles; an artist's appearances, the releases where it's on tracks without being a release artist, its credit lines, and how many of its releases have each format; and `totals()`, the dashboard's numbers.
+
+### Tracks
+
+`catalog/tracks.rs` saves tracks, one at a time with everything that's saved with them, or a release's whole list at once, with its disc titles.
+- **A release's tracks** are saved as a whole list (`set_release_tracks()`), in one transaction:
+  - rows with an id update those tracks: their disc, number, title, and the title's language and alternate titles when they're given;
+  - rows with a file id or a path create tracks, registering paths in the same transaction, with the durations read before it starts;
+  - tracks left out are deleted, and their files stay registered.
+
+  A row with another release's track is refused ("Track 12 isn't on this release"), and so is one with no file ("A file needs an id or a path"). Before saving, the release's track numbers move a million up, so swapping two numbers can't trip the unique (release, disc, number) index midway.
+- **Disc titles** are saved after the tracks, since a title needs a track on its disc ([reference/database.md](../reference/database.md#disc-titles)). Given, they replace the release's, with their languages and alternate titles; left out, they stay as they are. Titles are cleaned, and a blank one is left out, since a disc without a title has no row. Two titles for one disc are refused ("Disc 1 has two titles"), and so are alternate titles on a disc with no title ("Disc 2 has alternate titles but no title"). A disc left without tracks loses its title, whichever save moves or deletes them: the database does that.
+- **A track** is created (`create_track()`) from a registered music file, whose duration is read first: "There's no file 12", "music/a.txt isn't a music file". Saving one (`update_track()`) reads the duration again only when its file changes. Its title's language, left out, stays as it is. Its alternate titles, artists, credit lines and file links are saved with it, replacing the old ones, with paths registered in the same transaction, and its tags too when they're given ([The tagging context](#the-tagging-context)); left out, they stay as they are. An unknown id is `NotFound`: "There's no track 12". Deleting one (`delete_track()`) deletes its artists, credit lines, alternate titles, file links and tags, and its file stays registered.
+- **A track's titles** are cleaned, and its alternate titles saved as a release's are ([Releases](#releases)), naming the track by its number in their errors: `"初夏" is already the main title of track 4`.
+- **Artists** are a track's own performers, saved as credited, as a release's are, then its features, each once. An artist can't be both: "An artist can't both perform a track and be featured on it". A name added for one link is shared by the others in the same save, whole list included.
+- **Who performs a track** (`performers()`, slunk's design §4.3): its own artists, without features; on a regular release with none, the release's artists, as credited there; on a various-artists release, only its own, or nobody.
+- **The track list** (`list_tracks()`) sorts by `title`, ignoring case, or by `id`, then by id. Its search matches part of the title or of an alternate title, and its filters all have to match: a release, and tag filters.
+
+### Import suggestions
+
+`catalog/suggestions.rs` reads a folder for the import (slunk's design §7.9), without writing anything:
+- **A release** (`suggest_release()`): the most common album, date and album artist tags of the folder's first 50 audio files, or their artist tags when they have no album artists. A tie goes to the value read first. Without an album tag, the title is the folder's name, and a date that isn't one, like `2013-02-30`, is left out. It also counts the folder's audio files, images and other files, and finds the releases with that title already, main or alternate, ignoring case, so a folder isn't imported twice.
+- **Titles with " = "** are kept whole, and the import offers to split them. The check for releases with that title also tries each part, so "Scenery = シーナリィ" finds "Scenery". `equals_parts()` splits only at an "=" with white space on both sides, as JavaScript's `\s` matched it, since "E=MC²" is a title. Parts are trimmed, and empty and repeated ones left out.
+- **A folder's tracks** (`suggest_tracks()`): a row for each audio file in the folder and its subfolders, in the folder's order, with its disc, number and title from its tags, or else from its path, relative to the folder: `CD2/03 Title.flac` is disc 2, track 3, "Title". A folder named `cd`, `disc` or `disk` and a number, in any case of ASCII letters, gives the disc. A name that starts with one to three digits, then white space, `.`, `_` or `-`, gives the number, and the rest the title. A file with no number in either gets its place on its disc. Each row also has its disc's title tag, its duration, its registration if the file is registered, and the track it's already the audio of, on any release.
+- **Artist tags** are matched all at once, a folder's together, in three steps: the main name exactly; then an alternate name exactly, credited with it; then either one ignoring ASCII case, credited as tagged, so "alika", with only "Alika" and "ALIKA" known, is printed as "alika". The first step that finds anyone decides. Finding more than one artist picks none, and `matches` says how many there were.
+- **A tag with " = "** ("Ryo Fukui = 福居良") is matched by its first part. Its other parts that the artist doesn't have yet are `other_names`, for the import to offer as alternate names (`add_artist_name()`).
+- **These match slunk's regular expressions** exactly, written by hand: JavaScript's `\s` is `trim()`'s white space, its `\d` ASCII digits, and its `i` flag, without `u`, ASCII letters only, so the Kelvin sign isn't a "k".
 
 ### Languages
 
@@ -398,9 +429,11 @@ The frontend calls the backend through Tauri commands, in `src-tauri/src/command
 - `media.rs`: `files`, `file`, `file_counts`, `folder`, `folder_files`, `register_files`, `update_file` and `delete_file` ([The media context](#the-media-context)), and `open_file` and `reveal_file`;
 - `catalog/` ([The catalog context](#the-catalog-context)), a module per entity:
   - `lists.rs`: `list_items`, `list_item`, `list_item_options`, `create_list_item`, `rename_list_item` and `delete_list_item`, each with a `kind`;
-  - `artists.rs`: `artists`, `artist`, `artist_options`, `artist_names`, `create_artist`, `update_artist`, `set_artist_picture` and `delete_artist`, and the artist page's: `artist_header`, which every tab shows, `artist_releases`, `artist_appearances` and `artist_credits`;
+  - `artists.rs`: `artists`, `artist`, `artist_options`, `artist_names`, `create_artist`, `update_artist`, `set_artist_picture`, `add_artist_name` and `delete_artist`, and the artist page's: `artist_header`, which every tab shows, `artist_releases`, `artist_appearances` and `artist_credits`;
   - `labels.rs`: `labels`, `label`, `label_options`, `create_label`, `update_label`, `set_label_picture` and `delete_label`, and the label's page, `label_page`;
   - `releases.rs` ([Releases](#releases)): the list, `releases` and `release_ids`; the release page, `release_page`; the edit tabs' header, `release_header`, and their reads, `release`, `release_files` and `release_credits`; `create_release`, `update_release`, `delete_release`, `set_release_cover`, `set_release_files` and `set_release_credits`; the picker's `release_options`, `credit_roles`, and the dashboard's `catalog_totals`;
+  - `tracks.rs` ([Tracks](#tracks)): the list, `tracks`; the track page, `track_page`; the track form's read, `track_form`, and `create_track`, `update_track` and `delete_track`; and the Tracks tab's, `release_tracks`, which with a folder has the import's rows too, and `set_release_tracks`;
+  - `import.rs` ([Import suggestions](#import-suggestions)): the import's reads, `release_suggestion` and `import_files`, the release's cover and links with the folder's files;
   - `mod.rs`: `languages`, and what they share: the DTOs of what a release refers to, and `Related`, which loads it;
 - `tagging.rs` ([The tagging context](#the-tagging-context)): `tags`, `tag`, `tag_options`, `tags_by_ref`, `tag_values`, `tag_value_options`, `create_tag`, `update_tag` and `delete_tag`, which name a tag by its `type` and id; a release's tags, `release_tags` and `set_release_tags`; and the bulk edits, `set_tag_on_releases` and `remove_tag_from_releases`.
 
@@ -476,23 +509,23 @@ The app's CSP allows `slunk:` and `http://slunk.localhost` in `img-src` and `med
 ## Write parity
 
 `npm run parity:writes` checks that commands write what slunk's GraphQL wrote (design §10). It runs the same steps on two copies of a seeded library, one through slunk's backend and one through the commands, then compares what each step returned, its error included, and the two databases, table by table, leaving out `inserted_at`, `updated_at` and `applied_at`:
-1. It makes, in a temporary folder, two libraries with the same files: audio fixtures, text files and images, a hidden folder, symlinks, a name in NFD, and a folder next to the library for `../` paths. Their mtimes are a few nanoseconds before a second.
+1. It makes, in a temporary folder, two libraries with the same files: audio fixtures, text files and images, a hidden folder, symlinks, a name in NFD, a folder next to the library for `../` paths, and a folder to import, of FLACs it tags itself, with " = " in their titles and artist tags. Their mtimes are a few nanoseconds before a second.
 2. It migrates one with the CLI, seeds it, and prepares it through GraphQL with each phase's `prepare` steps, then copies the database to the other.
 3. It runs the steps through slunk's backend, on a free port, and through `src-tauri/examples/run_commands.rs`, which opens the other library without the app and calls the commands' functions with the same JSON arguments.
 4. It compares results with ids as numbers, since GraphQL's are strings, and each library's folder replaced. Where a command returns something else than its GraphQL query, the step's `fromGraphql` maps one to the other: a picker's command returns a list, and its query a page.
 
-Each phase adds its steps in a module of `scripts/write-parity/` (`media.ts` is phase 1's, `catalog.ts` phase 2's, `tagging.ts` phase 3's, `releases.ts` phase 4's), lists it in `PHASES`, and adds its commands to `run_commands.rs`. A step with `whole` gets every root field of its GraphQL query, for `fromGraphql` to map, as the release list asks for its filters' names beside its page. The steps run in order, on the same library, so a phase's steps start where the earlier phases' left it. Every phase's `prepare` runs before any steps, so it mustn't add rows that earlier phases' steps would count or whose ids they'd take: phases 3 and 4 add to the track phase 1's made, tags, artists the earlier steps don't look at, credits and a disc title, and register no file. A step that fails says so, with its message, even when both sides fail alike. `KEEP=1` keeps the temporary folder when they differ. It needs `npm install --prefix legacy/slunk-be`, and runs until phase 6, which deletes slunk's backend.
+Each phase adds its steps in a module of `scripts/write-parity/` (`media.ts` is phase 1's, `catalog.ts` phase 2's, `tagging.ts` phase 3's, `releases.ts` phase 4's, `tracks.ts` phase 5's), lists it in `PHASES`, and adds its commands to `run_commands.rs`. A step with `whole` gets every root field of its GraphQL query, for `fromGraphql` to map, as the release list asks for its filters' names beside its page. The steps run in order, on the same library, so a phase's steps start where the earlier phases' left it. Every phase's `prepare` runs before any steps, so it mustn't add rows that earlier phases' steps would count or whose ids they'd take: phases 3 and 4 add to the track phase 1's made, tags, artists the earlier steps don't look at, credits and a disc title, and register no file, and phase 5 has no `prepare`. A step that fails says so, with its message, even when both sides fail alike. `KEEP=1` keeps the temporary folder when they differ. It needs `npm install --prefix legacy/slunk-be`, and runs until phase 6, which deletes slunk's backend.
 
 ## The sidecar
 
-Until phase 6, slunk's backend serves every route that isn't ported yet. When a library opens in a debug build, `sidecar.rs` starts it:
+Until phase 6, slunk's backend serves the one route that isn't ported yet, the library check. When a library opens in a debug build, `sidecar.rs` starts it:
 - `node src/server.ts`, in `legacy/slunk-be/`, on port 4000, with `SLUNK_DB` set to the library and `SLUNK_SKIP_MIGRATE=1`, since Rust has migrated it already. Its output goes to the terminal running the app.
 - Opening waits until it listens. If its dependencies aren't installed, or something else listens on port 4000, opening fails before anything changes, and says so.
 - Vite proxies `/graphql` to it, so Apollo works as it did in slunk.
 - It stops when the library closes or the app exits, before the app's connection closes: it gets SIGTERM, which closes its database, and is killed if it hasn't stopped after 5 seconds.
 - `sidecar-watchdog.cjs`, preloaded with `node --require`, stops it if the app is gone without stopping it, as when `tauri dev` restarts the app after a Rust change.
 
-Both write the same database. WAL and `busy_timeout` handle it. Release builds never start the sidecar, so pages that use GraphQL can't load in them yet.
+Both write the same database. WAL and `busy_timeout` handle it. Release builds never start the sidecar, so the library check can't load in them yet.
 
 ## Conventions
 

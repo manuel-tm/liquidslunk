@@ -16,7 +16,7 @@ The frontend is slunk's, moved into the app in phase 0, in `src/`. It does every
 - the import: a release built from a folder, step by step, with titles split at " = " and artists matched by any of their names;
 - the library check: files missing, moved or changed on disk, unregistered files, and gaps in the catalog.
 
-Its data comes from two places while the port runs ([design §8](../design/1_introduction.md#8-the-transition)). Tauri commands, through TanStack Query, serve Welcome, the library menu, the dashboard, the files pages, the folder browser, the artists' pages and forms, the labels' pages and forms, the release formats' and release media's pages, the tag pages, the release list with its bulk edits, the release page, its files page and its Details, Files, Credits and Tags tabs, every picker, the names of the lists' tag filters, and opening files. The tracks' pages, a release's Tracks tab, the import's reads and the library check still send GraphQL, through Apollo, to slunk's backend, which runs as the app's sidecar ([Data](#data)).
+Its data comes from two places while the port runs ([design §8](../design/1_introduction.md#8-the-transition)). Tauri commands, through TanStack Query, serve every page but one: Welcome, the library menu, the dashboard, the files pages, the folder browser, the artists' pages and forms, the labels' pages and forms, the release formats' and release media's pages, the tag pages, the release list with its bulk edits, the release page, its files page and its edit tabs, the tracks' pages, the import, every picker, the names of the lists' tag filters, and opening files. The library check still sends GraphQL, through Apollo, to slunk's backend, which runs as the app's sidecar ([Data](#data)).
 
 ## Stack
 
@@ -197,8 +197,7 @@ Data comes from two places while the port runs ([design §8](../design/1_introdu
   - **Work in steps** is one mutation whose `mutationFn` makes the calls, so the caches are invalidated once, at the end: registering files calls `registerFiles` for a few files at a time, for its progress bar, and the list doesn't change under it. Since the steps before a failure are saved, it invalidates on error too.
   - **Deletes** go to the list, then `queryClient.removeQueries()` for the deleted row's keys, like `["file", { id }]`. `DeleteButton` does that in `afterDelete`, which runs once it has gone to the list.
 - **Forms** read with `{ fresh: true }`, so they start from what's saved. The form component is keyed by the id it edits (`key={artist?.id ?? "new"}`): `/artists/create` and `/artists/:id/update` render the same route component, so without a key, going from one to the other, as back and forward can, would keep the other's values.
-- **Ids** are numbers in commands and strings in GraphQL. A component both use takes either, like `FileUses`, `Cover`, `CoverChooser`, `Names` and `FileGallery`. Pickers give their options string ids, for the forms that still send GraphQL: `FilePicker` maps each file to `{ id: String(file.id), name: file.path }`, and the others do the same. The helpers that turn options into inputs turn them back with `Number()`: `creditedInput()`, `fileLinksInput()`, `tagValuesInput()` and `tagFilterInput()`, as the release forms do with labels, formats and media. A GraphQL input takes those numbers as they are, so the track form uses the same helpers.
-- **Pages on both:** the track list filters through GraphQL, with the release picker on a command, and `TagFilters` names its chips with one. The track form saves through GraphQL, with its pickers on commands. The import reads with GraphQL, and its steps save through the release forms' commands; its files step calls `setReleaseFiles` with the ids its GraphQL gave, as numbers. After a command's mutation, Apollo fetches the page's queries again.
+- **Ids** are numbers in commands and strings in GraphQL. `FileUses`, which the library check uses too, takes either, and so do `Cover`, `CoverChooser`, `Names` and `FileGallery`. A picker's options have string ids, as `Picker`'s `Option` has: `FilePicker` maps each file to `{ id: String(file.id), name: file.path }`, and the others do the same. The helpers that turn options into inputs turn them back with `Number()`: `creditedInput()`, `fileLinksInput()`, `tagValuesInput()` and `tagFilterInput()`, as the release and track forms do with labels, formats, media, a track's release and its audio file.
 - **Defaults:** `staleTime: 0`, so a page shows what's cached and fetches again; `retry: false`, since a local call that fails will fail the same way again; and `refetchOnWindowFocus: false`.
 - **No library:** a command that needs a library says `noLibrary` when none is open, and the app goes to `/library`.
 
@@ -209,11 +208,11 @@ Data comes from two places while the port runs ([design §8](../design/1_introdu
   - `graphql()` finds its types by the document's exact text, and Prettier may reformat a document. So run `npm run format` first, then `npm run codegen`.
   - Pieces several queries share are fragments, like `ArtistHeader`, spread with `...ArtistHeader`. Fragment masking is off, so their fields are on the query's data directly.
   - The types only have `__typename` when the query asks for it. To tell an interface's types apart, select `__typename` and compare it.
-- **One query per route:** a page that needs a related name, like the release whose tracks a list filters on, asks for it in the same query, with `@include(if: …)`.
+- **One query per route:** a page that needs something more, like a related name, asks for it in the same query, with `@include(if: …)`.
 - **Freshness:** queries use `cache-and-network`, set as the client's default. A page shows what's cached at once and asks the backend again, so a list never shows what was there before a change. After a delete, the page also evicts the deleted object from the cache.
 - **Lists on cached objects,** like a track's tags, credits or artists, are always returned whole, so a new one replaces the cached one. `apollo.ts` marks them with `merge: false`. Without it, Apollo still replaces the list, but warns in the console when it gets shorter. A new list field on `Release`, `Track`, `Artist` or `Label` goes there too.
 - **Mutations** reject when they fail, so callers wrap them in `try`. The page shows the error with `QueryError`, from the hook's `error`, and stays where it is. After every GraphQL mutation, a link in `apollo.ts` invalidates every TanStack Query query.
-- **slunk's backend:** the Apollo client sends requests to `/graphql`, which Vite proxies to slunk's backend at `127.0.0.1:4000`. In debug builds, the app starts it as its sidecar when a library opens ([backend.md](backend.md#the-sidecar)). Release builds don't, so their GraphQL pages can't load yet.
+- **slunk's backend:** the Apollo client sends requests to `/graphql`, which Vite proxies to slunk's backend at `127.0.0.1:4000`. In debug builds, the app starts it as its sidecar when a library opens ([backend.md](backend.md#the-sidecar)). Release builds don't, so the library check can't load in them yet.
 
 #### Files
 
@@ -230,10 +229,17 @@ Data comes from two places while the port runs ([design §8](../design/1_introdu
 
 - **The release list** (`routes/releases/list.tsx`) calls `releases`, with its page, sort, search and filters; the page also names the filters' format, medium and label for their pickers (`filterFormat`, `filterMedium`, `filterLabel`). "Select all N that match" calls `releaseIds`, and the bulk edits `setTagOnReleases` and `removeTagFromReleases`.
 - **The release page** calls `releasePage`, which has everything it shows; Delete calls `deleteRelease`, and choosing a cover `setReleaseCover`. Its files page calls `releaseFiles`.
-- **The edit tabs:** their header calls `releaseHeader`, so it names the release on any tab. Details calls `release`, then `createRelease` or `updateRelease`; Files `releaseFiles`, then `setReleaseFiles`; Credits `releaseCredits`, then `setReleaseCredits`. The Tracks tab is still GraphQL's.
+- **The edit tabs:** their header calls `releaseHeader`, so it names the release on any tab. Details calls `release`, then `createRelease` or `updateRelease`; Tracks `releaseTracks`, then `setReleaseTracks`; Files `releaseFiles`, then `setReleaseFiles`; Credits `releaseCredits`, then `setReleaseCredits`.
 - **The artist page** (`routes/artists/page.tsx`): its frame calls `artistHeader`, with the counts on the tabs, which every tab shares from the cache; the tabs call `artistReleases`, `artistAppearances`, `artistCredits`, and `artist` for the Files tab. **The label's page** calls `labelPage`, with its releases.
 - **The dashboard** calls `libraryStatus`, `catalogTotals`, `fileCounts`, and `releases` for the newest twelve.
 - **Credit roles** in the credits editor come from `creditRoles`.
+
+#### Tracks and the import
+
+- **The track list** (`routes/tracks/list.tsx`) calls `tracks`, with its page, sort, search, release and tag filters; the page also names the release it filters on, for its picker (`filterRelease`).
+- **The track page** calls `trackPage`, and Delete `deleteTrack`.
+- **The track form** calls `trackForm`: with `id`, the track it edits, and for a new track, the release and audio file that `?release=` and `?file=` prefill it with. It saves with `createTrack` or `updateTrack`, tags included.
+- **The import** reads with `releaseSuggestion` (the release step), `releaseTracks` with the folder, whose `trackSuggestions` are the folder's rows (the tracks step), and `importFiles`, the release's cover and links with the folder's files (the files step). Its steps save with the edit tabs' commands, and `OtherNamesOffer` with `addArtistName`.
 
 #### Tags
 
@@ -309,7 +315,7 @@ Delete is a button on the read page that opens an `alert-dialog` (slunk's design
 `routes/import/steps.tsx` is the import (slunk's design §7.9), a route per step, with a stepper at the top whose steps are links once the release exists:
 1. **Folder** (`/import?path=…`): the `FolderBrowser`.
 2. **Release** (`/import/release?folder=…`): the details form, prefilled from `releaseSuggestion`. Saving replaces the history entry with `/import/:id/release?folder=…`, where going back edits the release.
-3. **Tracks:** the tracks form with `folder`. There's a row for each audio file in the folder that isn't a track yet, prefilled from `trackSuggestions`. On a regular release, tag artists who are release artists aren't added to the tracks. A disc without a title yet gets its files' disc title tag.
+3. **Tracks:** the tracks form with `folder`. There's a row for each audio file in the folder that isn't a track yet, prefilled from the folder's `trackSuggestions`. A file that's another release's track has a row, unchecked and locked. On a regular release, tag artists who are release artists aren't added to the tracks. A disc without a title yet gets its files' disc title tag.
 4. **Cover & files:** the folder's images and other files. The cover is chosen among the images, defaulting to one named cover, folder or front. Each other file gets a checkbox and a note. The cover isn't also a file link.
 5. **Credits:** the credits form.
 6. **Tags:** the tags form. Finish opens the release page.

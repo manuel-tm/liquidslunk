@@ -356,6 +356,37 @@ pub fn set_picture(library: &Library, args: SetPictureArgs) -> Result<Artist, Co
         .into())
 }
 
+/// An alternate name to add after the artist's others.
+#[derive(Debug, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AddArtistNameArgs {
+    pub id: i64,
+    /// Trimmed. Compared exactly, case included.
+    pub name: String,
+    /// A BCP 47 tag, stored in canonical form. Blank means unknown.
+    #[serde(default)]
+    #[specta(optional)]
+    pub language: Option<String>,
+}
+
+/// Adds an alternate name after the others, like one the import offers from
+/// a tag's other parts. Fails if the artist has the name already.
+#[tauri::command]
+#[specta::specta]
+pub async fn add_artist_name(
+    app: AppHandle,
+    args: AddArtistNameArgs,
+) -> Result<Artist, CommandError> {
+    on_library(app, move |library| add_name(library, args)).await
+}
+
+pub fn add_name(library: &Library, args: AddArtistNameArgs) -> Result<Artist, CommandError> {
+    Ok(library
+        .catalog
+        .add_artist_name(args.id, &args.name, args.language.as_deref())?
+        .into())
+}
+
 /// Deletes an artist, with its alternate names and file links, and returns
 /// its id. It fails while the artist is a release or track artist, or
 /// credited.

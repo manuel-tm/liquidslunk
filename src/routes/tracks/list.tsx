@@ -1,4 +1,3 @@
-import { useQuery } from "@apollo/client/react"
 import { Link } from "react-router"
 
 import { ListLayout, PER_PAGE } from "@/components/list/list-layout"
@@ -14,92 +13,26 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ListedAlternateTitle, Title } from "@/components/titles"
-import { graphql } from "@/gql"
 import { TagFilters } from "@/components/tag-filters"
 import { useListParams } from "@/hooks/use-list-params"
+import { idParam, useCommand } from "@/lib/query"
 import { tagFilterInput, tagFiltersOf } from "@/lib/tags"
 import { formatDateTime, formatDuration } from "@/lib/format"
-
-const TracksQuery = graphql(`
-  query Tracks(
-    $page: Int!
-    $perPage: Int!
-    $sort: String
-    $q: String
-    $release: ID
-    $releaseId: ID!
-    $withRelease: Boolean!
-    $tags: [TagFilterInput!]!
-  ) {
-    tracks(
-      page: $page
-      perPage: $perPage
-      sort: $sort
-      q: $q
-      release: $release
-      tags: $tags
-    ) {
-      total
-      items {
-        id
-        title
-        titleLanguage
-        alternateTitles {
-          title
-          language
-          printed
-        }
-        durationMs
-        cdNumber
-        trackNumber
-        insertedAt
-        updatedAt
-        release {
-          id
-          title
-          titleLanguage
-        }
-        performers {
-          artist {
-            id
-            name
-            nameLanguage
-          }
-          creditedAs {
-            name
-            language
-          }
-        }
-        file {
-          id
-          path
-        }
-      }
-    }
-    filterRelease: release(id: $releaseId) @include(if: $withRelease) {
-      id
-      name: title
-    }
-  }
-`)
 
 /** `/tracks` (slunk's design §7.8), with tag filters like the release list's. */
 export function TrackList() {
   const list = useListParams()
-  const release = list.params.get("release")
   const tagFilters = tagFiltersOf(list.params)
-  const { data, error } = useQuery(TracksQuery, {
-    variables: {
-      page: list.page,
-      perPage: PER_PAGE,
-      sort: list.sort,
-      q: list.q,
-      release,
-      releaseId: release ?? "",
-      withRelease: release !== null,
-      tags: tagFilters.map(tagFilterInput),
-    },
+  const { data, error } = useCommand("tracks", {
+    page: list.page,
+    perPage: PER_PAGE,
+    sort: list.sort,
+    q: list.q,
+    release: idParam(list.params.get("release") ?? undefined) ?? undefined,
+    tags: tagFilters.map(tagFilterInput),
   })
+  // Options' ids are strings, as the pickers' are
+  const filterRelease = data?.filterRelease
 
   return (
     <ListLayout
@@ -111,7 +44,11 @@ export function TrackList() {
         <>
           <div className="w-64">
             <ReleasePicker
-              value={data?.filterRelease ?? null}
+              value={
+                filterRelease
+                  ? { id: String(filterRelease.id), name: filterRelease.name }
+                  : null
+              }
               placeholder="Any release"
               onChange={(option) =>
                 list.update({ release: option?.id ?? null })
@@ -125,8 +62,8 @@ export function TrackList() {
           />
         </>
       }
-      total={data?.tracks.total}
-      error={error}
+      total={data?.total}
+      error={error ?? undefined}
       emptyText="No tracks yet. Tracks are created from registered audio files."
     >
       <Table>
@@ -151,7 +88,7 @@ export function TrackList() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data?.tracks.items.map((track) => (
+          {data?.items.map((track) => (
             <TableRow key={track.id}>
               <TableCell className="tabular-nums">{track.id}</TableCell>
               <TableCell className="min-w-40 whitespace-normal">

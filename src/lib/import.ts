@@ -1,15 +1,7 @@
 // What the import makes of artist tags (slunk's 3_alternate_names.md §7.7): the
 // artists they pick, the names left to pick, and other names to offer.
+import type { ArtistSuggestion } from "@/bindings"
 import type { Option } from "@/components/picker"
-
-/** An `ArtistSuggestion`, as the import's queries ask for it. */
-export type ArtistSuggestion = {
-  name: string
-  matches: number
-  creditedAs?: string | null
-  otherNames: string[]
-  artist?: { id: string; name: string; nameLanguage?: string | null } | null
-}
 
 /**
  * The artists the tags pick, as credited, for an editor: each artist once,
@@ -18,13 +10,14 @@ export type ArtistSuggestion = {
  */
 export function pickedArtists(
   suggestions: ArtistSuggestion[],
-  skip: Set<string> = new Set()
+  skip: Set<number> = new Set()
 ): Option[] {
-  const picked = new Map<string, Option>()
+  const picked = new Map<number, Option>()
   for (const { artist, creditedAs } of suggestions) {
     if (!artist || skip.has(artist.id) || picked.has(artist.id)) continue
     picked.set(artist.id, {
-      id: artist.id,
+      // A string, as pickers' options' ids are
+      id: String(artist.id),
       name: artist.name,
       lang: artist.nameLanguage,
       creditedAs: creditedAs ?? null,
@@ -47,7 +40,7 @@ export function unpickedLabel(suggestion: ArtistSuggestion): string {
 
 /** A name from a tag, to offer as an alternate name of an artist. */
 export type OfferedName = {
-  artist: { id: string; name: string }
+  artist: { id: number; name: string }
   name: string
 }
 

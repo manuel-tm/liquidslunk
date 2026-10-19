@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { ArrowLeftRightIcon, SplitIcon, XIcon } from "lucide-react"
 import { Fragment, useState } from "react"
 
@@ -33,8 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { graphql } from "@/gql"
-import type { ReleaseTracksFormQuery } from "@/gql/graphql"
+import type { ReleaseTracks } from "@/bindings"
 import { creditedInput, creditedOption } from "@/lib/credited"
 import { formatDuration } from "@/lib/format"
 import {
@@ -45,132 +44,15 @@ import {
   unpickedLabel,
 } from "@/lib/import"
 import { textProps } from "@/lib/languages"
-
-const ReleaseTracksFormQueryDocument = graphql(`
-  query ReleaseTracksForm($id: ID!, $folder: String!, $withFolder: Boolean!) {
-    release(id: $id) {
-      id
-      title
-      variousArtists
-      artists {
-        artist {
-          id
-        }
-        creditedAs {
-          name
-          language
-        }
-      }
-      discTitles {
-        cdNumber
-        title
-        language
-        alternateTitles {
-          title
-          language
-          printed
-        }
-      }
-      tracks {
-        id
-        cdNumber
-        trackNumber
-        title
-        titleLanguage
-        alternateTitles {
-          title
-          language
-          printed
-        }
-        durationMs
-        file {
-          id
-          path
-        }
-        artists {
-          artist {
-            id
-            name
-            nameLanguage
-          }
-          creditedAs {
-            name
-            language
-          }
-        }
-        features {
-          artist {
-            id
-            name
-            nameLanguage
-          }
-          creditedAs {
-            name
-            language
-          }
-        }
-      }
-    }
-    trackSuggestions(folder: $folder) @include(if: $withFolder) {
-      path
-      cdNumber
-      discTitle
-      trackNumber
-      title
-      durationMs
-      file {
-        id
-      }
-      track {
-        id
-        release {
-          id
-          title
-        }
-      }
-      artists {
-        name
-        matches
-        creditedAs
-        otherNames
-        artist {
-          id
-          name
-          nameLanguage
-        }
-      }
-    }
-  }
-`)
-
-const SetReleaseTracks = graphql(`
-  mutation SetReleaseTracks(
-    $id: ID!
-    $tracks: [ReleaseTrackInput!]!
-    $discTitles: [DiscTitleInput!]!
-  ) {
-    setReleaseTracks(id: $id, tracks: $tracks, discTitles: $discTitles) {
-      id
-      discTitles {
-        cdNumber
-        title
-      }
-      tracks {
-        id
-        cdNumber
-        trackNumber
-        title
-      }
-    }
-  }
-`)
+import { call, idParam, useCommand } from "@/lib/query"
+import { NotFound } from "@/routes/not-found"
 
 type TrackRow = {
   key: string
   /** A track the release has */
-  id?: string
+  id?: number
   /** A registered file, for a new track */
-  fileId?: string
+  fileId?: number
   path: string
   cdNumber: number
   trackNumber: number | ""
@@ -195,11 +77,8 @@ type TrackRow = {
   split?: boolean
 }
 
-function initialRows(
-  data: ReleaseTracksFormQuery,
-  releaseId: string
-): TrackRow[] {
-  const rows: TrackRow[] = (data.release?.tracks ?? []).map((track) => ({
+function initialRows(data: ReleaseTracks): TrackRow[] {
+  const rows: TrackRow[] = data.tracks.map((track) => ({
     key: `track-${track.id}`,
     id: track.id,
     fileId: track.file.id,
@@ -218,13 +97,11 @@ function initialRows(
   // On a regular release, the release's artists perform a track with none
   // of its own, so tags naming them don't become track artists (slunk's design §7.6)
   const releaseArtists = new Set(
-    data.release?.variousArtists
-      ? []
-      : (data.release?.artists ?? []).map((link) => link.artist.id)
+    data.variousArtists ? [] : data.artists.map((link) => link.artist.id)
   )
   for (const suggestion of data.trackSuggestions ?? []) {
     // Already one of this release's tracks: it has its row
-    if (suggestion.track?.release.id === releaseId) continue
+    if (suggestion.track?.release.id === data.id) continue
     const unmatched = unpicked(suggestion.artists)
     rows.push({
       key: `path-${suggestion.path}`,
@@ -271,11 +148,9 @@ const NO_DISC_TITLE: DiscTitleValues = {
 }
 
 /** Titles by disc number: the release's, and else the folder's tags. */
-function initialTitles(
-  data: ReleaseTracksFormQuery
-): Record<number, DiscTitleValues> {
+function initialTitles(data: ReleaseTracks): Record<number, DiscTitleValues> {
   const titles: Record<number, DiscTitleValues> = {}
-  for (const disc of data.release?.discTitles ?? []) {
+  for (const disc of data.discTitles) {
     titles[disc.cdNumber] = {
       title: disc.title,
       language: disc.language,
@@ -302,32 +177,33 @@ export function ReleaseTracksForm({
   submitLabel = "Save",
   onSaved,
 }: {
+  /** From the URL */
   releaseId: string
   folder?: string
   submitLabel?: string
   onSaved: () => void
 }) {
-  const { data, error } = useQuery(ReleaseTracksFormQueryDocument, {
-    variables: {
-      id: releaseId,
-      folder: folder ?? "",
-      withFolder: folder !== undefined,
-    },
-    // Rows start from what's on disk and in the database now
-    fetchPolicy: "network-only",
-  })
+  const id = idParam(releaseId)
+  // Rows start from what's on disk and in the database now (design §7.2)
+  const { data, error } = useCommand(
+    "releaseTracks",
+    { id: id ?? 0, folder },
+    { fresh: true, enabled: id !== null }
+  )
 
+  if (id === null || data === null) return <NotFound />
   if (error) return <QueryError error={error} title="Can't load the tracks" />
   if (!data) return <Skeleton className="h-64 w-full" />
   return (
     <Rows
-      releaseId={releaseId}
-      variousArtists={data.release?.variousArtists ?? false}
+      key={data.id}
+      releaseId={data.id}
+      variousArtists={data.variousArtists}
       offerSplit={folder !== undefined}
       offers={offeredNames(
         (data.trackSuggestions ?? []).flatMap((row) => row.artists)
       )}
-      initial={initialRows(data, releaseId)}
+      initial={initialRows(data)}
       initialTitles={initialTitles(data)}
       submitLabel={submitLabel}
       onSaved={onSaved}
@@ -345,7 +221,7 @@ function Rows({
   submitLabel,
   onSaved,
 }: {
-  releaseId: string
+  releaseId: number
   variousArtists: boolean
   /** The import's split of titles with " = " (slunk's 3_alternate_names.md §7.7) */
   offerSplit: boolean
@@ -358,7 +234,6 @@ function Rows({
   const [rows, setRows] = useState(initial)
   const [titles, setTitles] = useState(initialTitles)
   const [pickerKey, setPickerKey] = useState(0)
-  const [save, { loading, error }] = useMutation(SetReleaseTracks)
   const edit = (key: string, changes: Partial<TrackRow>) =>
     setRows((current) =>
       current.map((row) => (row.key === key ? { ...row, ...changes } : row))
@@ -399,6 +274,34 @@ function Rows({
   const discs = [...new Set(included.map((row) => row.cdNumber))]
     .filter((disc) => Number.isInteger(disc) && disc > 0)
     .sort((a, b) => a - b)
+  const save = useMutation({
+    mutationFn: () =>
+      call("setReleaseTracks", {
+        id: releaseId,
+        tracks: included.map((row) => ({
+          id: row.id,
+          fileId: row.id ? undefined : row.fileId,
+          path: row.id || row.fileId ? undefined : row.path,
+          cdNumber: row.cdNumber,
+          trackNumber: Number(row.trackNumber),
+          title: row.title,
+          titleLanguage: row.titleLanguage,
+          alternateTitles: alternateTitlesInput(row.alternateTitles),
+          artists: creditedInput(row.artists),
+          features: creditedInput(row.features),
+        })),
+        discTitles: discs.map((disc) => {
+          const { title, language, alternateTitles } =
+            titles[disc] ?? NO_DISC_TITLE
+          return {
+            cdNumber: disc,
+            title,
+            language,
+            alternateTitles: alternateTitlesInput(alternateTitles),
+          }
+        }),
+      }),
+  })
 
   return (
     <form
@@ -406,33 +309,7 @@ function Rows({
       onSubmit={async (event) => {
         event.preventDefault()
         try {
-          await save({
-            variables: {
-              id: releaseId,
-              tracks: included.map((row) => ({
-                id: row.id,
-                fileId: row.id ? undefined : row.fileId,
-                path: row.id || row.fileId ? undefined : row.path,
-                cdNumber: row.cdNumber,
-                trackNumber: Number(row.trackNumber),
-                title: row.title,
-                titleLanguage: row.titleLanguage,
-                alternateTitles: alternateTitlesInput(row.alternateTitles),
-                artists: creditedInput(row.artists),
-                features: creditedInput(row.features),
-              })),
-              discTitles: discs.map((disc) => {
-                const { title, language, alternateTitles } =
-                  titles[disc] ?? NO_DISC_TITLE
-                return {
-                  cdNumber: disc,
-                  title,
-                  language,
-                  alternateTitles: alternateTitlesInput(alternateTitles),
-                }
-              }),
-            },
-          })
+          await save.mutateAsync()
           onSaved()
         } catch {
           // The form shows the error
@@ -444,7 +321,9 @@ function Rows({
           ? "A various-artists release: give each track its own artists."
           : "On a regular release, leave artists empty and the release's artists perform the track."}
       </p>
-      {error && <QueryError error={error} title="Can't save the tracks" />}
+      {save.error && (
+        <QueryError error={save.error} title="Can't save the tracks" />
+      )}
       <OtherNamesOffer offers={offers} />
       {(splittable.length > 0 || swappable.length > 0) && (
         <div className="flex max-w-2xl items-center gap-3 border px-2 py-1.5 text-xs">
@@ -680,7 +559,9 @@ function Rows({
             withoutTrack
             placeholder="Add track: a registered audio file"
             value={null}
-            exclude={rows.flatMap((row) => (row.fileId ? [row.fileId] : []))}
+            exclude={rows.flatMap((row) =>
+              row.fileId ? [String(row.fileId)] : []
+            )}
             onChange={(file) => {
               if (!file) return
               const last = Math.max(
@@ -694,7 +575,8 @@ function Rows({
                 ...current,
                 {
                   key: `file-${file.id}`,
-                  fileId: file.id,
+                  // Options' ids are strings, as the pickers' are
+                  fileId: Number(file.id),
                   path: file.name,
                   cdNumber: 1,
                   trackNumber: last + 1,
@@ -717,7 +599,7 @@ function Rows({
         <Button
           type="submit"
           disabled={
-            loading ||
+            save.isPending ||
             !included.every((row) =>
               alternateTitlesValid(row.title, row.alternateTitles)
             ) ||

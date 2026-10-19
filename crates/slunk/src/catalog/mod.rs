@@ -1,12 +1,14 @@
-//! The catalog context: what the user catalogs (slunk's design §6). Ported so
-//! far: artists and labels, with their alternate names, pictures and logos,
-//! and an artist's file links; the two lists the user manages, release
-//! formats and release media; the languages in use (phase 2); and releases,
-//! with their credits, and what the release pages read of their tracks
-//! (phase 4).
+//! The catalog context: what the user catalogs (slunk's design §6): artists
+//! and labels, with their alternate names, pictures and logos, and an
+//! artist's file links; the two lists the user manages, release formats and
+//! release media; the languages in use (phase 2); releases, with their
+//! credits (phase 4); and tracks, with their disc titles, and what a folder
+//! suggests for importing it (phase 5).
 //!
 //! - `names`: saving alternate names, and the links credited with them.
 //! - `releases`: releases, their links, cover, file links and credits.
+//! - `tracks`: tracks, and a release's whole track list with its disc titles.
+//! - `suggestions`: what the import makes of a folder's tags and names.
 //! - `credited`: artists as credited, and credit lines as they're saved.
 //! - `titles`: alternate titles as they're saved.
 //! - `repository`: the records the repositories store.
@@ -16,12 +18,14 @@ use std::sync::Arc;
 
 use rusqlite::Connection;
 
+use crate::languages::language_tag;
 use crate::media::{FileLink, FileRecord, LinkOwner, Media, PreparedFiles};
 use crate::paging::{ListArgs, Page, paging_of, search_of, sort_of};
+use crate::repo::artists::NewAlternateName;
 use crate::repo::named::Table;
 use crate::repo::store::Store;
 use crate::repo::{artists, file_links, labels, lists, named, stats};
-use crate::tagging::TagFilter;
+use crate::tagging::{TagFilter, TagValuesInput};
 use crate::text::{clean_or_none, clean_text};
 use crate::{Error, Result};
 
@@ -29,10 +33,14 @@ mod credited;
 mod names;
 mod releases;
 pub mod repository;
+mod suggestions;
 mod titles;
+mod tracks;
 
 pub use releases::released;
 pub use repository::*;
+pub use suggestions::equals_parts;
+pub use tracks::performers;
 
 /// A file by id, or by a path to register first.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -133,6 +141,68 @@ pub struct ReleaseInput {
     pub label_ids: Vec<i64>,
     pub format_ids: Vec<i64>,
     pub medium_ids: Vec<i64>,
+}
+
+/// A row of a release's tracks: a track it has, by id, or a new one from a
+/// file.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ReleaseTrackInput {
+    /// A track the release has
+    pub id: Option<i64>,
+    /// A new track's audio: a registered file, or a path to register first
+    pub file: FileRef,
+    pub cd_number: i64,
+    pub track_number: i64,
+    pub title: String,
+    /// Left out (`None`), it stays as it is. `Some(None)` is the release's.
+    pub title_language: Option<Option<String>>,
+    /// Replaces the alternate titles. Left out, they stay as they are,
+    /// except one that's now the main title.
+    pub alternate_titles: Option<Vec<AlternateTitleInput>>,
+    pub artists: Vec<CreditedArtistInput>,
+    pub features: Vec<CreditedArtistInput>,
+}
+
+/// A disc's own title, its language, and its alternate titles.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DiscTitleInput {
+    pub cd_number: i64,
+    /// Blank means no title, and then it can't have alternate titles.
+    pub title: String,
+    /// Blank: the release's title language
+    pub language: Option<String>,
+    pub alternate_titles: Vec<AlternateTitleInput>,
+}
+
+/// A track, with everything that's saved with it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TrackInput {
+    pub release_id: i64,
+    /// A registered audio file
+    pub file_id: i64,
+    pub cd_number: i64,
+    pub track_number: i64,
+    pub title: String,
+    /// Left out (`None`), an update keeps it as it is. `Some(None)` is the
+    /// release's.
+    pub title_language: Option<Option<String>>,
+    /// Replaces the alternate titles. Left out, they stay as they are,
+    /// except one that's now the main title.
+    pub alternate_titles: Option<Vec<AlternateTitleInput>>,
+    pub artists: Vec<CreditedArtistInput>,
+    pub features: Vec<CreditedArtistInput>,
+    pub credits: Vec<CreditInput>,
+    pub files: Vec<FileLinkInput>,
+    /// Replaces the track's tags. Left out, they stay as they are.
+    pub tags: Option<Vec<TagValuesInput>>,
+}
+
+/// A track list's filters besides its search. The tag filters are checked
+/// already (`tagging::tag_filters`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TrackFilterArgs {
+    pub release: Option<i64>,
+    pub tags: Vec<TagFilter>,
 }
 
 /// A release list's filters besides its search. The tag filters are checked
@@ -306,6 +376,46 @@ impl Catalog {
                 input.keep_old_name,
             )?;
             self.set_file_links(tx, LinkOwner::Artist, id, &input.files, &registered)?;
+            Ok(artist)
+        })
+    }
+
+    /// Adds an alternate name after the artist's others, like one the import
+    /// offers (slunk's 3_alternate_names.md §7.7). Refuses one the artist has
+    /// already, and its main name.
+    pub fn add_artist_name(&self, id: i64, name: &str, language: Option<&str>) -> Result<Artist> {
+        let name = clean_text(name);
+        if name.is_empty() {
+            return Err(Error::Invalid("The name is blank".into()));
+        }
+        let language = language_tag(language)?;
+        self.store.transaction(|tx| {
+            let artist =
+                named::get(tx, Table::Artists, id)?.ok_or_else(|| not_found("artist", id))?;
+            if name == artist.name {
+                return Err(Error::Invalid(format!(
+                    "\"{name}\" is already the artist's main name"
+                )));
+            }
+            let names = named::alternate_names_of(tx, Table::Artists, &[id])?
+                .remove(&id)
+                .unwrap_or_default();
+            if names.iter().any(|known| known.name == name) {
+                return Err(Error::Invalid(format!(
+                    "{} already has the name \"{name}\"",
+                    artist.name
+                )));
+            }
+            artists::add_alternate_name(
+                tx,
+                id,
+                &NewAlternateName {
+                    name: name.clone(),
+                    language: language.clone(),
+                    real_name: false,
+                    note: None,
+                },
+            )?;
             Ok(artist)
         })
     }

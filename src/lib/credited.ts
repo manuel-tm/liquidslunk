@@ -19,10 +19,7 @@ export function creditedOption(link: CreditedLink): Option {
   }
 }
 
-/**
- * Options as `CreditedArtistInput`s, for commands. The track form's GraphQL
- * takes them too: its ids can be numbers.
- */
+/** Options as `CreditedArtistInput`s, for commands. */
 export function creditedInput(options: Option[]) {
   return options.map((option) => ({
     artistId: Number(option.id),

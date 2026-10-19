@@ -73,10 +73,7 @@ export function tagFiltersOf(params: URLSearchParams): TagFilter[] {
   })
 }
 
-/**
- * A filter as the `releases` command takes it. The track list's GraphQL
- * takes it too: its ids can be numbers.
- */
+/** A filter as the `releases` and `tracks` commands take it. */
 export function tagFilterInput(filter: TagFilter): TagFilterInput {
   return {
     type: filter.type,

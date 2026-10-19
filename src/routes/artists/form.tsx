@@ -148,7 +148,7 @@ function Form({
         nameLanguage,
         alternateNames: artistNamesInput(names),
         keepOldName: keep,
-        // Pickers' ids are strings, for the forms that still send GraphQL
+        // Options' ids are strings, as the Picker's are
         pictureId: picture ? Number(picture.id) : null,
         files: fileLinksInput(links),
       }

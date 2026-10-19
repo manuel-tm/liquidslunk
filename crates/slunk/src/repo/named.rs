@@ -8,7 +8,9 @@ use rusqlite::{Connection, OptionalExtension, Row, params, params_from_iter};
 use sea_query::{Expr, ExprTrait, LikeExpr, Order, Query, SqliteQueryBuilder};
 
 use super::helpers::{bind, chunks, group_by, placeholders};
-use crate::catalog::{AlternateName, AlternateNameValues, NameQuery, NameSort, Named, NamedValues};
+use crate::catalog::{
+    AlternateName, AlternateNameValues, NameMatch, NameQuery, NameSort, Named, NamedValues,
+};
 use crate::paging::like_pattern;
 use crate::{Error, Result};
 
@@ -47,6 +49,9 @@ impl Table {
 }
 
 const COLUMNS: &str = r#""id", "name", "name_language", "picture", "inserted_at", "updated_at""#;
+
+/// `COLUMNS`, of the table joined as "owners".
+const JOINED_COLUMNS: &str = r#""owners"."id", "owners"."name", "owners"."name_language", "owners"."picture", "owners"."inserted_at", "owners"."updated_at""#;
 
 /// A page, and how many match in all. The search matches the main name or an
 /// alternate name.
@@ -131,6 +136,58 @@ pub fn get_many(conn: &Connection, table: Table, ids: &[i64]) -> Result<Vec<Name
         }
     }
     Ok(found)
+}
+
+/// The artists or labels whose main name or an alternate name is one of
+/// these, ignoring case as SQLite's NOCASE does: a match for each such name,
+/// main names first, in no particular order.
+pub fn find_by_names(conn: &Connection, table: Table, wanted: &[String]) -> Result<Vec<NameMatch>> {
+    let mut unique: Vec<&String> = Vec::new();
+    for name in wanted {
+        if !unique.contains(&name) {
+            unique.push(name);
+        }
+    }
+    let (owners, names, owner) = (table.table(), table.names(), table.owner());
+    let real_name = if table.has_real_names() {
+        r#""names"."real_name""#
+    } else {
+        "0"
+    };
+    let mut matches = Vec::new();
+    for chunk in chunks(&unique) {
+        let list = placeholders(chunk.len());
+        let sql =
+            format!(r#"select {COLUMNS} from "{owners}" where name collate nocase in ({list})"#);
+        let mut statement = conn.prepare(&sql)?;
+        for row in statement.query_map(params_from_iter(chunk), named)? {
+            matches.push(NameMatch {
+                item: row?,
+                alternate: None,
+            });
+        }
+        let sql = format!(
+            r#"select {JOINED_COLUMNS}, "names"."id", "names"."name", "names"."language", {real_name}, "names"."note"
+            from "{names}" as "names" inner join "{owners}" as "owners" on "owners"."id" = "names"."{owner}"
+            where "names"."name" collate nocase in ({list})"#
+        );
+        let mut statement = conn.prepare(&sql)?;
+        for row in statement.query_map(params_from_iter(chunk), |row| {
+            Ok(NameMatch {
+                item: named(row)?,
+                alternate: Some(AlternateName {
+                    id: row.get(6)?,
+                    name: row.get(7)?,
+                    language: row.get(8)?,
+                    real_name: row.get::<_, i64>(9)? == 1,
+                    note: row.get(10)?,
+                }),
+            })
+        })? {
+            matches.push(row?);
+        }
+    }
+    Ok(matches)
 }
 
 /// Changes the name, its language and the picture, and sets `updated_at`.

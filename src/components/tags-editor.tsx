@@ -30,10 +30,7 @@ export function tagRows(
   return tags.map(({ tag, values }) => ({ tag: tagOption(tag), values }))
 }
 
-/**
- * Rows as `setReleaseTags` takes them. The track form's GraphQL takes them
- * too: its ids can be numbers.
- */
+/** Rows as `setReleaseTags`, `createTrack` and `updateTrack` take them. */
 export function tagValuesInput(rows: TagRow[]): TagValuesInput[] {
   return rows.map(({ tag, values }) => ({
     type: tag.type,

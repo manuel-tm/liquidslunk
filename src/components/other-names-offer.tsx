@@ -1,28 +1,12 @@
-import { useMutation } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { CheckIcon, LanguagesIcon } from "lucide-react"
 import { useState } from "react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { graphql } from "@/gql"
 import type { OfferedName } from "@/lib/import"
 import { languageName, scriptLanguage, textProps } from "@/lib/languages"
-
-const AddArtistName = graphql(`
-  mutation AddArtistName($id: ID!, $name: String!, $language: String) {
-    addArtistName(id: $id, name: $name, language: $language) {
-      id
-      alternateNames {
-        id
-        name
-        language
-        realName
-        note
-        uses
-      }
-    }
-  }
-`)
+import { call } from "@/lib/query"
 
 const keyOf = (offer: OfferedName) => `${offer.artist.id}:${offer.name}`
 
@@ -33,7 +17,10 @@ const keyOf = (offer: OfferedName) => `${offer.artist.id}:${offer.name}`
  */
 export function OtherNamesOffer({ offers }: { offers: OfferedName[] }) {
   const [added, setAdded] = useState<Set<string>>(new Set())
-  const [add, { loading, error }] = useMutation(AddArtistName)
+  const add = useMutation({
+    mutationFn: (args: { id: number; name: string; language: string | null }) =>
+      call("addArtistName", args),
+  })
   if (offers.length === 0) return null
   return (
     <Alert className="max-w-2xl">
@@ -59,15 +46,13 @@ export function OtherNamesOffer({ offers }: { offers: OfferedName[] }) {
                   type="button"
                   size="xs"
                   variant="outline"
-                  disabled={loading}
+                  disabled={add.isPending}
                   onClick={async () => {
                     try {
-                      await add({
-                        variables: {
-                          id: offer.artist.id,
-                          name: offer.name,
-                          language,
-                        },
+                      await add.mutateAsync({
+                        id: offer.artist.id,
+                        name: offer.name,
+                        language,
                       })
                       setAdded((current) => new Set(current).add(keyOf(offer)))
                     } catch {
@@ -81,7 +66,7 @@ export function OtherNamesOffer({ offers }: { offers: OfferedName[] }) {
             </div>
           )
         })}
-        {error && <p className="text-destructive">{error.message}</p>}
+        {add.error && <p className="text-destructive">{add.error.message}</p>}
       </AlertDescription>
     </Alert>
   )

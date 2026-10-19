@@ -3,6 +3,7 @@
 //! `repo::titles`, `repo::tracks`, `repo::credits` and `repo::stats` store.
 
 use crate::dates::DatePrecision;
+use crate::media::FileRecord;
 use crate::paging::{Paging, Sort};
 use crate::tagging::TagFilter;
 
@@ -168,7 +169,7 @@ pub struct ReleaseValues {
     pub various_artists: bool,
 }
 
-/// A track. Only read so far: tracks are saved through slunk's backend.
+/// A track (slunk's design §4.3).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Track {
     pub id: i64,
@@ -182,6 +183,48 @@ pub struct Track {
     pub file_id: i64,
     pub inserted_at: i64,
     pub updated_at: i64,
+}
+
+/// A new track's columns.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewTrack {
+    pub title: String,
+    pub title_language: Option<String>,
+    pub duration_ms: Option<i64>,
+    pub track_number: i64,
+    pub cd_number: i64,
+    pub release_id: i64,
+    pub file_id: i64,
+}
+
+/// The columns a save changes. `None` leaves a column as it is.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TrackChanges {
+    pub title: Option<String>,
+    pub title_language: Option<Option<String>>,
+    pub duration_ms: Option<Option<i64>>,
+    pub track_number: Option<i64>,
+    pub cd_number: Option<i64>,
+    pub release_id: Option<i64>,
+    pub file_id: Option<i64>,
+}
+
+/// The columns tracks can be sorted by, besides `id`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrackSort {
+    Title,
+}
+
+/// A page of tracks, once the arguments are checked.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrackQuery {
+    pub paging: Paging,
+    pub sort: Sort<TrackSort>,
+    /// Part of the title or of an alternate title, ignoring case
+    pub search: Option<String>,
+    pub release: Option<i64>,
+    /// They all have to match
+    pub tags: Vec<TagFilter>,
 }
 
 /// An artist named on a release, a track or a credit line, and the
@@ -309,4 +352,60 @@ pub struct ReleaseQuery {
     pub paging: Paging,
     pub sort: Sort<ReleaseSort>,
     pub filters: ReleaseFilters,
+}
+
+/// An artist or label a name matched, ignoring case, and the alternate name
+/// it matched, when it wasn't the main name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NameMatch {
+    pub item: Named,
+    pub alternate: Option<AlternateName>,
+}
+
+/// The artist a tag suggests, for the import (slunk's
+/// 3_alternate_names.md §7.7).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtistSuggestion {
+    /// The name matched: the tag, or its first part when it has " = "
+    pub name: String,
+    /// The artist, when exactly one matches
+    pub artist: Option<Artist>,
+    /// The name to credit it with, when that isn't the main name
+    pub credited_as: Option<String>,
+    /// How many artists matched equally well: more than one picks none
+    pub matches: i64,
+    /// The tag's other parts that the artist doesn't have as names yet
+    pub other_names: Vec<String>,
+}
+
+/// What a folder suggests for a new release (slunk's design §7.9).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseSuggestion {
+    /// The album tag, or else the folder's name
+    pub title: String,
+    pub released: Option<String>,
+    /// The album artist tags, or else the artist tags
+    pub artists: Vec<ArtistSuggestion>,
+    /// Releases with that title already, so the folder isn't imported twice
+    pub same_title: Vec<Release>,
+    pub music: i64,
+    pub images: i64,
+    pub others: i64,
+}
+
+/// A row for an audio file of a folder: from its tags, or else its path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrackSuggestion {
+    pub path: String,
+    /// The file's registration, if it's registered
+    pub file: Option<FileRecord>,
+    /// The track the file is already the audio of, on any release
+    pub track: Option<Track>,
+    pub cd_number: i64,
+    /// The disc's title tag
+    pub disc_title: Option<String>,
+    pub track_number: i64,
+    pub title: String,
+    pub artists: Vec<ArtistSuggestion>,
+    pub duration_ms: Option<i64>,
 }

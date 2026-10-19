@@ -60,10 +60,7 @@ const withMatch =
     detail: matchedName(option.name, alternateNames, q)?.name ?? null,
   })
 
-/**
- * Options' ids are strings, as the other pickers' are, for the forms that
- * still send GraphQL.
- */
+/** Options' ids are strings, as the Picker's are. */
 const artistOption = (artist: {
   id: number
   name: string
@@ -168,10 +165,7 @@ export function useCreditRoles(query: string, skip = false) {
   return skip ? [] : (data ?? [])
 }
 
-/**
- * A release, searched by title. Its options' ids are strings, like the
- * other pickers', for the forms that still send GraphQL.
- */
+/** A release, searched by title. Its options' ids are strings, as the Picker's are. */
 export function ReleasePicker(props: PickerProps) {
   const [query, setQuery] = useState("")
   const q = useDebounced(query)
@@ -193,8 +187,7 @@ export function ReleasePicker(props: PickerProps) {
 
 /**
  * A registered file, searched by path. Files can't be created here. Its
- * options' ids are strings, like the other pickers', for the forms that
- * still send GraphQL.
+ * options' ids are strings, as the Picker's are.
  */
 export function FilePicker({
   type,
@@ -229,7 +222,7 @@ export function FilePicker({
 
 /** A tag of any type. Ids repeat across types, so the option's id has both. */
 export type TagOption = Option & {
-  /** A string, as the other pickers' ids are, for the forms that still send GraphQL */
+  /** A string, as the Picker's ids are */
   tagId: string
   type: TagType
   multiple: boolean

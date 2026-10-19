@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@apollo/client/react"
+import { useMutation } from "@tanstack/react-query"
 import { Link, useParams } from "react-router"
 
 import { ButtonLink } from "@/components/button-link"
@@ -10,113 +10,24 @@ import { QueryError } from "@/components/query-error"
 import { TagValues } from "@/components/tag-values"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AlternateTitleLines, Title } from "@/components/titles"
-import { graphql } from "@/gql"
 import { formatDuration } from "@/lib/format"
-import { fileUrl } from "@/lib/query"
+import { call, fileUrl, idParam, queryClient, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
-
-const TrackQuery = graphql(`
-  query Track($id: ID!) {
-    track(id: $id) {
-      id
-      title
-      titleLanguage
-      alternateTitles {
-        title
-        language
-        printed
-      }
-      durationMs
-      cdNumber
-      trackNumber
-      release {
-        id
-        title
-        titleLanguage
-      }
-      performers {
-        artist {
-          id
-          name
-          nameLanguage
-          alternateNames {
-            name
-            language
-          }
-        }
-        creditedAs {
-          name
-          language
-        }
-      }
-      features {
-        artist {
-          id
-          name
-          nameLanguage
-        }
-        creditedAs {
-          name
-          language
-        }
-      }
-      credits {
-        role
-        artists {
-          artist {
-            id
-            name
-            nameLanguage
-          }
-          creditedAs {
-            name
-            language
-          }
-        }
-      }
-      file {
-        id
-        path
-      }
-      tags {
-        tag {
-          id
-          type
-          name
-        }
-        values
-      }
-      files {
-        note
-        file {
-          id
-          path
-        }
-      }
-    }
-  }
-`)
-
-const DeleteTrack = graphql(`
-  mutation DeleteTrack($id: ID!) {
-    deleteTrack(id: $id)
-  }
-`)
 
 /** `/tracks/:id` (slunk's design §7.8) */
 export function TrackRead() {
   const { id = "" } = useParams()
-  const { data, error } = useQuery(TrackQuery, { variables: { id } })
-  const [deleteTrack] = useMutation(DeleteTrack, {
-    variables: { id },
-    update: (cache) => {
-      cache.evict({ id: cache.identify({ __typename: "Track", id }) })
-      cache.gc()
-    },
+  const trackId = idParam(id)
+  const { data: track, error } = useCommand(
+    "trackPage",
+    { id: trackId ?? 0 },
+    { enabled: trackId !== null }
+  )
+  const deleteTrack = useMutation({
+    mutationFn: (trackId: number) => call("deleteTrack", { id: trackId }),
   })
 
-  if (data && !data.track) return <NotFound />
-  const track = data?.track
+  if (trackId === null || track === null) return <NotFound />
 
   return (
     <>
@@ -138,8 +49,15 @@ export function TrackRead() {
               name={track.title}
               blockers={[]}
               detail="Its artists, credits and file links go with it. Its audio file stays registered."
-              onDelete={() => deleteTrack()}
+              onDelete={() => deleteTrack.mutateAsync(track.id)}
               then="/tracks"
+              afterDelete={() => {
+                for (const name of ["trackPage", "trackForm"]) {
+                  queryClient.removeQueries({
+                    queryKey: [name, { id: track.id }],
+                  })
+                }
+              }}
             />
           </>
         )}
