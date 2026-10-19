@@ -15,7 +15,7 @@ The frontend is slunk's, moved into the app in phase 0, in `src/`. It does every
 - bulk edits on the release list: setting or removing a tag on many releases;
 - the import: a release built from a folder, step by step, with titles split at " = " and artists matched by any of their names;
 - the library check: files missing, moved or changed on disk, unregistered files, and gaps in the catalog;
-- the music player, in the sidebar, which plays a queue of tracks from the release and track pages, with shortcuts and macOS's Now Playing ([The player](#the-player)).
+- the music player, in the sidebar: a queue of tracks, played or added from the release and track pages, the track list and the release table, with shuffle, repeat, shortcuts and macOS's Now Playing ([The player](#the-player)).
 
 Its data comes from Tauri commands, through TanStack Query ([Data](#data)). slunk's frontend read it through GraphQL, and the port moved each page to commands as the context behind it was ported ([design §7.3](../design/1_introduction.md#73-converting-a-route)).
 
@@ -34,6 +34,7 @@ Its data comes from Tauri commands, through TanStack Query ([Data](#data)). slun
 | Fonts | Nunito Sans (body) and Outfit (headings), self-hosted through Fontsource |
 | Toasts | sonner |
 | Dates | react-day-picker and date-fns, used by `calendar` |
+| Drag and drop | dnd-kit (`@dnd-kit/core`, `sortable`, `modifiers`, `utilities`), for the queue sheet's rows |
 | Tests | Vitest, for plain functions ([Tests](#tests)) |
 | Screenshots | WebDriver, embedded in the app by its `webdriver` feature |
 
@@ -90,6 +91,11 @@ src/
                            its shortcuts and Now Playing; usePlayer() and
                            usePlayerTime()
       sidebar-player.tsx   the player's controls, in the sidebar's header
+      queue-sheet.tsx      the queue, in a sheet: play, drag to move, remove,
+                           clear
+      play-buttons.tsx     a track's play button in a list, the queue menu
+                           (Play next, Add to queue), and a release's play
+                           button for the release table
     library-menu.tsx       the open library, with a menu to switch libraries
     page-header.tsx        a page's back and forward, breadcrumb title,
                            buttons and tabs
@@ -368,15 +374,25 @@ The release list's rows have checkboxes (`bulk-edit.tsx`). The selection is kept
 
 ### The player
 
-The player plays a queue of tracks from the sidebar ([2_player.md](../design/2_player.md), whose phase 0 is built).
+The player plays a queue of tracks from the sidebar ([2_player.md](../design/2_player.md), whose phases 0 and 1 are built).
 - **Where it is.** `PlayerProvider` (`components/player/provider.tsx`) is inside `AppLayout`'s `SidebarProvider`, around the sidebar and the page. It renders the app's one `<audio>` element, hidden. So the music keeps playing from page to page, and since `SidebarProvider` is keyed by the library, it stops when the library switches or closes. The sidebar's header shows the controls (`SidebarPlayer`), between the library menu and Import. When the sidebar is hidden, collapsed or in its sheet below 768 px, so is the player, and the music plays on.
-- **The controls:** the release's cover, the track's title, who performs it and the release, each linking to its page; a bar of how far the track has played, with the time played and the track's length; previous, play/pause, and next; mute, and the volume. With nothing queued, the player is one line: "Nothing playing".
-- **Playing.** On the release page, Play, by the tracklist's heading, plays the release from its first track, and a track's play button plays it from that track. The current track's number becomes a speaker icon, and its button pauses. The track page's Play plays the track alone. Pages call `usePlayer()`, and never touch the element.
+- **The controls:** the release's cover, the track's title, who performs it and the release, each linking to its page; a bar of how far the track has played, with the time played and the track's length; shuffle, previous, play/pause, next, and repeat; mute, the volume, and the queue's button. Shuffle and repeat are in the accent color while they're on. With nothing queued, the player is one line: "Nothing playing".
+- **Playing** replaces the queue. Pages call `usePlayer()`, and never touch the element.
+  - On the release page, Play, by the tracklist's heading, plays the release from its first track, or from a random one when shuffled. A track's play button (`TrackPlayButton`) plays the release from that track. The current track's number becomes a speaker icon, and its button pauses.
+  - The track page's Play plays the track alone.
+  - On the track list, a row's play button plays the page's rows, in the list's order, from that row, so a filtered list plays like a playlist, a page at a time.
+  - In the release table, on the release list, a label's page and an artist's Releases tab, each cover shows a play button on hover or keyboard focus (`ReleasePlayButton`). It asks `releaseTrackIds` for the release's tracks, then plays them like the release page's Play. A release with no tracks says so in a toast.
+- **Adding** keeps the queue. The queue menu (`QueueMenu`), by the release page's Play, on each tracklist row, by the track page's Play, and on each track list row, has Play next, which puts the tracks right after the current one, and Add to queue, which puts them at the end. A toast says what was added: "Added 12 tracks to the queue". With nothing queued, either one starts a queue, paused at its first track.
 - **The queue** is a reducer, `queueReducer` in `lib/queue.ts`, with no React and no element. The provider keeps it with `useReducer`, and the element follows it. An entry is a track id with a key of its own, so a track can be queued twice. The element's source changes only when the current entry does, never on a fetch, so a save never interrupts what plays.
 - **Its rules:**
-  - Previous goes back to the track's start after its first 3 seconds, and to the previous track before that.
-  - Next, and a track that ends, go to the next track. After the last, the player stops, paused at the last track's start.
-  - A track that can't play, missing or in a format WebKit can't decode, shows a toast with its path, and the next one plays. Once every entry has failed in a row, the player stops.
+  - Previous goes back to the track's start after its first 3 seconds, and to the previous track before that. On the first track, it goes back to its start, or with repeat all, to the last track.
+  - Next, and a track that ends, go to the next track. After the last, the player stops, paused at the last track's start, or with repeat all, goes on to the first.
+  - Repeat goes from off, to all, to one. With repeat one, a track that ends plays again, while Next and Previous still move as with repeat off.
+  - Shuffle plays the entries after the current one in a random order, and turning it off plays them in their order before again. While it's on, Play next and Add to queue still put tracks right after the current one and at the end, and they keep those places when it's turned off. A new queue started with shuffle on starts at the track that was clicked, or a random one, and shuffles the rest. Shuffling takes its seed from the action, so the reducer stays pure.
+  - A track that can't play, missing or in a format WebKit can't decode, shows a toast with its path, and the next one plays. Once every entry has failed in a row, the player stops, even with repeat on.
+- **The queue sheet** (`QueueSheet`), from the queue's button, lists the whole queue in the order it plays, with each track's cover, title, artists and length. The entries that have played are muted, and the current one is marked. It opens scrolled to the current entry. Clicking a row, or its cover, plays it. A row's button removes it, and Clear empties the queue.
+  - **Moving a row:** it's dragged from anywhere on it, its title, cover and buttons included, with dnd-kit. The drag starts once the pointer has moved a few pixels, so a click still plays a row or follows a link, and the list scrolls while a row is dragged near its edges. dnd-kit keeps the click that ends a drag from reaching the row, but not its default, which on a link is the browser loading the link's page itself, so the sheet prevents that default for a moment after a drag. With its grip focused, the up and down arrow keys move it a place, the focus stays on it, and a live region says where it went ("Survive moved to place 2 of 11"). The keys don't go through dnd-kit's keyboard sensor: it listens on the document, and Base UI's dialog popup, which the sheet is, stops arrow keys from leaving it.
+- **Remembering.** The queue is remembered per library, in `localStorage` under `slunk.player.queue:<the library's path>`, since its ids belong to the library: its tracks in the order they play, the current one, and while shuffled, their order before. It's written as it changes, and `PlayerProvider`, which `AppLayout` gives the library's path, starts from it, paused at the current track's start (`restoredQueue()`). Shuffle and repeat are remembered for every library (`slunk.player.shuffle`, `slunk.player.repeat`). What isn't a queue, like something an older version wrote, is ignored.
 - **What it shows** comes from `playerTracks`, with the queue's ids. It's mounted, so every save fetches it again, and it reads with `{ keepPrevious: true }`, so it doesn't flicker when the queue changes. A track that's deleted leaves the queue. When it's the current one, the next one plays.
 - **The time** comes from `usePlayerTime()`, a store the element's events update, which only the progress bar reads, so nothing else renders again on each `timeupdate`. The track's length is the element's once it has read the file, and the catalog's `durationMs` until then.
 - **No seeking.** WebKit seeks a FLAC file by estimate, not with its seek table, so a seek can play from several seconds away from the time it shows: on a live track 4:28 long, a seek to 4:18 played from about 4:08. So nothing in the player seeks ([2_player.md](../design/2_player.md) Appendices A and B): the bar only shows how far the track has played, and Now Playing has no seek action, so it shows no scrubber or skips. Previous still goes back to a track's start, which is exact. The file page's preview is the browser's own player, so it can still seek, by estimate.

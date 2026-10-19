@@ -612,6 +612,26 @@ pub fn for_player(
         .collect())
 }
 
+/// A release's tracks' ids, by disc, then by number, as its tracklist orders
+/// them, for the release table's Play (2_player.md §6.2). A release with no
+/// tracks, or one that isn't there, has none.
+#[tauri::command]
+#[specta::specta]
+pub async fn release_track_ids(app: AppHandle, args: IdArgs) -> Result<Vec<i64>, CommandError> {
+    on_library(app, move |library| track_ids(library, args)).await
+}
+
+pub fn track_ids(library: &Library, args: IdArgs) -> Result<Vec<i64>, CommandError> {
+    Ok(library
+        .catalog
+        .tracks_of_releases(&[args.id])?
+        .remove(&args.id)
+        .unwrap_or_default()
+        .iter()
+        .map(|track| track.id)
+        .collect())
+}
+
 /// What the track form starts from: the track to edit, or a new one's
 /// release and audio file.
 #[tauri::command]
@@ -946,7 +966,8 @@ mod tests {
     const HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
     /// A library with a regular release, whose second track only has a
-    /// feature, and a various-artists one, whose second track has nobody.
+    /// feature, a various-artists one, whose second track has nobody, and one
+    /// on two discs, its tracks added out of order.
     fn library() -> (tempfile::TempDir, Library) {
         let dir = tempfile::tempdir().unwrap();
         let db = dir.path().join("slunk.db");
@@ -962,17 +983,24 @@ mod tests {
                     (2, 'a/2.flac', 'music', 1, 0, '{HASH}'),
                     (3, 'b/1.flac', 'music', 1, 0, '{HASH}'),
                     (4, 'b/2.flac', 'music', 1, 0, '{HASH}'),
-                    (5, 'a/cover.jpg', 'image', 1, 0, '{HASH}');
+                    (5, 'a/cover.jpg', 'image', 1, 0, '{HASH}'),
+                    (6, 'c/2-1.flac', 'music', 1, 0, '{HASH}'),
+                    (7, 'c/1-2.flac', 'music', 1, 0, '{HASH}'),
+                    (8, 'c/1-1.flac', 'music', 1, 0, '{HASH}');
                 insert into artists (id, name) values (1, 'Alika'), (2, 'Guest'), (3, 'Solo');
                 insert into releases (id, title, cover_picture, various_artists) values
                     (1, 'Regular', 5, 0),
-                    (2, 'Various', null, 1);
+                    (2, 'Various', null, 1),
+                    (3, 'Double', null, 0);
                 insert into artists_releases (artist_id, release_id, position) values (1, 1, 0);
                 insert into tracks (id, title, track_number, cd_number, release_id, file_id) values
                     (1, 'One', 1, 1, 1, 1),
                     (2, 'Two', 2, 1, 1, 2),
                     (3, 'Three', 1, 1, 2, 3),
-                    (4, 'Four', 2, 1, 2, 4);
+                    (4, 'Four', 2, 1, 2, 4),
+                    (5, 'Two One', 1, 2, 3, 6),
+                    (6, 'One Two', 2, 1, 3, 7),
+                    (7, 'One One', 1, 1, 3, 8);
                 insert into artists_tracks (artist_id, track_id, featured, position) values
                     (2, 2, 1, 0),
                     (3, 3, 0, 0);
@@ -1024,5 +1052,14 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn a_releases_track_ids_come_by_disc_then_number() {
+        let (_dir, library) = library();
+        let ids = |id| track_ids(&library, IdArgs { id }).unwrap();
+        assert_eq!(ids(3), [7, 6, 5]);
+        assert_eq!(ids(1), [1, 2]);
+        assert!(ids(99).is_empty());
     }
 }

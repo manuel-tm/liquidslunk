@@ -176,6 +176,8 @@ Both come in phase 1.
 
 ### 5.5 The queue sheet
 
+> Changed during implementation, see [Appendix D](#appendix-d-the-queue-sheets-rows-are-dragged).
+
 In phase 1, the queue's button opens a `Sheet` on the right, with the whole queue in order:
 - Each entry is a row with its cover, title, artists and length, each linking to its page. The ones that have played are muted, and the current one is marked. The sheet opens scrolled to it.
 - Clicking a row plays it.
@@ -429,3 +431,13 @@ The first draft left these open. They were settled on 2026-10-19:
   - A handler set before a media element has registered with WebKit's Now Playing is dropped. The provider set its handlers when it mounted, before anything played, so Now Playing showed WebKit's own actions: the skips and a scrubber that seeked.
   - So the provider sets its handlers again whenever its element starts playing: play, pause, previous and next. It sets none for seeking (Appendix B).
 - **Why:** Control Center showed the skips and seeked the track, though the metadata set the same way was right. WebKit's source explains it: its Now Playing manager passes a supported command on only while it has a listener, which it creates when a media element registers.
+
+## Appendix D: The queue sheet's rows are dragged
+
+- **Date:** 2026-10-19
+- **Affects:** §5.5 The queue sheet
+- **Was:** each row can move up or down, or be removed, with buttons, as in `OrderedList`.
+- **Now:**
+  - A row is dragged from anywhere on it to another place, with dnd-kit. The drag starts once the pointer has moved a few pixels, so clicking a row still plays it, and its links still work. The list scrolls while a row is dragged near its edges. The up and down buttons are gone, and a row's button still removes it.
+  - A grip at the start of each row shows that it drags. With the grip focused, the up and down arrow keys move a row a place, the focus stays on it, and a live region says where it went. This doesn't use dnd-kit's keyboard sensor, which listens on the document: Base UI's dialog popup, which the sheet is, stops arrow keys from leaving it.
+- **Why:** the user asked for the queue to be dragged and dropped, from anywhere on a row, since a handle alone was too small a target.

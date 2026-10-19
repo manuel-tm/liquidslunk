@@ -93,6 +93,7 @@ pub fn builder() -> Builder<Wry> {
             catalog::tracks::release_tracks,
             catalog::tracks::set_release_tracks,
             catalog::tracks::player_tracks,
+            catalog::tracks::release_track_ids,
             catalog::import::release_suggestion,
             catalog::import::import_files,
             catalog::languages,

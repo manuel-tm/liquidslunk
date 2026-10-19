@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query"
-import { PauseIcon, PlayIcon, Volume2Icon } from "lucide-react"
+import { PlayIcon, Volume2Icon } from "lucide-react"
 import { type ReactNode, useState } from "react"
 import { Link, useParams } from "react-router"
 
@@ -9,6 +9,7 @@ import { CreditLines } from "@/components/credit-lines"
 import { DeleteButton } from "@/components/delete-button"
 import { artistUrl, labelUrl, Names } from "@/components/names"
 import { PageHeader } from "@/components/page-header"
+import { QueueMenu, TrackPlayButton } from "@/components/player/play-buttons"
 import { usePlayer } from "@/components/player/provider"
 import { QueryError } from "@/components/query-error"
 import { TagValues } from "@/components/tag-values"
@@ -218,7 +219,8 @@ function Heading({ release }: { release: Release }) {
 /**
  * Grouped by disc. On a various-artists release, each row starts with the
  * track's artists; a regular release only shows features. Play plays the
- * release, and a track's button plays it from that track (2_player.md §5.2).
+ * release, from a random track when shuffled, and a track's button plays it
+ * from that track (2_player.md §5.2). Each has a menu that queues them (§5.3).
  */
 function Tracklist({ release }: { release: Release }) {
   const [hideCredits, toggleCredits] = useRemembered(HIDE_CREDITS)
@@ -236,12 +238,6 @@ function Tracklist({ release }: { release: Release }) {
     release.discTitles.some((disc) => disc.alternateTitles.length > 0)
 
   const isCurrent = (id: number) => player.current?.trackId === id
-  const isPlaying = (id: number) => isCurrent(id) && player.playing
-
-  function play(index: number) {
-    if (isCurrent(ids[index])) player.toggle()
-    else player.play(ids, index)
-  }
 
   return (
     <section className="flex flex-col gap-2">
@@ -249,10 +245,17 @@ function Tracklist({ release }: { release: Release }) {
         <div className="flex items-center gap-3">
           <h2 className="font-heading text-base font-semibold">Tracklist</h2>
           {ids.length > 0 && (
-            <Button variant="outline" size="xs" onClick={() => play(0)}>
-              <PlayIcon data-icon="inline-start" />
-              Play
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => player.play(ids)}
+              >
+                <PlayIcon data-icon="inline-start" />
+                Play
+              </Button>
+              <QueueMenu trackIds={ids} name={release.title} />
+            </div>
           )}
         </div>
         <div className="flex">
@@ -301,7 +304,7 @@ function Tracklist({ release }: { release: Release }) {
             .map((track) => (
               <div
                 key={track.id}
-                className="grid grid-cols-[2rem_1fr_auto_auto] items-start gap-2 border-b py-1.5"
+                className="grid grid-cols-[2rem_1fr_auto_auto_auto] items-start gap-2 border-b py-1.5"
               >
                 <span className="text-muted-foreground tabular-nums">
                   {isCurrent(track.id) ? (
@@ -357,18 +360,12 @@ function Tracklist({ release }: { release: Release }) {
                 <span className="tabular-nums">
                   {formatDuration(track.durationMs)}
                 </span>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={
-                    isPlaying(track.id)
-                      ? `Pause ${track.title}`
-                      : `Play ${track.title}`
-                  }
-                  onClick={() => play(ids.indexOf(track.id))}
-                >
-                  {isPlaying(track.id) ? <PauseIcon /> : <PlayIcon />}
-                </Button>
+                <TrackPlayButton
+                  trackIds={ids}
+                  index={ids.indexOf(track.id)}
+                  title={track.title}
+                />
+                <QueueMenu trackIds={[track.id]} name={track.title} />
               </div>
             ))}
         </div>

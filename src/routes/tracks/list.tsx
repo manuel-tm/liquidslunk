@@ -3,6 +3,7 @@ import { Link } from "react-router"
 import { ListLayout, PER_PAGE } from "@/components/list/list-layout"
 import { SortableHead } from "@/components/list/sortable-head"
 import { artistUrl, Names } from "@/components/names"
+import { QueueMenu, TrackPlayButton } from "@/components/player/play-buttons"
 import { ReleasePicker } from "@/components/pickers"
 import {
   Table,
@@ -19,7 +20,11 @@ import { idParam, useCommand } from "@/lib/query"
 import { tagFilterInput, tagFiltersOf } from "@/lib/tags"
 import { formatDateTime, formatDuration } from "@/lib/format"
 
-/** `/tracks`, with tag filters like the release list's. */
+/**
+ * `/tracks`, with tag filters like the release list's. A row's play button
+ * plays the page's rows from it, so a filtered list plays like a playlist
+ * (2_player.md §5.2).
+ */
 export function TrackList() {
   const list = useListParams()
   const tagFilters = tagFiltersOf(list.params)
@@ -33,6 +38,7 @@ export function TrackList() {
   })
   // Options' ids are strings, as the pickers' are
   const filterRelease = data?.filterRelease
+  const pageIds = data?.items.map((track) => track.id) ?? []
 
   return (
     <ListLayout
@@ -69,6 +75,9 @@ export function TrackList() {
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead className="w-14">
+              <span className="sr-only">Play</span>
+            </TableHead>
             <TableHead>Id</TableHead>
             <SortableHead
               column="title"
@@ -88,8 +97,18 @@ export function TrackList() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data?.items.map((track) => (
+          {data?.items.map((track, index) => (
             <TableRow key={track.id}>
+              <TableCell>
+                <div className="flex">
+                  <TrackPlayButton
+                    trackIds={pageIds}
+                    index={index}
+                    title={track.title}
+                  />
+                  <QueueMenu trackIds={[track.id]} name={track.title} />
+                </div>
+              </TableCell>
               <TableCell className="tabular-nums">{track.id}</TableCell>
               <TableCell className="min-w-40 whitespace-normal">
                 <Link to={`/tracks/${track.id}`} className="hover:underline">

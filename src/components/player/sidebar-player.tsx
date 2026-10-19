@@ -1,18 +1,24 @@
 import {
+  ListMusicIcon,
   PauseIcon,
   PlayIcon,
+  Repeat1Icon,
+  RepeatIcon,
+  ShuffleIcon,
   SkipBackIcon,
   SkipForwardIcon,
   Volume1Icon,
   Volume2Icon,
   VolumeXIcon,
 } from "lucide-react"
+import { useState } from "react"
 import { Link } from "react-router"
 
 import type { PlayerTrack } from "@/bindings"
 import { Cover } from "@/components/cover"
 import { artistUrl, Names } from "@/components/names"
 import { usePlayer, usePlayerTime } from "@/components/player/provider"
+import { QueueSheet } from "@/components/player/queue-sheet"
 import { Title } from "@/components/titles"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -20,6 +26,7 @@ import { Slider } from "@/components/ui/slider"
 import { Spinner } from "@/components/ui/spinner"
 import { shownName } from "@/lib/credited"
 import { formatDuration } from "@/lib/format"
+import type { Repeat } from "@/lib/queue"
 
 /** A slider's value, which Base UI gives as a number or an array. */
 function first(value: number | readonly number[]) {
@@ -33,28 +40,31 @@ function clock(seconds: number) {
 
 /**
  * The player's controls, in the sidebar's header, between the library menu
- * and Import (2_player.md §4.2): what's playing, how far it is, previous,
- * play/pause and next, and the volume. With nothing queued, one line.
+ * and Import (2_player.md §4.2): what's playing, how far it is, shuffle,
+ * previous, play/pause, next and repeat, the volume, and the queue. With
+ * nothing queued, one line.
  */
 export function SidebarPlayer() {
   const { current, track } = usePlayer()
-
-  if (!current) {
-    return (
-      <div className="flex items-center gap-2 px-2 text-xs text-muted-foreground">
-        <Cover file={null} alt="" className="size-8" />
-        Nothing playing
-      </div>
-    )
-  }
+  const [queueOpen, setQueueOpen] = useState(false)
 
   return (
-    <div className="flex flex-col gap-2 px-2">
-      <NowPlaying track={track} />
-      <Played track={track} />
-      <Buttons />
-      <VolumeControl />
-    </div>
+    <>
+      {current ? (
+        <div className="flex flex-col gap-2 px-2">
+          <NowPlaying track={track} />
+          <Played track={track} />
+          <Buttons />
+          <VolumeControl onQueue={() => setQueueOpen(true)} />
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 px-2 text-xs text-muted-foreground">
+          <Cover file={null} alt="" className="size-8" />
+          Nothing playing
+        </div>
+      )}
+      <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
+    </>
   )
 }
 
@@ -142,50 +152,91 @@ function Played({ track }: { track: PlayerTrack | null }) {
   )
 }
 
-/** Previous, play/pause and next. */
+const REPEAT_LABELS: Record<Repeat, string> = {
+  off: "Repeat: off",
+  all: "Repeat: all",
+  one: "Repeat: one",
+}
+
+/** Shuffle, then previous, play/pause and next, then repeat. */
 function Buttons() {
-  const { playing, waiting, toggle, previous, next } = usePlayer()
+  const {
+    playing,
+    waiting,
+    shuffle,
+    repeat,
+    toggle,
+    previous,
+    next,
+    toggleShuffle,
+    cycleRepeat,
+  } = usePlayer()
+  // A mode that's on is in the accent color
+  const mode = (on: boolean) => (on ? "text-primary" : "text-muted-foreground")
   return (
-    <div className="flex items-center justify-center gap-2">
+    <div className="flex items-center justify-between">
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label="Previous"
-        title="Previous (⌘←)"
-        onClick={previous}
+        aria-label="Shuffle"
+        aria-pressed={shuffle}
+        title={shuffle ? "Shuffle: on" : "Shuffle: off"}
+        className={mode(shuffle)}
+        onClick={toggleShuffle}
       >
-        <SkipBackIcon />
+        <ShuffleIcon />
       </Button>
-      <Button
-        size="icon"
-        aria-label={playing ? "Pause" : "Play"}
-        title={playing ? "Pause (Space)" : "Play (Space)"}
-        onClick={toggle}
-      >
-        {playing && waiting ? (
-          <Spinner />
-        ) : playing ? (
-          <PauseIcon />
-        ) : (
-          <PlayIcon />
-        )}
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Previous"
+          title="Previous (⌘←)"
+          onClick={previous}
+        >
+          <SkipBackIcon />
+        </Button>
+        <Button
+          size="icon"
+          aria-label={playing ? "Pause" : "Play"}
+          title={playing ? "Pause (Space)" : "Play (Space)"}
+          onClick={toggle}
+        >
+          {playing && waiting ? (
+            <Spinner />
+          ) : playing ? (
+            <PauseIcon />
+          ) : (
+            <PlayIcon />
+          )}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Next"
+          title="Next (⌘→)"
+          onClick={next}
+        >
+          <SkipForwardIcon />
+        </Button>
+      </div>
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label="Next"
-        title="Next (⌘→)"
-        onClick={next}
+        aria-label={REPEAT_LABELS[repeat]}
+        title={REPEAT_LABELS[repeat]}
+        className={mode(repeat !== "off")}
+        onClick={cycleRepeat}
       >
-        <SkipForwardIcon />
+        {repeat === "one" ? <Repeat1Icon /> : <RepeatIcon />}
       </Button>
     </div>
   )
 }
 
-/** Mute, and the volume. */
-function VolumeControl() {
-  const { volume, muted, setVolume, toggleMuted } = usePlayer()
+/** Mute, the volume, and the queue's button. */
+function VolumeControl({ onQueue }: { onQueue: () => void }) {
+  const { volume, muted, entries, setVolume, toggleMuted } = usePlayer()
   const silent = muted || volume === 0
   return (
     <div className="flex items-center gap-2">
@@ -215,6 +266,15 @@ function VolumeControl() {
         }}
         onValueChange={(value) => setVolume(first(value) / 100)}
       />
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label="Queue"
+        title={`Queue (${entries.length})`}
+        onClick={onQueue}
+      >
+        <ListMusicIcon />
+      </Button>
     </div>
   )
 }

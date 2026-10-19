@@ -7,6 +7,7 @@ import { CreditLines } from "@/components/credit-lines"
 import { DeleteButton } from "@/components/delete-button"
 import { artistUrl, Names } from "@/components/names"
 import { PageHeader } from "@/components/page-header"
+import { QueueMenu } from "@/components/player/play-buttons"
 import { usePlayer } from "@/components/player/provider"
 import { QueryError } from "@/components/query-error"
 import { TagValues } from "@/components/tag-values"
@@ -125,7 +126,14 @@ export function TrackRead() {
                 >
                   {track.file.path}
                 </Link>
-                <PlayButton id={track.id} />
+                <div className="flex items-center gap-1">
+                  <PlayButton id={track.id} />
+                  <QueueMenu
+                    trackIds={[track.id]}
+                    name={track.title}
+                    className="size-7"
+                  />
+                </div>
               </dd>
               {track.tags.map(({ tag, values }) => (
                 <div key={`${tag.type}:${tag.id}`} className="contents">
@@ -187,7 +195,6 @@ function PlayButton({ id }: { id: number }) {
     <Button
       variant="outline"
       size="sm"
-      className="self-start"
       onClick={() =>
         player.current?.trackId === id ? player.toggle() : player.play([id])
       }

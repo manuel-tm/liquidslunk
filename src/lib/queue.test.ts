@@ -3,9 +3,13 @@ import { describe, expect, it } from "vitest"
 import {
   currentEntry,
   emptyQueue,
+  nextRepeat,
   type Queue,
   type QueueAction,
   queueReducer,
+  type Repeat,
+  restoredQueue,
+  savedQueue,
 } from "@/lib/queue"
 
 /** The queue after these actions, from an empty one. */
@@ -15,7 +19,7 @@ function after(...actions: QueueAction[]): Queue {
 
 /** A queue of tracks 10, 20 and 30, playing from `start`. */
 function playing(start = 0): QueueAction {
-  return { type: "play", trackIds: [10, 20, 30], start }
+  return { type: "play", trackIds: [10, 20, 30], start, seed: 1 }
 }
 
 /** The current entry's track, or null. */
@@ -32,7 +36,7 @@ describe("starting a queue", () => {
   })
 
   it("gives a track queued twice two entries", () => {
-    const queue = after({ type: "play", trackIds: [10, 10], start: 0 })
+    const queue = after({ type: "play", trackIds: [10, 10], start: 0, seed: 1 })
     const [first, second] = queue.entries
     expect(first.trackId).toBe(second.trackId)
     expect(first.key).not.toBe(second.key)
@@ -51,7 +55,12 @@ describe("starting a queue", () => {
   })
 
   it("empties the queue with no tracks", () => {
-    const queue = after(playing(), { type: "play", trackIds: [], start: 0 })
+    const queue = after(playing(), {
+      type: "play",
+      trackIds: [],
+      start: 0,
+      seed: 1,
+    })
     expect(currentEntry(queue)).toBeNull()
     expect(queue.playing).toBe(false)
   })
@@ -246,7 +255,12 @@ describe("removing entries", () => {
   })
 
   it("removes one entry of a track queued twice", () => {
-    const queue = after({ type: "play", trackIds: [10, 20, 10], start: 0 })
+    const queue = after({
+      type: "play",
+      trackIds: [10, 20, 10],
+      start: 0,
+      seed: 1,
+    })
     const removed = queueReducer(queue, {
       type: "remove",
       key: queue.entries[2].key,
@@ -255,7 +269,7 @@ describe("removing entries", () => {
   })
 
   it("empties the queue when the only one goes", () => {
-    const queue = after({ type: "play", trackIds: [10], start: 0 })
+    const queue = after({ type: "play", trackIds: [10], start: 0, seed: 1 })
     const removed = queueReducer(queue, {
       type: "remove",
       key: queue.entries[0].key,
@@ -267,7 +281,12 @@ describe("removing entries", () => {
 
 describe("deleted tracks", () => {
   it("leave the queue, every entry of them", () => {
-    const queue = after({ type: "play", trackIds: [10, 20, 10, 30], start: 3 })
+    const queue = after({
+      type: "play",
+      trackIds: [10, 20, 10, 30],
+      start: 3,
+      seed: 1,
+    })
     const kept = queueReducer(queue, { type: "keep", trackIds: [20, 30] })
     expect(kept.entries.map((entry) => entry.trackId)).toEqual([20, 30])
     expect(track(kept)).toBe(30)
@@ -300,5 +319,314 @@ describe("clearing", () => {
     const first = after(playing())
     const second = after(playing(), { type: "clear" }, playing())
     expect(second.entries[0].key).toBeGreaterThan(first.entries[2].key)
+  })
+})
+
+/** The queue's tracks, in the order they play. */
+function tracks(queue: Queue) {
+  return queue.entries.map((entry) => entry.trackId)
+}
+
+/** A queue of tracks 10 to 60, with shuffle and repeat set, from `start`. */
+function modes(
+  { shuffle = false, repeat = "off" }: { shuffle?: boolean; repeat?: Repeat },
+  start?: number
+): Queue {
+  return after(
+    { type: "setShuffle", shuffle, seed: 7 },
+    { type: "setRepeat", repeat },
+    { type: "play", trackIds: [10, 20, 30, 40, 50, 60], start, seed: 7 }
+  )
+}
+
+describe("play next and add to queue", () => {
+  it("puts tracks right after the current one, or at the end", () => {
+    const queue = after(playing(1))
+    expect(
+      tracks(queueReducer(queue, { type: "playNext", trackIds: [1, 2] }))
+    ).toEqual([10, 20, 1, 2, 30])
+    expect(
+      tracks(queueReducer(queue, { type: "add", trackIds: [1, 2] }))
+    ).toEqual([10, 20, 30, 1, 2])
+  })
+
+  it("leaves the current track playing", () => {
+    const queue = after(playing(1), { type: "playNext", trackIds: [1] })
+    expect(queue).toMatchObject({ current: 1, playing: true })
+  })
+
+  it("start a queue, paused at its first track, when nothing's queued", () => {
+    for (const type of ["playNext", "add"] as const) {
+      const queue = after({ type, trackIds: [1, 2] })
+      expect(tracks(queue)).toEqual([1, 2])
+      expect(queue).toMatchObject({ current: 0, playing: false })
+    }
+  })
+
+  it("give each added track a new key", () => {
+    const queue = after(playing(), { type: "add", trackIds: [10] })
+    expect(new Set(queue.entries.map((entry) => entry.key)).size).toBe(4)
+  })
+})
+
+describe("moving an entry", () => {
+  it("moves it in the order they play, keeping the current one current", () => {
+    const queue = after(playing(1))
+    const moved = queueReducer(queue, {
+      type: "move",
+      key: queue.entries[2].key,
+      by: -2,
+    })
+    expect(tracks(moved)).toEqual([30, 10, 20])
+    expect(track(moved)).toBe(20)
+  })
+
+  it("moves the current one with it", () => {
+    const queue = after(playing(1))
+    const moved = queueReducer(queue, {
+      type: "move",
+      key: queue.entries[1].key,
+      by: 1,
+    })
+    expect(tracks(moved)).toEqual([10, 30, 20])
+    expect(moved.current).toBe(2)
+  })
+
+  it("moves it several places at once, past the current one", () => {
+    const queue = after({
+      type: "play",
+      trackIds: [10, 20, 30, 40, 50],
+      start: 2,
+      seed: 1,
+    })
+    const down = queueReducer(queue, {
+      type: "move",
+      key: queue.entries[0].key,
+      by: 3,
+    })
+    expect(tracks(down)).toEqual([20, 30, 40, 10, 50])
+    expect(track(down)).toBe(30)
+    const up = queueReducer(queue, {
+      type: "move",
+      key: queue.entries[4].key,
+      by: -4,
+    })
+    expect(tracks(up)).toEqual([50, 10, 20, 30, 40])
+    expect(track(up)).toBe(30)
+  })
+
+  it("can't move past either end", () => {
+    const queue = after(playing())
+    const first = { type: "move", key: queue.entries[0].key, by: -1 } as const
+    expect(queueReducer(queue, first)).toBe(queue)
+  })
+})
+
+describe("shuffle", () => {
+  it("plays the entries after the current one in another order", () => {
+    const queue = after(
+      { type: "play", trackIds: [10, 20, 30, 40, 50, 60], start: 1, seed: 7 },
+      { type: "setShuffle", shuffle: true, seed: 7 }
+    )
+    expect(tracks(queue).slice(0, 2)).toEqual([10, 20])
+    expect(tracks(queue).slice(2).sort()).toEqual([30, 40, 50, 60])
+    expect(tracks(queue).slice(2)).not.toEqual([30, 40, 50, 60])
+    expect(track(queue)).toBe(20)
+  })
+
+  it("is the same for the same seed", () => {
+    expect(tracks(modes({ shuffle: true }))).toEqual(
+      tracks(modes({ shuffle: true }))
+    )
+  })
+
+  it("off, plays the rest in their order again, from the current one", () => {
+    const shuffled = modes({ shuffle: true })
+    const current = track(shuffled)
+    const off = queueReducer(shuffled, {
+      type: "setShuffle",
+      shuffle: false,
+      seed: 1,
+    })
+    expect(track(off)).toBe(current)
+    const rest = tracks(off).slice(off.current + 1)
+    expect(rest).toEqual([...rest].sort())
+    expect(off.unshuffled).toBeNull()
+  })
+
+  it("starts a new queue at the track that was clicked", () => {
+    const queue = modes({ shuffle: true }, 3)
+    expect(track(queue)).toBe(40)
+    expect(queue.current).toBe(0)
+    expect(tracks(queue).sort()).toEqual([10, 20, 30, 40, 50, 60])
+  })
+
+  it("starts a new queue at a random track without one", () => {
+    const firsts = new Set(
+      [1, 2, 3, 4, 5, 6, 7, 8].map((seed) =>
+        track(
+          after(
+            { type: "setShuffle", shuffle: true, seed },
+            { type: "play", trackIds: [10, 20, 30, 40, 50, 60], seed }
+          )
+        )
+      )
+    )
+    expect(firsts.size).toBeGreaterThan(1)
+  })
+
+  it("keeps play next right after the current one, and add at the end", () => {
+    const queue = after(
+      { type: "play", trackIds: [10, 20, 30, 40], start: 0, seed: 7 },
+      { type: "setShuffle", shuffle: true, seed: 7 },
+      { type: "playNext", trackIds: [1] },
+      { type: "add", trackIds: [2] }
+    )
+    expect(tracks(queue)[1]).toBe(1)
+    expect(tracks(queue).at(-1)).toBe(2)
+    // Unshuffled, they keep those places in the order before
+    const off = queueReducer(queue, {
+      type: "setShuffle",
+      shuffle: false,
+      seed: 1,
+    })
+    expect(tracks(off)).toEqual([10, 1, 20, 30, 40, 2])
+  })
+
+  it("forgets removed entries in the order before", () => {
+    const queue = after(
+      { type: "play", trackIds: [10, 20, 30], start: 0, seed: 7 },
+      { type: "setShuffle", shuffle: true, seed: 7 }
+    )
+    const twenty = queue.entries.find((entry) => entry.trackId === 20)!
+    const removed = queueReducer(queue, { type: "remove", key: twenty.key })
+    expect(removed.unshuffled?.map((entry) => entry.trackId)).toEqual([10, 30])
+  })
+})
+
+describe("repeat", () => {
+  it("goes from off, to all, to one, and back to off", () => {
+    expect(nextRepeat("off")).toBe("all")
+    expect(nextRepeat("all")).toBe("one")
+    expect(nextRepeat("one")).toBe("off")
+  })
+
+  it("all: the first entry follows the last", () => {
+    const last = modes({ repeat: "all" }, 5)
+    expect(queueReducer(last, { type: "next" })).toMatchObject({
+      current: 0,
+      playing: true,
+    })
+    expect(
+      queueReducer(queueReducer(last, { type: "setPlaying", playing: false }), {
+        type: "ended",
+      })
+    ).toMatchObject({ current: 0, playing: true })
+  })
+
+  it("all: previous on the first entry goes to the last", () => {
+    const first = modes({ repeat: "all" }, 0)
+    expect(queueReducer(first, { type: "previous", time: 0 }).current).toBe(5)
+  })
+
+  it("all: a queue of one track starts it again", () => {
+    const one = after(
+      { type: "setRepeat", repeat: "all" },
+      { type: "play", trackIds: [10], seed: 1 }
+    )
+    const again = queueReducer(one, { type: "ended" })
+    expect(again).toMatchObject({ current: 0, playing: true })
+    expect(again.restarts).toBe(one.restarts + 1)
+  })
+
+  it("one: a track that ends plays again", () => {
+    const queue = modes({ repeat: "one" }, 2)
+    const again = queueReducer(queue, { type: "ended" })
+    expect(again).toMatchObject({ current: 2, playing: true })
+    expect(again.restarts).toBe(queue.restarts + 1)
+  })
+
+  it("one: next and previous still move, and the queue still stops", () => {
+    const queue = modes({ repeat: "one" }, 2)
+    expect(queueReducer(queue, { type: "next" }).current).toBe(3)
+    expect(queueReducer(queue, { type: "previous", time: 0 }).current).toBe(1)
+    const last = modes({ repeat: "one" }, 5)
+    expect(queueReducer(last, { type: "next" })).toMatchObject({
+      current: 5,
+      playing: false,
+    })
+  })
+
+  it("one: a track that can't play is skipped, not tried again", () => {
+    const queue = modes({ repeat: "one" }, 2)
+    expect(queueReducer(queue, { type: "failed" }).current).toBe(3)
+  })
+
+  it("all: stops once every entry has failed, rather than going round", () => {
+    let queue = modes({ repeat: "all" }, 4)
+    for (let i = 0; i < 6; i++) queue = queueReducer(queue, { type: "failed" })
+    expect(queue.playing).toBe(false)
+    expect(queue.failures).toBe(6)
+  })
+
+  it("survive clearing the queue", () => {
+    const queue = queueReducer(modes({ shuffle: true, repeat: "one" }), {
+      type: "clear",
+    })
+    expect(queue).toMatchObject({ shuffle: true, repeat: "one" })
+  })
+})
+
+describe("remembering a queue", () => {
+  const off = { shuffle: false, repeat: "off" } as const
+
+  it("remembers nothing when nothing's queued", () => {
+    expect(savedQueue(emptyQueue)).toBeNull()
+  })
+
+  it("comes back paused, with its tracks and its current one", () => {
+    const queue = after(
+      { type: "play", trackIds: [10, 20, 10], start: 2, seed: 1 },
+      { type: "move", key: 2, by: -1 }
+    )
+    const restored = restoredQueue(savedQueue(queue), off)
+    expect(tracks(restored)).toEqual(tracks(queue))
+    expect(restored.current).toBe(queue.current)
+    expect(restored.playing).toBe(false)
+    // New keys, each once, and the next one after them
+    expect(new Set(restored.entries.map((entry) => entry.key)).size).toBe(3)
+    expect(restored.nextKey).toBe(4)
+  })
+
+  it("comes back shuffled, able to unshuffle", () => {
+    const shuffle = { shuffle: true, repeat: "all" } as const
+    const queue = modes(shuffle, 0)
+    const restored = restoredQueue(savedQueue(queue), shuffle)
+    expect(tracks(restored)).toEqual(tracks(queue))
+    expect(restored.repeat).toBe("all")
+    const unshuffle = { type: "setShuffle", shuffle: false, seed: 1 } as const
+    expect(tracks(queueReducer(restored, unshuffle))).toEqual(
+      tracks(queueReducer(queue, unshuffle))
+    )
+  })
+
+  it("keeps the order it played in when shuffle has been turned off since", () => {
+    const queue = modes({ shuffle: true }, 0)
+    expect(tracks(restoredQueue(savedQueue(queue), off))).toEqual(tracks(queue))
+  })
+
+  it("comes back empty from anything that isn't a queue", () => {
+    for (const saved of [
+      null,
+      "queue",
+      {},
+      { trackIds: [], current: 0, unshuffled: null },
+      { trackIds: [1, 2], current: 2, unshuffled: null },
+      { trackIds: [1, -2], current: 0, unshuffled: null },
+      { trackIds: [1, 2], current: 0, unshuffled: [0, 0] },
+      { trackIds: [1, 2], current: 0, unshuffled: 3 },
+    ]) {
+      expect(currentEntry(restoredQueue(saved, off))).toBeNull()
+    }
   })
 })

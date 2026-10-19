@@ -29,7 +29,7 @@ export function AppLayout() {
 
   return (
     <SidebarProvider key={status.data.library.path}>
-      <PlayerProvider>
+      <PlayerProvider library={status.data.library.path}>
         <AppSidebar />
         {/* min-w-0 lets wide tables scroll inside the page, not widen it */}
         <SidebarInset className="min-w-0">

@@ -379,6 +379,12 @@ export const commands = {
 	 */
 	playerTracks: (args: PlayerTracksArgs) => typedError<PlayerTrack[], CommandError>(__TAURI_INVOKE("player_tracks", { args })),
 	/**
+	 *  A release's tracks' ids, by disc, then by number, as its tracklist orders
+	 *  them, for the release table's Play (2_player.md §6.2). A release with no
+	 *  tracks, or one that isn't there, has none.
+	 */
+	releaseTrackIds: (args: IdArgs) => typedError<number[], CommandError>(__TAURI_INVOKE("release_track_ids", { args })),
+	/**
 	 *  What a folder suggests for a new release: the most common album, date
 	 *  and album artist tags, or else the folder's name, the releases with that
 	 *  title already, and how many audio files, images and other files it holds.

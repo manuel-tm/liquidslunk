@@ -3,6 +3,7 @@ import { Link } from "react-router"
 import { Cover } from "@/components/cover"
 import { SortableHead } from "@/components/list/sortable-head"
 import { artistUrl, labelUrl, Names } from "@/components/names"
+import { ReleasePlayButton } from "@/components/player/play-buttons"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Table,
@@ -82,7 +83,8 @@ export type Selection = {
  * one selects the page. Artists show as credited, so on an artist page the
  * title cell says when a release credits the artist under another name: "ALIKA
  * – virmalised". Under each title is an alternate title, the one `q` matched or
- * the first.
+ * the first. A cover shows a play button on hover or focus, which plays the
+ * release (2_player.md §5.2).
  */
 export function ReleaseTable({
   releases,
@@ -164,9 +166,16 @@ export function ReleaseTable({
                   <span className="tabular-nums">{release.id}</span>
                 )}
                 {column === "cover" && (
-                  <Link to={`/releases/${release.id}`}>
-                    <Cover file={release.cover} alt="" className="size-16" />
-                  </Link>
+                  <div className="group/cover relative size-16">
+                    <Link to={`/releases/${release.id}`}>
+                      <Cover file={release.cover} alt="" className="size-16" />
+                    </Link>
+                    <ReleasePlayButton
+                      id={release.id}
+                      title={release.title}
+                      className="absolute right-1 bottom-1 opacity-0 group-hover/cover:opacity-100 focus-visible:opacity-100"
+                    />
+                  </div>
                 )}
                 {column === "title" && (
                   <>

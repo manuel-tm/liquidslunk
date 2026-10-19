@@ -16,10 +16,23 @@ import { toast } from "sonner"
 import type { PlayerTrack } from "@/bindings"
 import { shownName } from "@/lib/credited"
 import { fileUrl, useCommand } from "@/lib/query"
-import { currentEntry, emptyQueue, type Entry, queueReducer } from "@/lib/queue"
+import {
+  currentEntry,
+  type Entry,
+  nextRepeat,
+  queueReducer,
+  type Repeat,
+  restoredQueue,
+  savedQueue,
+} from "@/lib/queue"
 
-// The browser remembers the volume, for every library, as it does the theme
+// The browser remembers the volume, shuffle and repeat, for every library, as
+// it does the theme, and the queue per library, since ids belong to one
+// (2_player.md §5.7)
 const VOLUME = "slunk.player.volume"
+const SHUFFLE = "slunk.player.shuffle"
+const REPEAT = "slunk.player.repeat"
+const QUEUE = "slunk.player.queue"
 // ⌘↑ and ⌘↓ change the volume by this much
 const VOLUME_STEP = 0.1
 
@@ -37,15 +50,31 @@ export type Player = {
   /** From 0 to 1 */
   volume: number
   muted: boolean
-  /** A new queue of these tracks, playing from the one at `start` */
+  shuffle: boolean
+  repeat: Repeat
+  /** What the player shows of each queued track, by id, once loaded */
+  tracks: Map<number, PlayerTrack>
+  /**
+   * A new queue of these tracks, playing from the one at `start`: shuffled,
+   * that one first, or a random one without `start`
+   */
   play: (trackIds: number[], start?: number) => void
+  /** Right after the current track; with nothing queued, a queue, paused */
+  playNext: (trackIds: number[]) => void
+  /** At the end; with nothing queued, a queue, paused */
+  addToQueue: (trackIds: number[]) => void
   toggle: () => void
   setPlaying: (playing: boolean) => void
   next: () => void
   previous: () => void
   jump: (entry: Entry) => void
+  /** Moves an entry `by` places in the order they play */
+  move: (entry: Entry, by: number) => void
   remove: (entry: Entry) => void
   clear: () => void
+  toggleShuffle: () => void
+  /** Off, all, one, then off again */
+  cycleRepeat: () => void
   setVolume: (volume: number) => void
   toggleMuted: () => void
 }
@@ -84,6 +113,45 @@ function timeStore() {
   }
 }
 
+/** What the browser remembers under `key`, or null. */
+function recall(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+/** Remembers `value` under `key`, or forgets it for null. */
+function remember(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key)
+    else localStorage.setItem(key, value)
+  } catch {
+    // Remembering is a convenience
+  }
+}
+
+/** The library's remembered queue, with shuffle and repeat, paused. */
+function rememberedQueue(library: string) {
+  const repeat = recall(REPEAT)
+  let saved: unknown = null
+  try {
+    saved = JSON.parse(recall(`${QUEUE}:${library}`) ?? "null")
+  } catch {
+    // Something else under the key: no queue
+  }
+  return restoredQueue(saved, {
+    shuffle: recall(SHUFFLE) === "true",
+    repeat: repeat === "all" || repeat === "one" ? repeat : "off",
+  })
+}
+
+/** A seed for shuffling. */
+function seed() {
+  return Math.floor(Math.random() * 2 ** 32)
+}
+
 function rememberedVolume(): Volume {
   try {
     const saved = JSON.parse(
@@ -114,11 +182,19 @@ function within(target: EventTarget | null, selector: string) {
  * element that plays it. It's inside `AppLayout`'s keyed `SidebarProvider`,
  * so it keeps playing from page to page, and stops when the library closes
  * or switches. The sidebar only shows its controls, so a hidden sidebar
- * doesn't stop the music.
+ * doesn't stop the music. It starts with the library's remembered queue,
+ * paused.
  */
-export function PlayerProvider({ children }: { children: ReactNode }) {
+export function PlayerProvider({
+  library,
+  children,
+}: {
+  /** The open library's path, which its remembered queue is kept under */
+  library: string
+  children: ReactNode
+}) {
   const audio = useRef<HTMLAudioElement>(null)
-  const [queue, dispatch] = useReducer(queueReducer, emptyQueue)
+  const [queue, dispatch] = useReducer(queueReducer, library, rememberedQueue)
   const [waiting, setWaiting] = useState(false)
   const [{ volume, muted }, setVolumeState] = useState(rememberedVolume)
   const [time] = useState(timeStore)
@@ -180,6 +256,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [current, track, queue.playing])
 
+  // Remembered as it changes (2_player.md §5.7)
+  const saved = JSON.stringify(savedQueue(queue))
+  useEffect(() => {
+    remember(`${QUEUE}:${library}`, saved === "null" ? null : saved)
+  }, [library, saved])
+  useEffect(() => {
+    remember(SHUFFLE, String(queue.shuffle))
+    remember(REPEAT, queue.repeat)
+  }, [queue.shuffle, queue.repeat])
+
   // Back to the start of the current track: Previous, or the end of the queue
   const restarts = useRef(queue.restarts)
   useEffect(() => {
@@ -193,16 +279,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!element) return
     element.volume = volume
     element.muted = muted
-    try {
-      localStorage.setItem(VOLUME, JSON.stringify({ volume, muted }))
-    } catch {
-      // Remembering is a convenience
-    }
+    remember(VOLUME, JSON.stringify({ volume, muted }))
   }, [volume, muted])
 
   const play = useCallback(
-    (trackIds: number[], start = 0) =>
-      dispatch({ type: "play", trackIds, start }),
+    (trackIds: number[], start?: number) =>
+      dispatch({ type: "play", trackIds, start, seed: seed() }),
+    []
+  )
+  const playNext = useCallback(
+    (trackIds: number[]) => dispatch({ type: "playNext", trackIds }),
+    []
+  )
+  const addToQueue = useCallback(
+    (trackIds: number[]) => dispatch({ type: "add", trackIds }),
     []
   )
   const toggle = useCallback(() => dispatch({ type: "toggle" }), [])
@@ -219,11 +309,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     (entry: Entry) => dispatch({ type: "jump", key: entry.key }),
     []
   )
+  const move = useCallback(
+    (entry: Entry, by: number) =>
+      dispatch({ type: "move", key: entry.key, by }),
+    []
+  )
   const remove = useCallback(
     (entry: Entry) => dispatch({ type: "remove", key: entry.key }),
     []
   )
   const clear = useCallback(() => dispatch({ type: "clear" }), [])
+  const toggleShuffle = useCallback(
+    () =>
+      dispatch({ type: "setShuffle", shuffle: !queue.shuffle, seed: seed() }),
+    [queue.shuffle]
+  )
+  const cycleRepeat = useCallback(
+    () => dispatch({ type: "setRepeat", repeat: nextRepeat(queue.repeat) }),
+    [queue.repeat]
+  )
   const setVolume = useCallback(
     (volume: number) =>
       setVolumeState({
@@ -378,14 +482,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       waiting,
       volume,
       muted,
+      shuffle: queue.shuffle,
+      repeat: queue.repeat,
+      tracks,
       play,
+      playNext,
+      addToQueue,
       toggle,
       setPlaying,
       next,
       previous,
       jump,
+      move,
       remove,
       clear,
+      toggleShuffle,
+      cycleRepeat,
       setVolume,
       toggleMuted,
     }),
@@ -397,14 +509,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       waiting,
       volume,
       muted,
+      queue.shuffle,
+      queue.repeat,
+      tracks,
       play,
+      playNext,
+      addToQueue,
       toggle,
       setPlaying,
       next,
       previous,
       jump,
+      move,
       remove,
       clear,
+      toggleShuffle,
+      cycleRepeat,
       setVolume,
       toggleMuted,
     ]
