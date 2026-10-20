@@ -414,6 +414,8 @@ It still never writes to the user's own files, and never inside the library's fo
 
 ## 9. The database
 
+> Changed during implementation, see [Appendix D](#appendix-d-the-schema-checks-a-little-more).
+
 Phase 1 adds one migration, `add_external_libraries`, with two tables.
 
 **`external_libraries`:**
@@ -457,6 +459,8 @@ The kinds are checked by the database: a folder library has `folder` and `path_t
 Deleting an external library deletes its rules, and leaves its destination's files where they are. With the destination connected, the delete dialog also offers to remove what liquidslunk wrote there.
 
 ## 10. The backend
+
+> Changed during implementation, see [Appendix E](#appendix-e-the-context-reads-the-catalog-itself).
 
 A new context, the external libraries context, in `crates/slunk/src/external/`:
 
@@ -622,3 +626,23 @@ The first draft left these open. They were settled on 2026-10-20:
 - **Was:** `${album_artist}/${year} - ${album}/[${disc}-]${track_number:2} ${track_title}.${format}`
 - **Now:** `${album_artist}/[${year} - ]${album}/[${disc}-]${track_number:2} ${track_title}.${format}`
 - **Why:** a release with no date got a folder named " - Scenery", starting with a space and a dash.
+
+## Appendix D: The schema checks a little more
+
+- **Date:** 2026-10-20
+- **Affects:** §9 The database
+- **Was:** a folder library has its folder and template, an iPod has neither, and an iPod's `format` and `cd_resolution` are what it plays. A tag value rule has `tag_equals`, `tag_min` and `tag_max`.
+- **Now:**
+  - `folder` is unique, so a folder belongs to one external library.
+  - An iPod also has `embed_covers` and `cover_file` at 0, since it reads neither (§4.4).
+  - A text tag value rule has only `tag_equals`: the lists' "contains" has no column, so a rule matches a value. A number or date rule has `tag_equals`, or a range.
+  - `tag_equals` compares ignoring case, as text values do, so "Jazz" and "jazz" are one rule.
+- **Why:** each is what the design already says (§2: a destination belongs to one external library; §4.4: the iPod doesn't read embedded covers), checked by the database, which is where integrity goes.
+
+## Appendix E: The context reads the catalog itself
+
+- **Date:** 2026-10-20
+- **Affects:** §10 The backend
+- **Was:** `External::new(store, catalog, tagging)`.
+- **Now:** `External::new(store, media)`. It reads the catalog's and the tags' tables through their repositories, with one connection, and takes the media context for the library's folder, which a folder library can't be in (§3.1). A tag value rule is checked and read with the lists' `tag_filters()`.
+- **Why:** a sync's plan is read in one read transaction (§8.2), which the catalog's methods, each taking the connection on its own, can't give. The mapping (phase 0) already reads this way.

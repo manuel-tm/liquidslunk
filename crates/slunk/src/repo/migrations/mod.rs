@@ -42,6 +42,7 @@ migrations![
     m20261016144030_add_alternate_names,
     m20261016151144_add_credited_names,
     m20261016180957_add_alternate_titles,
+    m20261020045756_add_external_libraries,
 ];
 
 /// Runs statements in order, each prepared on its own, as Kysely ran them.

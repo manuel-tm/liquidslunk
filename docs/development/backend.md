@@ -11,7 +11,7 @@ The backend is Rust, built into the app. It was ported from slunk's Node backend
 - **Phase 5:** the catalog context's tracks: the track list, a track with everything saved with it, and a release's whole track list with its disc titles; what a folder suggests for importing it; and adding one alternate name to an artist.
 - **Phase 6:** the library check and its fixes, and the sample data. slunk's backend was removed, with what ran it.
 
-Since the port, later designs add to it: phase 0 of [2_player.md](../design/2_player.md) added `player_tracks`, what the music player shows of the tracks it queues, phase 1 added `release_track_ids`, a release's tracks for the release table's play button ([Commands](#commands)), and phase 2 added the menu bar's Controls menu, with `set_controls_menu` and the `PlayerControl` event ([The menu bar](#the-menu-bar)). Phase 0 of [4_external_libraries.md](../design/4_external_libraries.md) added the external libraries context, with a track's tags as an external library writes them and path templates, and `exported_tags` ([The external libraries context](#the-external-libraries-context)).
+Since the port, later designs add to it: phase 0 of [2_player.md](../design/2_player.md) added `player_tracks`, what the music player shows of the tracks it queues, phase 1 added `release_track_ids`, a release's tracks for the release table's play button ([Commands](#commands)), and phase 2 added the menu bar's Controls menu, with `set_controls_menu` and the `PlayerControl` event ([The menu bar](#the-menu-bar)). Phase 0 of [4_external_libraries.md](../design/4_external_libraries.md) added the external libraries context, with a track's tags as an external library writes them and path templates, and `exported_tags`; phase 1 added external libraries themselves, their rules, what they come to and what that takes, in liquidslunk's first migration of its own, with their commands, and `track_options` for the track picker ([The external libraries context](#the-external-libraries-context)).
 
 Each rule on this page has a test.
 
@@ -54,9 +54,13 @@ crates/slunk/                the domain and its database, with no Tauri dependen
   src/library_check.rs       the library check, over the media context and
                              the catalog
   src/external/              the external libraries context
-    mod.rs                   External: a track's tags, and its path
+    mod.rs                   External: external libraries, their rules, what
+                             they come to, memberships; a track's tags, and
+                             its path
+    repository.rs            the records the context stores
     tags.rs                  a track's tags, from the catalog
     template.rs              path templates, and names on disk
+    estimate.rs              what a track's file will take on a destination
   src/media/                 the media context
     mod.rs                   Media: registering, browsing, updating, deleting
     check.rs                 the library check's file part, and its fixes
@@ -97,6 +101,8 @@ crates/slunk/                the domain and its database, with no Tauri dependen
     credits.rs               credit lines, and the roles in use
     stats.rs                 the languages in use, and the catalog's totals
     tags.rs                  tag definitions, their values, and list filters
+    external_libraries.rs    external libraries and their rules, and the
+                             tracks the rules come to
     helpers.rs               chunked in (…) lists, grouping, sea-query's values
     seeds.rs                 the sample data (npm run db:seed)
     migrations/              one module per migration, listed in mod.rs
@@ -109,8 +115,10 @@ crates/slunk/                the domain and its database, with no Tauri dependen
   tests/languages.rs         language tags, checked against Node's
   tests/tagging.rs           the tagging context's rules
   tests/library_check.rs     the library check's rules
-  tests/external.rs          the external libraries context's rules: tags,
+  tests/external.rs          the external libraries context's mapping: tags,
                              templates, names on disk
+  tests/external_libraries.rs  external libraries, their rules, what they come
+                             to, memberships, and their tables' constraints
   tests/seeds.rs             the sample data
   tests/fixtures/parity/     what slunk's migration runner made
   tests/fixtures/audio/      audio files, what slunk read from them, and the
@@ -135,7 +143,7 @@ src-tauri/
 
 `crates/slunk` doesn't depend on Tauri, so its tests run with a plain `cargo test`, and the CLI uses it directly. Its repositories are plain functions over a `&Connection`, and a `Transaction` is one.
 
-**Contexts** are structs, like slunk's context factories, wired once when a library opens (`Library::new()` in `src-tauri/src/library.rs`), as slunk's `server.ts` wired them: `Media::new(store, library)` takes the store and the library on disk, `Catalog::new(store, media)` the store and the media context, which it registers files with, `Tagging::new(store)` the store, `LibraryCheck::new(media, catalog)` the media context and the catalog, and `External::new(store)` the store, which it reads the catalog through. The library holds the media context and the catalog in `Arc`s, which they share. Commands call contexts, and contexts call repositories.
+**Contexts** are structs, like slunk's context factories, wired once when a library opens (`Library::new()` in `src-tauri/src/library.rs`), as slunk's `server.ts` wired them: `Media::new(store, library)` takes the store and the library on disk, `Catalog::new(store, media)` the store and the media context, which it registers files with, `Tagging::new(store)` the store, `LibraryCheck::new(media, catalog)` the media context and the catalog, and `External::new(store, media)` the store, which it reads the catalog through, and the media context, for the library's folder. The library holds the media context and the catalog in `Arc`s, which they share. Commands call contexts, and contexts call repositories.
 
 **The store** (`repo/store.rs`) holds the library's one connection, behind a mutex. `store.conn()` takes it. `store.transaction(|tx| …)` runs a closure in a transaction, started with `BEGIN IMMEDIATE`, which takes the write lock at once: another process writing the library, like the database commands, makes it wait for the lock (`busy_timeout`) rather than fail midway. A context that writes inside another's transaction takes the `tx`, as `Media::insert_prepared(tx, prepared)` does, so there's no nesting. A context reads files before taking the connection, never while holding it: `prepare_files()` looks up what's registered, lets go of the connection, then reads and hashes the rest.
 
@@ -339,7 +347,41 @@ node crates/slunk/tests/fixtures/languages/generate.ts
 
 ## The external libraries context
 
-`crates/slunk/src/external/` is the external libraries context ([4_external_libraries.md](../design/4_external_libraries.md)). So far it has the mapping, from phase 0: a track's tags as every external library will write them, whatever its format, and its path in a folder library. Nothing writes them yet. Each rule here has a test in `tests/external.rs`, or next to its code.
+`crates/slunk/src/external/` is the external libraries context ([4_external_libraries.md](../design/4_external_libraries.md)): a selection of the library, for a folder or an iPod. So far it has the mapping, from phase 0, a track's tags as every external library will write them and its path in a folder library; and from phase 1, external libraries, their rules, what they come to, and what that will take. Nothing is written to a destination yet. Each rule here has a test in `tests/external.rs` or `tests/external_libraries.rs`, or next to its code.
+
+It reads the catalog's and the tags' tables itself, through their repositories, with one connection ([4_external_libraries.md Appendix E](../design/4_external_libraries.md#appendix-e-the-context-reads-the-catalog-itself)).
+
+### External libraries
+
+An external library is a destination, a selection and a profile (`external/repository.rs`; [reference/database.md](../reference/database.md#external-libraries)).
+- **Creating** one gives it a UUID, version 4, from `/dev/urandom`, which its destination's manifest will name it by. Names are cleaned like other text, and unique ignoring case, which the database enforces: "There's already one with that name, ignoring case".
+- **Its kind** is a folder or an iPod, and can't change: "An external library can't change from a folder to an iPod, or back". An unknown id is `NotFound`: "There's no external library 12".
+- **A folder library's folder** is an absolute path, resolved lexically, and never where the user's own files are ([4_external_libraries.md §3.1](../design/4_external_libraries.md#31-its-destination)). Refused: none ("A folder library needs a folder"), a relative one, the library's own folder, one inside it, one that holds it, and one that holds a registered file, which is a range on the path index, as for browsing. A folder belongs to one external library, which the database enforces: "Another external library uses that folder".
+- **Its profile:** the format lossless files become, `original`, `flac`, `alac` or `aac`; AAC's bitrate, 128 to 320 kbps; CD resolution; a path template, checked, and the default when it's blank; and covers: embedded or not, their size, 100 to 3000 pixels, and a `cover.jpg` or not.
+- **An iPod's** profile is what it plays: Apple Lossless or AAC ("An iPod plays Apple Lossless or AAC"), at CD resolution, with no folder, template, embedded covers or `cover.jpg`, whatever's given. It isn't tied to an iPod yet.
+- **Connected** (`connected()`): a folder library's folder is there. An iPod library never is, yet.
+- **Deleting** one deletes its rules, and touches nothing on its destination.
+
+### Rules and what they come to
+
+A track is in an external library when a rule includes it and no rule leaves it out (`repo::external_libraries::members()`, one query):
+- **A release** brings in its tracks. **An artist** the tracks of every release it's a release artist of, now and later, but not its appearances on other artists' releases. **A track** brings in itself.
+- **A tag value** brings in the releases with it, whole, and the tracks with it. It's a list's tag filter (`tag_filters()`, [The tagging context](#the-tagging-context)) on releases or on tracks: a text tag's value, ignoring case, or a number or date tag's value or range, both ends included. A text rule has no "contains".
+- **Left out:** a release or a track, which wins over every rule.
+- **Order:** by release title, ignoring case, then release, disc and number.
+
+`set_rules()` replaces an external library's rules, in one transaction. A tag value rule's values are cleaned like text and have to read as the tag's type. Each thing is named once: a rule given twice is kept once, text values ignoring case. Refused: leaving out anything but a release or a track ("Only a release or a track can be left out"), including and leaving out the same thing ("A rule can't both include something and leave it out"), a text rule with a range ("A text tag value rule takes a value"), a number or date rule with neither a value nor a range, and something that isn't there ("There's no release 12", "There's no text tag 3"). Deleting a release, an artist, a track or a tag deletes its rules (CASCADE).
+
+**From the catalog's pages,** `add()` and `remove()` change one thing's rules, in one transaction:
+- Adding a release brings it in whole: its exclusion goes, and its tracks', and it gets a rule. An artist gets a rule. A track's exclusion goes and it gets a rule; when its release is left out, the release's other tracks are left out one by one instead, since the release's exclusion would still leave it out. Ids that aren't there are skipped, as in the bulk edits.
+- Removing something takes out its own rule, and when a broader rule still brings it in, leaves it out. A release's tracks' own rules go with it, those that leave them out too. An artist's or a tag value's rule just goes.
+
+**Memberships** (`memberships()`) say which external libraries a release, an artist or a track is in, by name, and why, with how many of its tracks are in:
+- a track: its own rule, or else its release's, an artist's or a tag value's;
+- a release: its own rule or an artist's, even with no tracks yet, unless it's left out; or else a tag value's that brings in all its tracks; or else only some of its tracks, through their own rules;
+- an artist: the external libraries with a rule for it.
+
+**What it will take** (`contents()`): its releases, its tracks, and an estimate of their size (`estimated_size()`, `external/estimate.rs`), by what each source becomes ([4_external_libraries.md §5.2](../design/4_external_libraries.md#52-what-each-source-becomes)): a lossless file that becomes AAC takes its duration at the bitrate; anything else, copied or lossless, its own size. An `.m4a` counts at its own size, since its extension doesn't say whether it's AAC or Apple Lossless, and covers aren't counted. Tracks a sync will leave out are counted apart: APE, WavPack and Musepack except in a folder library that keeps the originals, and DSF, DFF and WMA always. `sample_track()` gives a track to show the path template with: the first one in it, or else the catalog's newest.
 
 ### A track's tags
 
@@ -440,7 +482,7 @@ The app runs `migrate` whenever it opens a library, so users never migrate by ha
 
 Each migration is a module in `repo/migrations/`, `m<timestamp>_<name>.rs`, with an `up` and a `down` that take a `&Transaction`. `migrations![…]` in `mod.rs` declares them and lists them in order, and a test checks that the list is sorted and lists every module in the folder.
 
-slunk's eight migrations are its Kysely migrations' statements, copied from what Kysely actually ran, so they build slunk's schema to the character. Each module runs its statements in order with `run()`, each prepared on its own, as Kysely ran them. Two have logic: `add_tag_value_rules` checks the rows already there before adding its triggers, and `add_credited_names` rebuilds four tables.
+The first eight are slunk's: its Kysely migrations' statements, copied from what Kysely actually ran, so they build slunk's schema to the character. Each module runs its statements in order with `run()`, each prepared on its own, as Kysely ran them. Two have logic: `add_tag_value_rules` checks the rows already there before adding its triggers, and `add_credited_names` rebuilds four tables. The ninth, `add_external_libraries`, is liquidslunk's first of its own.
 
 The rules:
 - Never edit a migration once it has been committed. Write a new one.
@@ -490,12 +532,12 @@ Using it:
 
 ### Parity with slunk
 
-`tests/parity.rs` checks the Rust migrations against slunk's, with fixtures in `tests/fixtures/parity/` that slunk's own runner made:
+`tests/parity.rs` checks slunk's eight migrations, the first eight in `MIGRATIONS`, against slunk's, with fixtures in `tests/fixtures/parity/` that slunk's own runner made:
 - `fresh.schema.json` and `fresh.sql`: a new database slunk migrated. Rust's has the same `sqlite_schema`, row for row, and the same rows.
 - `state_<k>.sql`: a database after slunk's first *k* migrations, each followed by its seed in `seeds/`, rows in every table it made. `final_<k>.sql` is that database after slunk's runner applied the rest, and Rust's runner, from the same state, ends with the same database.
 - `rolled_back_<k>.sql`: the database after *k* migrations, after slunk's runner rolled the last one back. Rust's rollback ends with the same database.
 
-The tests compare everything but `migrations.applied_at`. One more test checks that every `down` undoes its `up`. `add_track_tags`' down recreates three triggers with the baseline's logic, laid out differently, as slunk's did, so that test compares SQL without whitespace and parentheses.
+The tests compare everything but `migrations.applied_at`. One more test checks that every `down` undoes its `up`, liquidslunk's own migrations too. `add_track_tags`' down recreates three triggers with the baseline's logic, laid out differently, as slunk's did, so that test compares SQL without whitespace and parentheses.
 
 The fixtures were made by slunk's runner while its backend was in the repository, and aren't made again: they record what slunk's eight migrations did, and those never change. A new migration has no slunk version to check against, so its tests are its own.
 
@@ -526,11 +568,11 @@ The frontend calls the backend through Tauri commands, in `src-tauri/src/command
   - `artists.rs`: `artists`, `artist`, `artist_options`, `artist_names`, `create_artist`, `update_artist`, `set_artist_picture`, `add_artist_name` and `delete_artist`, and the artist page's: `artist_header`, which every tab shows, `artist_releases`, `artist_appearances` and `artist_credits`;
   - `labels.rs`: `labels`, `label`, `label_options`, `create_label`, `update_label`, `set_label_picture` and `delete_label`, and the label's page, `label_page`;
   - `releases.rs` ([Releases](#releases)): the list, `releases` and `release_ids`; the release page, `release_page`; the edit tabs' header, `release_header`, and their reads, `release`, `release_files` and `release_credits`; `create_release`, `update_release`, `delete_release`, `set_release_cover`, `set_release_files` and `set_release_credits`; the picker's `release_options`, `credit_roles`, and the dashboard's `catalog_totals`;
-  - `tracks.rs` ([Tracks](#tracks)): the list, `tracks`; the track page, `track_page`; the track form's read, `track_form`, and `create_track`, `update_track` and `delete_track`; and the Tracks tab's, `release_tracks`, which with a folder has the import's rows too, and `set_release_tracks`; and the player's: `player_tracks`, which returns what the player shows of each track it's given (its title, who performs it, its release and the release's cover, and its file), once each, in the order given, where an id that isn't a track is left out, not an error, since a queue can name a track deleted since; and `release_track_ids`, a release's tracks' ids by disc, then by number, none for a release that isn't there. Their tests are next to them;
+  - `tracks.rs` ([Tracks](#tracks)): the list, `tracks`; the track page, `track_page`; the track form's read, `track_form`, and `create_track`, `update_track` and `delete_track`; and the Tracks tab's, `release_tracks`, which with a folder has the import's rows too, and `set_release_tracks`; and the player's: `player_tracks`, which returns what the player shows of each track it's given (its title, who performs it, its release and the release's cover, and its file), once each, in the order given, where an id that isn't a track is left out, not an error, since a queue can name a track deleted since; and `release_track_ids`, a release's tracks' ids by disc, then by number, none for a release that isn't there; and the track picker's `track_options`, the first 20 tracks by title, with their release. Their tests are next to them;
   - `import.rs` ([Import suggestions](#import-suggestions)): the import's reads, `release_suggestion` and `import_files`, the release's cover and links with the folder's files;
   - `mod.rs`: `languages`, and what they share: the DTOs of what a release refers to, and `Related`, which loads it;
 - `library_check.rs` ([The library check](#the-library-check)): `library_check`, and its fixes, `relink_files` and `rehash_files`;
-- `external.rs` ([The external libraries context](#the-external-libraries-context)): `exported_tags`, a track's tags as an external library writes them, with its cover, and its path by a template, the default one unless one is given. A template that can't be used is `invalid`, with the reason, and a track that isn't there is null;
+- `external.rs` ([The external libraries context](#the-external-libraries-context)): `external_libraries`, each with whether it's connected; `external_library`, its page, with what's in it, what that takes, and a sample track for its template; `create_external_library`, `update_external_library` and `delete_external_library`; its rules, `external_library_rules` and `set_external_library_rules`, each with what it names; the catalog pages', `add_to_external_library`, `remove_from_external_library` and `external_memberships`; `external_library_tracks`, what's in one, a page at a time, as the track list shows tracks; and `exported_tags`, a track's tags as an external library writes them, with its cover, and its path by a template, the default one unless one is given. A template that can't be used is `invalid`, with the reason, and a track that isn't there is null;
 - `menu.rs` ([The menu bar](#the-menu-bar)): `set_controls_menu`;
 - `tagging.rs` ([The tagging context](#the-tagging-context)): `tags`, `tag`, `tag_options`, `tags_by_ref`, `tag_values`, `tag_value_options`, `create_tag`, `update_tag` and `delete_tag`, which name a tag by its `type` and id; a release's tags, `release_tags` and `set_release_tags`; and the bulk edits, `set_tag_on_releases` and `remove_tag_from_releases`.
 
@@ -555,7 +597,7 @@ Their conventions:
 - `invalid`: a message for the user, which a form or Welcome shows as it is;
 - `internal`.
 
-SQLite's constraint errors are `invalid`, rewritten by the same table slunk's backend used: `UNIQUE constraint failed: tracks.file_id` becomes "That file is already a track's audio". The triggers' own messages pass through. Other errors are `internal`.
+SQLite's constraint errors are `invalid`, rewritten by the table slunk's backend used, with the external libraries' own added: `UNIQUE constraint failed: tracks.file_id` becomes "That file is already a track's audio", and `UNIQUE constraint failed: external_libraries.folder` "Another external library uses that folder". The triggers' own messages pass through. Other errors are `internal`.
 
 ### Choosing the library
 

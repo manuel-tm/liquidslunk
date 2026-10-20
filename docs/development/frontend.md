@@ -16,7 +16,8 @@ The frontend is slunk's, moved into the app in phase 0, in `src/`. It does every
 - the import: a release built from a folder, step by step, with titles split at " = " and artists matched by any of their names;
 - the library check: files missing, moved or changed on disk, unregistered files, and gaps in the catalog;
 - the music player, in the sidebar: a queue of tracks, played or added from the release and track pages, the track list and the release table, with shuffle, repeat, shortcuts, macOS's Now Playing and a Controls menu in the menu bar, and nearly no gap between tracks ([The player](#the-player));
-- tags as exported, on the track page: the track's tags as an external library will write them, and where a folder library will put it ([Tags as exported](#tags-as-exported)).
+- tags as exported, on the track page: the track's tags as an external library will write them, and where a folder library will put it ([Tags as exported](#tags-as-exported));
+- external libraries: their list and their section in the sidebar, each one's page with its Overview, Contents and Settings, "Add to external library" on the release, artist and track pages and in the bulk edits, and where each release, artist and track is in one ([External libraries](#external-libraries)).
 
 Its data comes from Tauri commands, through TanStack Query ([Data](#data)). slunk's frontend read it through GraphQL, and the port moved each page to commands as the context behind it was ported ([design §7.3](../design/1_introduction.md#73-converting-a-route)).
 
@@ -81,6 +82,12 @@ src/
                            pages, by kind
     tags/                  /tags: list, read, form
     import/steps.tsx       /import and its steps
+    external-libraries/
+      list.tsx             /external-libraries
+      form.tsx             /external-libraries/create, and the profile form,
+                           which the Settings tab is too
+      page.tsx             /external-libraries/:id: Overview, Contents and
+                           Settings
   components/
     app-layout.tsx         the app shell: the player, the sidebar, and the
                            page beside it, or Welcome when no library is
@@ -134,6 +141,8 @@ src/
     tags-editor.tsx        a release's or track's tags, as rows to edit
     tag-values.tsx         a tag's values, each linking to the filtered list
     tag-filters.tsx        a list's tag filters: chips, and "Tag filter"
+    external-libraries.tsx a kind's icon, "Add to external library", and
+                           where something is in one, with Remove
     exported-tags.tsx      a track's tags as an external library writes them,
                            for the track page
     release-table.tsx      the release table, with a column set per page
@@ -172,6 +181,9 @@ src/
     queue.ts               the player's queue, as a reducer, and what plays
                            next; queue.test.ts tests them
     tags.ts                tag types, values, and the list's tag filters
+    external.ts            external libraries' labels, rules in words and as
+                           inputs, and memberships in words;
+                           external.test.ts tests them
     utils.ts               cn() helper
 ```
 
@@ -186,7 +198,7 @@ src/
 - **The sidebar's header** is the library menu (`LibraryMenu`): the open library's folder name, with "Switch library…", which closes it and goes to Welcome, "Show in Finder", and the recent libraries, which open in its place. Under it are the player's controls ([The player](#the-player)), then Import.
 - **Switching libraries** clears TanStack Query's cache, so nothing from the old library shows. `AppLayout` is keyed by the library's path, so every page mounts again.
 - **Back and forward** (`HistoryButtons`) are in every page's header, before the title, and ⌘[ and ⌘] do the same: a desktop window has no browser buttons. They use the index React Router keeps in `history.state`.
-- **The sidebar** lists each section that's built, in `sections` in `app-sidebar.tsx`, and the lists the user manages in their own group, `lists`. A section's link stays active on its pages below it (`/artists/12` keeps Artists active).
+- **The sidebar** lists each section that's built, in `sections` in `app-sidebar.tsx`, then the external libraries in their own group, each with a dot that's filled while it's connected, and the lists the user manages in theirs, `lists`. The external libraries' label links to their list. A section's link stays active on its pages below it (`/artists/12` keeps Artists active).
 - **Tabs** that are routes, like an artist's or a release's edit tabs, use `TabLinks`, so each tab is a route.
 - **Wide tables** scroll inside the page: `SidebarInset` has `min-w-0`, so a table can't widen the page past the window.
 - **Unknown ids:** a read or update page whose command returns null renders `NotFound`. A page reads its id with `idParam()` from `@/lib/query`, which parses it with `Number()`, and renders `NotFound` without asking when it isn't an id (`/files/abc`).
@@ -245,8 +257,14 @@ Data comes from Tauri commands, through TanStack Query (design §7.2).
 
 - **The track list** (`routes/tracks/list.tsx`) calls `tracks`, with its page, sort, search, release and tag filters; the page also names the release it filters on, for its picker (`filterRelease`).
 - **The track page** calls `trackPage`, and Delete `deleteTrack`. Its Tags as exported calls `exportedTags`, once it's opened.
+- **The track picker** calls `trackOptions`.
 - **The track form** calls `trackForm`: with `id`, the track it edits, and for a new track, the release and audio file that `?release=` and `?file=` prefill it with. It saves with `createTrack` or `updateTrack`, tags included.
 - **The import** reads with `releaseSuggestion` (the release step), `releaseTracks` with the folder, whose `trackSuggestions` are the folder's rows (the tracks step), and `importFiles`, the release's cover and links with the folder's files (the files step). Its steps save with the edit tabs' commands, and `OtherNamesOffer` with `addArtistName`.
+
+#### External libraries
+
+- **The list and the sidebar** call `externalLibraries`. A page calls `externalLibrary`, with what's in it; Contents `externalLibraryRules`, saved with `setExternalLibraryRules`, and `externalLibraryTracks`; the form `createExternalLibrary` or `updateExternalLibrary`, and `exportedTags` with the template for its example; and Delete `deleteExternalLibrary`.
+- **The catalog's pages** call `externalMemberships` for where a release, artist or track is, `addToExternalLibrary` and `removeFromExternalLibrary`.
 
 #### Tags
 
@@ -274,7 +292,7 @@ Lists share their frame:
 - **One form** serves both create and update, built from shadcn `field`s. It loads first, then renders a form component that keeps the values in state, starting from what loaded.
 - **Labels:** every control has one. A `Select` gets an `id` on its `SelectTrigger`, which the `FieldLabel`'s `htmlFor` points at.
 - **Saving** goes to the read page. When a save fails, the form stays and shows the backend's reason, which is often the database's own message (a CHECK or a trigger).
-- **Pickers:** artists, labels, formats, media, releases, files and tags are chosen with the pickers in `pickers.tsx`, each a `Picker` that searches the backend as the user types and offers the first 20 matches. `FilePicker` searches with the `files` command, by path; the artist, label, format, medium and tag pickers with their own commands (`artistOptions`, `labelOptions`, `listItemOptions`, `tagOptions`), by name; and `ReleasePicker` with `releaseOptions`, by title. Except for files and releases, a picker also offers to create what was typed ("Create artist 'Robbie Nevil'"). Each picker owns its command, so its results stay typed.
+- **Pickers:** artists, labels, formats, media, releases, files and tags are chosen with the pickers in `pickers.tsx`, each a `Picker` that searches the backend as the user types and offers the first 20 matches. `FilePicker` searches with the `files` command, by path; the artist, label, format, medium and tag pickers with their own commands (`artistOptions`, `labelOptions`, `listItemOptions`, `tagOptions`), by name; `ReleasePicker` with `releaseOptions`, by title; and `TrackPicker` with `trackOptions`, by title, with its release after it. Except for files, releases and tracks, a picker also offers to create what was typed ("Create artist 'Robbie Nevil'"); `ArtistPicker` doesn't with `creatable={false}`. Each picker owns its command, so its results stay typed.
   - `Picker` is generic over its option type, so an option can carry more than an id and a name. A `TagOption` also has the tag's type, its id within the type (`tagId`, a string like the other pickers' ids), and whether it's multiple. Its `id` is `type:id`, since ids repeat across types.
   - An option with an `image` shows it before its name, or a placeholder when it's null. The artist picker sets it to the artist's `picture`, and the release picker aliases the field as it aliases the name: `image: cover { id }`.
   - An option's `lang` is its name's language, and its `detail` shows after the name, muted: the label picker sets it to the alternate name the search matched. Typing an alternate name exactly counts as an exact match, so the picker doesn't offer to create a second artist with it.
@@ -370,12 +388,25 @@ The track page ends with "Tags as exported" (`ExportedTags`), closed by default 
 - A field with no value isn't written, so it has no row. A field written as several values, like Artists or Label, shows each one as a badge.
 - The title and the album have their languages' `lang`, and every value has `dir="auto"`.
 
+### External libraries
+
+An external library is a selection of the library, for a folder or an iPod ([4_external_libraries.md](../design/4_external_libraries.md); [backend.md](backend.md#the-external-libraries-context)). Nothing syncs yet.
+- **`/external-libraries`** lists them, with their kind, destination, whether it's connected and when it was last synced, and has New folder library… and New iPod library….
+- **Creating one** (`/external-libraries/create?kind=folder` or `?kind=ipod`) asks for its name and profile, and a folder library's folder, chosen with a folder dialog. It then goes to its Contents. The template field shows the path it gives the catalog's newest track, or why it can't be used. A folder library keeps the original files by default, and an iPod library makes AAC.
+- **Its page** (`/external-libraries/:id`) has three tabs, each a route, under a header with Delete:
+  - **Overview:** its kind and destination, whether it's connected, what's in it (releases, tracks and about how much they take, and how many a sync will leave out), its format, and when it was last synced.
+  - **Contents:** its rules, in two lists, "In it" and "Left out", each naming what it names, linking to it, with a button that removes it. A release, an artist or a track is added with its picker, and a tag value with "Add a tag value": a text tag's value, or a number or date tag's range, either end left empty. Releases and tracks are left out with theirs. Each change saves the whole list, and a picker starts afresh after each pick. Below them, the tracks the rules come to, a page of 50 at a time, by release.
+  - **Settings:** the same form as creating one, with its kind fixed, and the template's example for its first track.
+- **"Add to external library"** (`AddToExternalLibrary`) is a menu of them, on the release, artist and track pages and in the release list's bulk edits, with New external library…. A toast says where it went: "Added Scenery to Car".
+- **Where it is** (`ExternalMemberships`): the release, artist and track pages list the external libraries it's in, and why: "On Car", "On Car, through Pink Floyd", "On Car, through Pink Floyd (11 of 12 tracks)", or for a release with only some tracks in, "3 of 12 tracks on Car". Each links to the library's Contents, and its button takes it out: "Remove from Car" for its own rule, or "Leave out of Car" when a broader rule brings it in.
+
 ### Bulk edits
 
 The release list's rows have checkboxes (`bulk-edit.tsx`). The selection is kept by id, across pages, until it's cleared.
 - **Selecting:** a row's checkbox, or the header's for the page. "Select all N that match" asks `releaseIds` for every release the filters match.
 - **Set a tag:** a tag and a value. A single-value tag gets the value instead of its old one, and a multi-value tag gets it added. The tag picker can create a tag.
 - **Remove a tag:** a tag, and a value to remove only that one.
+- **Add to external library:** each selected release, whole ([External libraries](#external-libraries)).
 - After each, a toast says how many releases changed, and the list is fetched again, as every query is after a mutation. The selection stays, for another edit.
 
 ### Library check
@@ -483,7 +514,7 @@ Pressing `d` toggles between light and dark. It's ignored while typing in a fiel
 
 `npm test` runs Vitest (`vitest run`), configured in `vite.config.ts`'s `test`, so `@/` resolves as it does in the app.
 - **Where:** next to what they test, as `src/**/*.test.ts`. They import `describe`, `it` and `expect` from `vitest`, with no globals, so `tsc -b` checks them like the rest of `src/`.
-- **What:** plain functions, in Node, with no DOM. So far that's the player's queue (`lib/queue.test.ts`). Components are checked in screenshots instead.
+- **What:** plain functions, in Node, with no DOM. So far that's the player's queue (`lib/queue.test.ts`), and external libraries' rules and memberships in words (`lib/external.test.ts`). Components are checked in screenshots instead.
 
 ### Screenshots
 

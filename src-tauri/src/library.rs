@@ -48,7 +48,7 @@ impl Library {
             db: db.to_path_buf(),
             folder: folder_of(db),
             library_check: LibraryCheck::new(media.clone(), catalog.clone()),
-            external: External::new(store.clone()),
+            external: External::new(store.clone(), media.clone()),
             catalog,
             tagging: Tagging::new(store.clone()),
             media,

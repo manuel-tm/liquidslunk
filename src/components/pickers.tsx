@@ -74,7 +74,11 @@ const artistOption = (artist: {
   alternateNames: artist.alternateNames,
 })
 
-export function ArtistPicker(props: PickerProps) {
+/** An artist, searched by any of its names. Without `creatable`, it only picks. */
+export function ArtistPicker({
+  creatable = true,
+  ...props
+}: PickerProps & { creatable?: boolean }) {
   const [query, setQuery] = useState(props.defaultQuery ?? "")
   const q = useDebounced(query)
   const { data } = useCommand("artistOptions", { q })
@@ -88,10 +92,14 @@ export function ArtistPicker(props: PickerProps) {
       query={query}
       onQuery={setQuery}
       options={(data ?? []).map(artistOption).flatMap(withCredits(q))}
-      onCreate={async (name) => {
-        const artist = await create.mutateAsync(name)
-        return { id: String(artist.id), name: artist.name }
-      }}
+      onCreate={
+        creatable
+          ? async (name) => {
+              const artist = await create.mutateAsync(name)
+              return { id: String(artist.id), name: artist.name }
+            }
+          : undefined
+      }
     />
   )
 }
@@ -179,6 +187,31 @@ export function ReleasePicker(props: PickerProps) {
         id: String(release.id),
         name: release.title,
         image: release.cover,
+      }))}
+    />
+  )
+}
+
+/**
+ * A track, searched by title, with its release after it. Its options' ids are
+ * strings, as the Picker's are.
+ */
+export function TrackPicker(props: PickerProps) {
+  const [query, setQuery] = useState("")
+  const q = useDebounced(query)
+  const { data } = useCommand("trackOptions", { q })
+  return (
+    <Picker
+      {...props}
+      noun="track"
+      query={query}
+      onQuery={setQuery}
+      options={(data ?? []).map((track) => ({
+        id: String(track.id),
+        name: track.title,
+        lang: track.titleLanguage ?? track.release.titleLanguage,
+        image: track.cover,
+        detail: track.release.title,
       }))}
     />
   )

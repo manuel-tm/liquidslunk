@@ -10,6 +10,13 @@ import {
   ArtistReleases,
 } from "@/routes/artists/page"
 import { Dashboard } from "@/routes/dashboard"
+import { ExternalLibraryCreate } from "@/routes/external-libraries/form"
+import { ExternalLibraryList } from "@/routes/external-libraries/list"
+import {
+  ExternalLibraryContents,
+  ExternalLibraryOverview,
+  ExternalLibrarySettings,
+} from "@/routes/external-libraries/page"
 import { RegisterFiles } from "@/routes/files/create"
 import { FileList } from "@/routes/files/list"
 import { FileRead } from "@/routes/files/read"
@@ -138,6 +145,16 @@ export const router = createBrowserRouter([
         ],
       },
       { path: "library-check", element: <LibraryCheck /> },
+      {
+        path: "external-libraries",
+        children: [
+          { index: true, element: <ExternalLibraryList /> },
+          { path: "create", element: <ExternalLibraryCreate /> },
+          { path: ":id", element: <ExternalLibraryOverview /> },
+          { path: ":id/contents", element: <ExternalLibraryContents /> },
+          { path: ":id/settings", element: <ExternalLibrarySettings /> },
+        ],
+      },
       { path: "*", element: <NotFound /> },
     ],
   },

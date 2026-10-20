@@ -11,6 +11,7 @@ use slunk::dates::parse_date;
 use slunk::external::{
     DEFAULT_TEMPLATE, External, SortFields, Tags, Template, safe_name, unique_paths,
 };
+use slunk::media::{Library, Media};
 use slunk::repo::store::Store;
 use slunk::repo::{connection, migrator};
 use tempfile::TempDir;
@@ -29,9 +30,10 @@ impl Fixture {
         let db = dir.path().join("slunk.db");
         migrator::migrate(&db, 10).unwrap();
         let store = Arc::new(Store::new(connection::open(&db).unwrap()));
+        let media = Arc::new(Media::new(store.clone(), Library::new(&db)));
         Fixture {
             _dir: dir,
-            external: External::new(store.clone()),
+            external: External::new(store.clone(), media),
             store,
         }
     }

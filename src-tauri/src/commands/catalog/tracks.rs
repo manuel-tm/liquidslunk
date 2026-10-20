@@ -18,7 +18,7 @@ use super::releases::{
 };
 use super::{
     AlternateTitle, Credit, CreditedArtist, FileLink, FileLinkInput, IdArgs, NamedCreditedArtist,
-    NamedItem, Related, files_by_id,
+    NamedItem, OPTIONS, OptionsArgs, Related, files_by_id,
 };
 use crate::commands::media::{File, FileRef};
 use crate::commands::on_library;
@@ -465,7 +465,19 @@ pub fn list(library: &Library, args: TracksArgs) -> Result<TrackPage, CommandErr
         }),
         None => None,
     };
-    let tracks = page.items;
+    Ok(TrackPage {
+        items: list_items(library, page.items)?,
+        total: page.total,
+        filter_release,
+    })
+}
+
+/// Tracks as a list shows them, in the order given.
+pub(crate) fn list_items(
+    library: &Library,
+    tracks: Vec<domain::Track>,
+) -> Result<Vec<TrackListItem>, CommandError> {
+    let catalog = &library.catalog;
     let ids: Vec<i64> = tracks.iter().map(|track| track.id).collect();
     let mut titles = catalog.track_titles_of(&ids)?;
     let file_ids: Vec<i64> = tracks.iter().map(|track| track.file_id).collect();
@@ -476,31 +488,85 @@ pub fn list(library: &Library, args: TracksArgs) -> Result<TrackPage, CommandErr
     } = performers_of(library, &tracks)?;
     let mut related = Related::default();
     related.load_artists(library, performing.values().flatten(), false)?;
-    Ok(TrackPage {
-        items: tracks
-            .into_iter()
-            .filter_map(|track| {
-                let release = releases.get(&track.release_id)?;
-                Some(TrackListItem {
-                    alternate_titles: alternate_titles(titles.remove(&track.id)),
-                    release: header(release),
-                    performers: related
-                        .credited_all(&performing.remove(&track.id).unwrap_or_default()),
-                    file: track_file(&files, track.file_id),
-                    id: track.id,
-                    title: track.title,
-                    title_language: track.title_language,
-                    duration_ms: track.duration_ms,
-                    cd_number: track.cd_number,
-                    track_number: track.track_number,
-                    inserted_at: track.inserted_at,
-                    updated_at: track.updated_at,
-                })
+    Ok(tracks
+        .into_iter()
+        .filter_map(|track| {
+            let release = releases.get(&track.release_id)?;
+            Some(TrackListItem {
+                alternate_titles: alternate_titles(titles.remove(&track.id)),
+                release: header(release),
+                performers: related.credited_all(&performing.remove(&track.id).unwrap_or_default()),
+                file: track_file(&files, track.file_id),
+                id: track.id,
+                title: track.title,
+                title_language: track.title_language,
+                duration_ms: track.duration_ms,
+                cd_number: track.cd_number,
+                track_number: track.track_number,
+                inserted_at: track.inserted_at,
+                updated_at: track.updated_at,
             })
-            .collect(),
-        total: page.total,
-        filter_release,
-    })
+        })
+        .collect())
+}
+
+/// A track, as the track picker offers it.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackOption {
+    pub id: i64,
+    pub title: String,
+    /// Null: the release's
+    pub title_language: Option<String>,
+    pub release: ReleaseHeader,
+    /// The release's cover
+    pub cover: Option<FileRef>,
+}
+
+/// The first 20 tracks whose title or alternate title has `q` in it,
+/// ignoring case, by title, for the track picker.
+#[tauri::command]
+#[specta::specta]
+pub async fn track_options(
+    app: AppHandle,
+    args: OptionsArgs,
+) -> Result<Vec<TrackOption>, CommandError> {
+    on_library(app, move |library| options(library, args)).await
+}
+
+pub fn options(library: &Library, args: OptionsArgs) -> Result<Vec<TrackOption>, CommandError> {
+    let catalog = &library.catalog;
+    let page = catalog.list_tracks(
+        &ListArgs {
+            per_page: Some(OPTIONS),
+            sort: Some("title".into()),
+            q: args.q,
+            ..ListArgs::default()
+        },
+        &domain::TrackFilterArgs::default(),
+    )?;
+    let mut release_ids: Vec<i64> = page.items.iter().map(|track| track.release_id).collect();
+    release_ids.sort_unstable();
+    release_ids.dedup();
+    let releases: HashMap<i64, domain::Release> = catalog
+        .releases_by_ids(&release_ids)?
+        .into_iter()
+        .map(|release| (release.id, release))
+        .collect();
+    Ok(page
+        .items
+        .into_iter()
+        .filter_map(|track| {
+            let release = releases.get(&track.release_id)?;
+            Some(TrackOption {
+                id: track.id,
+                title: track.title,
+                title_language: track.title_language,
+                release: header(release),
+                cover: release.cover_picture.map(|id| FileRef { id }),
+            })
+        })
+        .collect())
 }
 
 /// The track page, or null for an unknown id.

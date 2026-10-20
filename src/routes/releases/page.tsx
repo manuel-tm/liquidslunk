@@ -7,6 +7,10 @@ import { ButtonLink } from "@/components/button-link"
 import { commonFolder, CoverChooser } from "@/components/cover-chooser"
 import { CreditLines } from "@/components/credit-lines"
 import { DeleteButton } from "@/components/delete-button"
+import {
+  AddToExternalLibrary,
+  ExternalMemberships,
+} from "@/components/external-libraries"
 import { artistUrl, labelUrl, Names } from "@/components/names"
 import { PageHeader } from "@/components/page-header"
 import { QueueMenu, TrackPlayButton } from "@/components/player/play-buttons"
@@ -85,6 +89,10 @@ export function ReleasePage() {
       >
         {release && (
           <>
+            <AddToExternalLibrary
+              releases={[release.id]}
+              what={release.title}
+            />
             <ButtonLink variant="outline" to={`/releases/${id}/update`}>
               Edit
             </ButtonLink>
@@ -211,6 +219,7 @@ function Heading({ release }: { release: Release }) {
               </div>
             ))}
         </dl>
+        <ExternalMemberships subject={{ release: release.id }} />
       </div>
     </div>
   )

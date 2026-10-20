@@ -629,7 +629,7 @@ pub(crate) fn owned(
 }
 
 /// Tags by type and id, loaded with one query per type.
-fn tags_by_id(
+pub(crate) fn tags_by_id(
     library: &Library,
     refs: &[(domain::TagType, i64)],
 ) -> Result<HashMap<(domain::TagType, i64), Tag>, CommandError> {

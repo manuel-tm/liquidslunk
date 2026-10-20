@@ -95,7 +95,7 @@ static MESSAGES: LazyLock<Vec<(Regex, &str)>> = LazyLock::new(|| {
             "A file is already registered at that path",
         ),
         (
-            r"UNIQUE constraint failed: (release_formats|release_media|\w+_tags)\.name",
+            r"UNIQUE constraint failed: (release_formats|release_media|\w+_tags|external_libraries)\.name",
             "There's already one with that name, ignoring case",
         ),
         (
@@ -105,6 +105,14 @@ static MESSAGES: LazyLock<Vec<(Regex, &str)>> = LazyLock::new(|| {
         (
             r"UNIQUE constraint failed: (artist|label)_alternate_names\.\w+, \w+\.name",
             "It already has that alternate name",
+        ),
+        (
+            r"UNIQUE constraint failed: external_libraries\.folder",
+            "Another external library uses that folder",
+        ),
+        (
+            r"UNIQUE constraint failed: (index 'external_library_rules_\w+'|external_library_rules\..+)",
+            "Each rule can only be listed once",
         ),
         (
             r"UNIQUE constraint failed: \w+\.\w+_id, \w+\.\w+_id",
@@ -162,6 +170,22 @@ mod tests {
             (
                 "UNIQUE constraint failed: artists_releases.release_id, artists_releases.artist_id",
                 "Each one can only be listed once",
+            ),
+            (
+                "UNIQUE constraint failed: external_libraries.name",
+                "There's already one with that name, ignoring case",
+            ),
+            (
+                "UNIQUE constraint failed: external_libraries.folder",
+                "Another external library uses that folder",
+            ),
+            (
+                "UNIQUE constraint failed: external_library_rules.external_library_id, external_library_rules.text_tag_id, external_library_rules.tag_equals",
+                "Each rule can only be listed once",
+            ),
+            (
+                "UNIQUE constraint failed: index 'external_library_rules_external_library_id_real_number_tag_id_tag_equals_tag_min_tag_max_index'",
+                "Each rule can only be listed once",
             ),
             (
                 "CHECK constraint failed: (\"name_language\" GLOB '[a-z][a-z]'",

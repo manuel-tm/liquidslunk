@@ -7,6 +7,7 @@ pub mod artists;
 pub mod backups;
 pub mod connection;
 pub mod credits;
+pub mod external_libraries;
 pub mod file_links;
 pub mod files;
 pub mod helpers;

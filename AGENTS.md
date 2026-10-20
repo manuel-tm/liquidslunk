@@ -80,9 +80,9 @@ The schema is slunk's, carried over unchanged. Everything else can change faster
 - Enforce integrity in the database (constraints, triggers) wherever it can be expressed, not only in app code.
 - A new migration is a one-way door: slunk refuses a library with a migration it doesn't have, so it can't open that library again, apart from its backups ([design §8](docs/design/1_introduction.md#8-the-transition)). Plan one before writing it.
 
-### Not designed yet: external libraries
+### External libraries follow their design
 
-Don't implement export or sync, and don't add tables for it. It needs its own design doc in `docs/design/` written and agreed first.
+External libraries, export and sync, are designed in [4_external_libraries.md](docs/design/4_external_libraries.md) and built in its phases. Build only what the current phase plans. What the design leaves out, like phones, other iPods or reading back from a destination, needs a design of its own first.
 
 ## Before you finish
 

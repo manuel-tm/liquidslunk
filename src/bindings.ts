@@ -386,6 +386,11 @@ export const commands = {
 	 */
 	releaseTrackIds: (args: IdArgs) => typedError<number[], CommandError>(__TAURI_INVOKE("release_track_ids", { args })),
 	/**
+	 *  The first 20 tracks whose title or alternate title has `q` in it,
+	 *  ignoring case, by title, for the track picker.
+	 */
+	trackOptions: (args: OptionsArgs) => typedError<TrackOption[], CommandError>(__TAURI_INVOKE("track_options", { args })),
+	/**
 	 *  What a folder suggests for a new release: the most common album, date
 	 *  and album artist tags, or else the folder's name, the releases with that
 	 *  title already, and how many audio files, images and other files it holds.
@@ -405,6 +410,61 @@ export const commands = {
 	 *  language picker.
 	 */
 	languages: () => typedError<string[], CommandError>(__TAURI_INVOKE("languages")),
+	/**
+	 *  Every external library, by name ignoring case, for the sidebar and the
+	 *  list.
+	 */
+	externalLibraries: () => typedError<ExternalLibrary[], CommandError>(__TAURI_INVOKE("external_libraries")),
+	/**
+	 *  An external library's page: what's in it, and what it will take. Null for
+	 *  an unknown id.
+	 */
+	externalLibrary: (args: IdArgs) => typedError<({
+	contents: Contents,
+	/**
+	 *  A track to show the path template with: its first, or else the
+	 *  catalog's newest. Null with no tracks at all.
+	 */
+	sampleTrackId: number | null,
+}) & (ExternalLibrary) | null, CommandError>(__TAURI_INVOKE("external_library", { args })),
+	/**  A new external library, with no rules yet. */
+	createExternalLibrary: (args: ExternalLibraryInput) => typedError<ExternalLibrary, CommandError>(__TAURI_INVOKE("create_external_library", { args })),
+	/**
+	 *  Saves an external library's name, folder and profile. Its kind can't
+	 *  change.
+	 */
+	updateExternalLibrary: (args: UpdateExternalLibraryArgs) => typedError<ExternalLibrary, CommandError>(__TAURI_INVOKE("update_external_library", { args })),
+	/**
+	 *  Deletes an external library and its rules. What's on its destination
+	 *  stays there. Returns the id.
+	 */
+	deleteExternalLibrary: (args: IdArgs) => typedError<number, CommandError>(__TAURI_INVOKE("delete_external_library", { args })),
+	/**  An external library's rules, in the order they were added. */
+	externalLibraryRules: (args: IdArgs) => typedError<ExternalRule[], CommandError>(__TAURI_INVOKE("external_library_rules", { args })),
+	/**  Replaces an external library's rules, and returns them as saved. */
+	setExternalLibraryRules: (args: SetRulesArgs) => typedError<ExternalRule[], CommandError>(__TAURI_INVOKE("set_external_library_rules", { args })),
+	/**
+	 *  Adds releases, artists or tracks to an external library, from the
+	 *  catalog's pages and the release list's bulk edits. A release comes in
+	 *  whole. Ids that aren't there are skipped.
+	 */
+	addToExternalLibrary: (args: AddArgs) => typedError<null, CommandError>(__TAURI_INVOKE("add_to_external_library", { args })),
+	/**
+	 *  Takes a release, an artist, a track or a tag value out of an external
+	 *  library: its own rule goes, and a release or track that a broader rule
+	 *  still brings in is left out.
+	 */
+	removeFromExternalLibrary: (args: RemoveArgs) => typedError<null, CommandError>(__TAURI_INVOKE("remove_from_external_library", { args })),
+	/**
+	 *  The external libraries a release, an artist or a track is in, by name,
+	 *  and why. An artist is in those with a rule for it.
+	 */
+	externalMemberships: (args: MembershipsArgs) => typedError<ExternalMembership[], CommandError>(__TAURI_INVOKE("external_memberships", { args })),
+	/**
+	 *  A page of what's in an external library, by release title, then disc and
+	 *  number, as the track list shows tracks.
+	 */
+	externalLibraryTracks: (args: LibraryTracksArgs) => typedError<LibraryTrackPage, CommandError>(__TAURI_INVOKE("external_library_tracks", { args })),
 	/**
 	 *  A track's tags as an external library writes them, and its path by a
 	 *  template, the default one unless one is given, or null for an unknown id.
@@ -546,6 +606,16 @@ export const events = {
 };
 
 /* Types */
+/**  What the catalog's pages add to an external library. */
+export type AddArgs = {
+	/**  The external library */
+	id: number,
+	/**  Each comes in whole */
+	releases?: number[],
+	artists?: number[],
+	tracks?: number[],
+};
+
 /**  An alternate name to add after the artist's others. */
 export type AddArtistNameArgs = {
 	id: number,
@@ -800,6 +870,22 @@ export type CommandError = {
 	message: string,
 };
 
+/**  What's in an external library, and what it will take. */
+export type Contents = {
+	releases: number,
+	tracks: number,
+	/**
+	 *  An estimate: AAC from durations and the bitrate, and everything else
+	 *  at its own size, without covers
+	 */
+	sizeBytes: number,
+	/**
+	 *  Tracks whose files can't be converted or tagged, which a sync leaves
+	 *  out
+	 */
+	leftOut: number,
+};
+
 /**  What the Controls menu shows: the player, as it is. */
 export type Controls = {
 	/**  Pause instead of Play */
@@ -968,6 +1054,107 @@ export type ExportedTagsArgs = {
 	id: number,
 	/**  A path template. Default: the default template. */
 	template?: string | null,
+};
+
+/**  Where an external library's files go. */
+export type ExternalKind = 
+/**  A folder, with its files laid out by a path template */
+"folder" | 
+/**  An iPod with video, 5th or 5.5th generation */
+"ipod";
+
+/**  An external library: its destination and its profile. */
+export type ExternalLibrary = {
+	id: number,
+	name: string,
+	kind: ExternalKind,
+	/**  A folder library's, an absolute path. Null for an iPod. */
+	folder: string | null,
+	/**  What lossless sources become */
+	format: OutputFormat,
+	aacKbps: number,
+	/**  Lossless at most 16-bit and 48 kHz. Always on an iPod. */
+	cdResolution: boolean,
+	/**  A folder library's. Null for an iPod. */
+	pathTemplate: string | null,
+	embedCovers: boolean,
+	/**  An embedded cover's longest side, in pixels */
+	coverPx: number,
+	/**  Also a `cover.jpg` in each folder that holds one release's tracks */
+	coverFile: boolean,
+	/**  When its last sync ended, in epoch seconds. Null before its first. */
+	lastSyncedAt: number | null,
+	/**
+	 *  Whether its destination is there: a folder library's folder. An iPod
+	 *  library isn't tied to an iPod yet, so it isn't.
+	 */
+	connected: boolean,
+	/**  Epoch seconds */
+	insertedAt: number,
+	/**  Epoch seconds */
+	updatedAt: number,
+};
+
+/**  An external library's page. */
+export type ExternalLibraryDetails = {
+	contents: Contents,
+	/**
+	 *  A track to show the path template with: its first, or else the
+	 *  catalog's newest. Null with no tracks at all.
+	 */
+	sampleTrackId: number | null,
+} & ExternalLibrary;
+
+/**
+ *  An external library to save. An iPod's are what it plays: it has no
+ *  folder or template, it's always at CD resolution, and it has no embedded
+ *  covers or `cover.jpg`, so those are ignored.
+ */
+export type ExternalLibraryInput = {
+	/**  Unique ignoring case */
+	name: string,
+	/**  It can't change once it's created */
+	kind: ExternalKind,
+	/**
+	 *  A folder library's: an absolute path, outside the library's folder,
+	 *  with no registered files in it
+	 */
+	folder?: string | null,
+	/**  On an iPod, Apple Lossless or AAC */
+	format: OutputFormat,
+	/**  128 to 320 */
+	aacKbps: number,
+	cdResolution: boolean,
+	/**  A folder library's. Blank is the default template. */
+	pathTemplate?: string | null,
+	embedCovers: boolean,
+	/**  100 to 3000 */
+	coverPx: number,
+	coverFile: boolean,
+};
+
+/**  An external library, by name. */
+export type ExternalLibraryRef = {
+	id: number,
+	name: string,
+	kind: ExternalKind,
+};
+
+/**  An external library something is in. */
+export type ExternalMembership = {
+	library: ExternalLibraryRef,
+	reason: MembershipReason,
+	/**  Its tracks that are in it */
+	tracks: number,
+	/**  Its tracks */
+	total: number,
+};
+
+/**  A rule of an external library's selection. */
+export type ExternalRule = {
+	/**  Left out, whatever else brings it in: a release or a track */
+	exclude: boolean,
+	target: RuleTarget,
 };
 
 /**  A file the user registered. liquidslunk only reads it. */
@@ -1289,6 +1476,20 @@ export type LibraryStatus = {
 	devLibrary: string | null,
 };
 
+/**  A page of what's in an external library. */
+export type LibraryTrackPage = {
+	items: TrackListItem[],
+	total: number,
+};
+
+export type LibraryTracksArgs = {
+	id: number,
+	/**  From 1. Default 1. */
+	page?: number | null,
+	/**  Default 50, at most 200 */
+	perPage?: number | null,
+};
+
 /**  A row of a list the user manages: a release format or release medium. */
 export type ListItem = {
 	id: number,
@@ -1324,6 +1525,22 @@ export type ListItemsArgs = {
 } & PageArgs;
 
 export type ListKind = "release_formats" | "release_media";
+
+/**  Why something is in an external library. */
+export type MembershipReason = 
+/**  A rule names it */
+{ type: "own" } | 
+/**  A broader rule brings it in: its release, an artist, a tag value */
+{ type: "through"; rule: ExternalRule } | 
+/**  Only some of a release's tracks, through rules of their own */
+{ type: "tracks" };
+
+/**  A release, an artist or a track: exactly one. */
+export type MembershipsArgs = {
+	release?: number | null,
+	artist?: number | null,
+	track?: number | null,
+};
 
 /**  The migrations opening a library applied, and the backup made first. */
 export type MigrationReport = {
@@ -1390,6 +1607,15 @@ export type Opened = {
 export type OptionsArgs = {
 	q?: string | null,
 };
+
+/**  What lossless sources become. Lossy ones are copied. */
+export type OutputFormat = 
+/**  Kept as they are: a folder library only */
+"original" | 
+/**  A folder library only */
+"flac" | 
+/**  Apple Lossless */
+"alac" | "aac";
 
 /**  A page of a list: artists, labels, formats or media. */
 export type PageArgs = {
@@ -1735,6 +1961,12 @@ export type RelinkFilesArgs = {
 	moves: FileMoveInput[],
 };
 
+export type RemoveArgs = {
+	/**  The external library */
+	id: number,
+	target: RuleTargetInput,
+};
+
 /**
  *  A tag, and a value to remove from many releases, or none to remove them
  *  all.
@@ -1754,6 +1986,53 @@ export type RenameListItemArgs = {
 
 /**  How the queue repeats, as `lib/queue.ts` has it. */
 export type Repeat = "off" | "all" | "one";
+
+/**  A rule to save. */
+export type RuleInput = {
+	/**  Left out: a release or a track only. Default false. */
+	exclude?: boolean,
+	target: RuleTargetInput,
+};
+
+/**  A release a rule names. */
+export type RuleRelease = {
+	id: number,
+	title: string,
+	titleLanguage: string | null,
+	cover: FileRef | null,
+	/**  As credited */
+	artists: CreditedArtist[],
+};
+
+/**  What a rule names. */
+export type RuleTarget = 
+/**  Its tracks */
+{ type: "release"; release: RuleRelease } | 
+/**  The tracks of every release the artist is a release artist of */
+{ type: "artist"; artist: ArtistRef } | { type: "track"; track: RuleTrack } | 
+/**
+ *  The releases with the value, whole, and the tracks with it. Text
+ *  matches `equals`, ignoring case; numbers and dates `equals`, or the
+ *  range from `min` to `max`, both included.
+ */
+{ type: "tag"; tag: Tag; equals: string | null; min: string | null; max: string | null };
+
+/**  What a rule names, to save it. */
+export type RuleTargetInput = { type: "release"; id: number } | { type: "artist"; id: number } | { type: "track"; id: number } | 
+/**
+ *  A tag filter, as the lists take them: text `equals`, and numbers and
+ *  dates `equals`, or a range from `min` to `max`
+ */
+{ type: "tag"; tag: TagArgs; equals: string | null; min: string | null; max: string | null };
+
+/**  A track a rule names. */
+export type RuleTrack = {
+	id: number,
+	title: string,
+	/**  Null: the release's */
+	titleLanguage: string | null,
+	release: ReleaseHeader,
+};
 
 /**  A release with the title a folder suggests already. */
 export type SameTitle = {
@@ -1828,6 +2107,12 @@ export type SetReleaseTracksArgs = {
 	 *  its title.
 	 */
 	discTitles?: DiscTitleInput[] | null,
+};
+
+export type SetRulesArgs = {
+	id: number,
+	/**  In order. A rule given twice is kept once. */
+	rules: RuleInput[],
 };
 
 /**  A tag and a value, to set on many releases. */
@@ -2120,6 +2405,17 @@ export type TrackListItem = {
 	file: TrackFile,
 };
 
+/**  A track, as the track picker offers it. */
+export type TrackOption = {
+	id: number,
+	title: string,
+	/**  Null: the release's */
+	titleLanguage: string | null,
+	release: ReleaseHeader,
+	/**  The release's cover */
+	cover: FileRef | null,
+};
+
 /**
  *  A page of tracks, and the release filter's title, for its picker: null
  *  when it wasn't asked for, or isn't there.
@@ -2206,6 +2502,10 @@ export type UnregisteredFolder = {
 export type UpdateArtistArgs = {
 	id: number,
 } & ArtistInput;
+
+export type UpdateExternalLibraryArgs = {
+	id: number,
+} & ExternalLibraryInput;
 
 export type UpdateFileArgs = {
 	id: number,

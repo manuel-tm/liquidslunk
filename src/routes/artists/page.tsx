@@ -8,6 +8,10 @@ import { ButtonLink } from "@/components/button-link"
 import { Cover } from "@/components/cover"
 import { CoverChooser } from "@/components/cover-chooser"
 import { DeleteButton } from "@/components/delete-button"
+import {
+  AddToExternalLibrary,
+  ExternalMemberships,
+} from "@/components/external-libraries"
 import { FileGallery } from "@/components/file-gallery"
 import { PER_PAGE } from "@/components/list/list-layout"
 import { Pager } from "@/components/list/pager"
@@ -86,6 +90,7 @@ function ArtistFrame({
       >
         {artist && (
           <>
+            <AddToExternalLibrary artists={[artist.id]} what={artist.name} />
             <ButtonLink variant="outline" to={`${base}/update`}>
               Edit
             </ButtonLink>
@@ -152,6 +157,7 @@ function ArtistFrame({
                   {artist.name}
                 </h1>
                 <AlternateNames names={artist.alternateNames} />
+                <ExternalMemberships subject={{ artist: artist.id }} />
               </div>
             </div>
             {children}

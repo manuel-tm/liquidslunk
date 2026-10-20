@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 import { toast } from "sonner"
 
+import { AddToExternalLibrary } from "@/components/external-libraries"
 import { type TagOption, TagPicker } from "@/components/pickers"
 import { QueryError } from "@/components/query-error"
 import { TagValueInput } from "@/components/tag-value-input"
@@ -62,6 +63,11 @@ export function BulkEditBar({
       <div className="ml-auto flex gap-2">
         <BulkTagDialog mode="set" ids={selected} />
         <BulkTagDialog mode="remove" ids={selected} />
+        <AddToExternalLibrary
+          releases={selected}
+          what={releases(selected.length)}
+          size="sm"
+        />
       </div>
     </div>
   )

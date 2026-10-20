@@ -5,6 +5,7 @@ import {
   DiscIcon,
   FilesIcon,
   FolderInputIcon,
+  HardDriveIcon,
   LayersIcon,
   LayoutDashboardIcon,
   type LucideIcon,
@@ -15,6 +16,7 @@ import {
 import { Link, useMatch } from "react-router"
 
 import { ButtonLink } from "@/components/button-link"
+import { ExternalKindIcon } from "@/components/external-libraries"
 import { LibraryMenu } from "@/components/library-menu"
 import { SidebarPlayer } from "@/components/player/sidebar-player"
 import {
@@ -28,6 +30,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { useCommand } from "@/lib/query"
 
 type Section = { title: string; to: string; icon: LucideIcon }
 
@@ -70,6 +73,7 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        <ExternalLibraries />
         <SidebarGroup>
           <SidebarGroupLabel>Lists</SidebarGroupLabel>
           <SidebarGroupContent>
@@ -82,6 +86,79 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
     </Sidebar>
+  )
+}
+
+/**
+ * The external libraries, each with whether it's connected, and a link to
+ * them all (4_external_libraries.md §11).
+ */
+function ExternalLibraries() {
+  const { data: libraries } = useCommand("externalLibraries")
+  const all = useMatch({ path: "/external-libraries", end: true }) !== null
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel render={<Link to="/external-libraries" />}>
+        External libraries
+      </SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {libraries?.map((library) => (
+            <ExternalLibraryLink key={library.id} {...library} />
+          ))}
+          {libraries?.length === 0 && (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                render={<Link to="/external-libraries" />}
+                isActive={all}
+                className="text-muted-foreground"
+              >
+                <HardDriveIcon />
+                <span>None yet</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  )
+}
+
+function ExternalLibraryLink({
+  id,
+  name,
+  kind,
+  connected,
+}: {
+  id: number
+  name: string
+  kind: "folder" | "ipod"
+  connected: boolean
+}) {
+  const to = `/external-libraries/${id}`
+  const active = useMatch({ path: to, end: false }) !== null
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        render={<Link to={to} />}
+        isActive={active}
+        title={connected ? `${name}: connected` : `${name}: not connected`}
+      >
+        <ExternalKindIcon kind={kind} />
+        <span className="truncate">{name}</span>
+        <span
+          aria-hidden
+          className={
+            connected
+              ? "ml-auto size-1.5 shrink-0 rounded-full bg-primary"
+              : "ml-auto size-1.5 shrink-0 rounded-full border border-muted-foreground"
+          }
+        />
+        <span className="sr-only">
+          {connected ? "Connected" : "Not connected"}
+        </span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   )
 }
 

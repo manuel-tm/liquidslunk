@@ -3,7 +3,8 @@
 //! its backend was in the repository: a database at each migration, with sample
 //! rows, then where slunk took it, migrated to the end, and rolled back one. So
 //! these tests check the Rust migrator against what slunk did. They cover
-//! slunk's eight migrations, which never change.
+//! slunk's eight migrations, which never change, and only those: the
+//! migrations after them are liquidslunk's, with their own tests.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,7 +13,12 @@ use rusqlite::Connection;
 use rusqlite::types::ValueRef;
 use serde::Deserialize;
 use slunk::repo::migrations::MIGRATIONS;
-use slunk::repo::migrator::{migrate, migrate_with, rollback, rollback_with};
+use slunk::repo::migrator::{migrate_with, rollback_with};
+
+/// slunk's eight migrations, the first in `MIGRATIONS`
+fn slunks() -> &'static [slunk::repo::migrator::Migration] {
+    &MIGRATIONS[..8]
+}
 
 /// A row of `sqlite_schema`, without `rootpage`.
 #[derive(Debug, PartialEq, Eq, Deserialize)]
@@ -27,7 +33,7 @@ struct SchemaRow {
 fn a_new_database_has_slunks_schema() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("slunk.db");
-    migrate(&db, 10).unwrap();
+    migrate_with(&db, slunks(), 10).unwrap();
 
     let theirs: Vec<SchemaRow> = serde_json::from_str(&fixture("fresh.schema.json")).unwrap();
     assert_eq!(schema(&db, "order by rowid"), theirs);
@@ -40,10 +46,10 @@ fn a_new_database_has_slunks_schema() {
 
 #[test]
 fn upgrades_end_where_slunks_do() {
-    for k in 0..MIGRATIONS.len() {
+    for k in 0..slunks().len() {
         let dir = tempfile::tempdir().unwrap();
         let db = load(dir.path(), "rust", &fixture(&format!("state_{k}.sql")));
-        migrate(&db, 10).unwrap();
+        migrate_with(&db, slunks(), 10).unwrap();
         let theirs = load(dir.path(), "slunk", &fixture(&format!("final_{k}.sql")));
         assert_same(
             &snapshot(&db),
@@ -55,16 +61,16 @@ fn upgrades_end_where_slunks_do() {
 
 #[test]
 fn rollbacks_end_where_slunks_do() {
-    for k in 1..=MIGRATIONS.len() {
+    for k in 1..=slunks().len() {
         let dir = tempfile::tempdir().unwrap();
-        let start = if k < MIGRATIONS.len() {
+        let start = if k < slunks().len() {
             format!("state_{k}.sql")
         } else {
             format!("final_{}.sql", k - 1)
         };
         let db = load(dir.path(), "rust", &fixture(&start));
-        let outcome = rollback(&db, 1, 10).unwrap();
-        assert_eq!(outcome.names, [MIGRATIONS[k - 1].name]);
+        let outcome = rollback_with(&db, slunks(), 1, 10).unwrap();
+        assert_eq!(outcome.names, [slunks()[k - 1].name]);
         let theirs = load(
             dir.path(),
             "slunk",

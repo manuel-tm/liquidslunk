@@ -6,6 +6,10 @@ import { ButtonLink } from "@/components/button-link"
 import { CreditLines } from "@/components/credit-lines"
 import { DeleteButton } from "@/components/delete-button"
 import { ExportedTags } from "@/components/exported-tags"
+import {
+  AddToExternalLibrary,
+  ExternalMemberships,
+} from "@/components/external-libraries"
 import { artistUrl, Names } from "@/components/names"
 import { PageHeader } from "@/components/page-header"
 import { QueueMenu } from "@/components/player/play-buttons"
@@ -50,6 +54,7 @@ export function TrackRead() {
       >
         {track && (
           <>
+            <AddToExternalLibrary tracks={[track.id]} what={track.title} />
             <ButtonLink variant="outline" to={`/tracks/${id}/update`}>
               Edit
             </ButtonLink>
@@ -104,6 +109,7 @@ export function TrackRead() {
                 )}
               </p>
             </div>
+            <ExternalMemberships subject={{ track: track.id }} />
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
               <dt className="text-muted-foreground">Release</dt>
               <dd>
