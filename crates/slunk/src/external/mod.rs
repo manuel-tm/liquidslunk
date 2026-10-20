@@ -1,8 +1,8 @@
 //! The external libraries context (4_external_libraries.md): a selection of
 //! the library, converted, tagged and given covers from the catalog, for a
 //! folder or an iPod. It has the mapping (phase 0); external libraries with
-//! their rules, what they come to, and what that will take (phase 1); and
-//! syncing a folder library (phase 2). An iPod isn't synced yet.
+//! their rules, what they come to, and what that will take (phase 1);
+//! syncing a folder library (phase 2); and syncing an iPod (phase 3).
 //!
 //! - `repository`: the records the context stores.
 //! - `tags`: a track's tags, worked out from the catalog (§4).
@@ -14,7 +14,8 @@
 //! - `manifest`: what's on a destination, and its journal (§8.1).
 //! - `plan`: what a sync would do (§8.2).
 //! - `sync`: running a plan (§8.3).
-//! - `folder`: a folder destination, and its files (§6.3).
+//! - `folder`: a destination's files: a folder's, or an iPod's (§6.3).
+//! - `ipod`: the iPod: finding it, its database, its artwork (§7).
 //! - `scratch`: a sync's temporary folder.
 //! - `volume`: a destination's volume: its free space, and ejecting it.
 
@@ -42,6 +43,7 @@ pub mod convert;
 pub mod covers;
 mod estimate;
 pub mod folder;
+pub mod ipod;
 pub mod manifest;
 pub mod plan;
 mod repository;
@@ -54,6 +56,7 @@ pub mod write_tags;
 
 pub use estimate::estimated_size;
 pub use folder::Folder;
+pub use ipod::Ipod;
 pub use plan::Plan;
 pub use repository::*;
 pub use tags::{SortFields, Tags};
@@ -61,6 +64,8 @@ pub use template::{DEFAULT_TEMPLATE, Template, TrackPath, safe_name, unique_path
 
 /// AAC's bitrate when none is given, in kbps
 pub const DEFAULT_AAC_KBPS: i64 = 256;
+/// The largest of an iPod's thumbnails, which its covers are made for
+const IPOD_COVER_PX: u32 = 200;
 /// An embedded cover's longest side when none is given, in pixels
 pub const DEFAULT_COVER_PX: i64 = 600;
 
@@ -147,11 +152,14 @@ pub enum Destination {
     /// It's there, and its manifest names this external library, or it has
     /// none yet
     Connected,
-    /// It isn't there: a folder that moved, a card that isn't in, or an
-    /// iPod, which isn't found yet
+    /// It isn't there: a folder that moved, a card that isn't in, or no
+    /// iPod that's its
     Missing,
     /// Its manifest names another external library, by its name
     Elsewhere(String),
+    /// Several iPods without a manifest are connected, and it isn't known
+    /// which is its
+    Several,
 }
 
 /// The external library a manifest names, with the manifest's size and
@@ -167,10 +175,15 @@ pub struct SyncPlan {
     pub plan: Plan,
     /// The bytes free on the destination's volume
     pub free_bytes: Option<u64>,
-    /// The manifest's size and mtime when it was read
+    /// The iPod it syncs to
+    pub ipod: Option<Ipod>,
+    /// The manifest's size and mtime when it was read, and the iTunesDB's
     manifest_stamp: Option<(u64, i64)>,
+    database_stamp: Option<(u64, i64)>,
     /// Each release's cover in the library
     cover_paths: HashMap<i64, PathBuf>,
+    /// The same, by what a file records of it, for an iPod's artwork
+    covers: HashMap<manifest::CoverKey, PathBuf>,
 }
 
 impl SyncPlan {
@@ -192,6 +205,8 @@ pub struct External {
     /// Manifests' identities, by folder, with the manifest's size and mtime
     /// when it was read, so it's read again only when it changes
     identities: Mutex<HashMap<PathBuf, Identity>>,
+    /// Where iPods are looked for: /Volumes
+    volumes: PathBuf,
 }
 
 impl External {
@@ -202,6 +217,15 @@ impl External {
             plans: Mutex::new(HashMap::new()),
             running: Mutex::new(None),
             identities: Mutex::new(HashMap::new()),
+            volumes: PathBuf::from(ipod::VOLUMES),
+        }
+    }
+
+    /// Looks for iPods in another folder than /Volumes, for tests.
+    pub fn with_volumes(self, volumes: impl Into<PathBuf>) -> External {
+        External {
+            volumes: volumes.into(),
+            ..self
         }
     }
 
@@ -276,28 +300,97 @@ impl External {
         if remove_files && let Some(library) = self.get(id)? {
             let folder = self.connected_folder(&library)?;
             let loaded = folder.manifest().load()?;
-            let paths: Vec<String> = loaded
+            let files: Vec<manifest::Entry> = loaded
                 .manifest
-                .map(|manifest| manifest.files.into_iter().map(|file| file.path).collect())
+                .map(|manifest| manifest.files)
                 .unwrap_or_default();
-            for path in &paths {
-                folder.remove(path)?;
+            if library.kind == ExternalKind::Ipod {
+                self.empty_ipod(&library, &folder, files)?;
+            } else {
+                let paths: Vec<&str> = files.iter().map(|file| file.path.as_str()).collect();
+                for path in &paths {
+                    folder.remove(path)?;
+                }
+                folder.remove_empty_folders(paths)?;
             }
-            folder.remove_empty_folders(paths.iter().map(String::as_str))?;
             folder.manifest().remove()?;
         }
         repo::delete(&self.store.conn(), id)
     }
 
+    /// Removes liquidslunk's tracks from an iPod: their files, and the
+    /// database, written again without them. Refused while the iPod has
+    /// tracks from somewhere else, which a database of liquidslunk's own
+    /// would leave out.
+    fn empty_ipod(
+        &self,
+        library: &ExternalLibrary,
+        folder: &Folder,
+        files: Vec<manifest::Entry>,
+    ) -> Result<()> {
+        let ours: HashSet<String> = files.iter().map(|file| file.path.to_lowercase()).collect();
+        let others = ipod::sync::read_database(folder)?.map_or(0, |database| {
+            database
+                .tracks
+                .iter()
+                .filter(|track| !ours.contains(&ipod::path_of(&track.location).to_lowercase()))
+                .count()
+        });
+        if others > 0 {
+            return Err(Error::Invalid(format!(
+                "This iPod also has {others} {} from somewhere else, which liquidslunk's database would leave out. Delete the external library without removing its files.",
+                if others == 1 { "track" } else { "tracks" }
+            )));
+        }
+        let steps = files
+            .iter()
+            .map(|file| plan::Step {
+                action: plan::Action::Remove,
+                subject: match file.written {
+                    manifest::Written::Track { track, .. } => plan::Subject::Track(track),
+                    manifest::Written::Cover { release, .. } => plan::Subject::Release(release),
+                },
+                path: file.path.clone(),
+                from: None,
+                changes: Vec::new(),
+                bytes: 0,
+            })
+            .collect();
+        let plan = Plan {
+            steps,
+            present: files,
+            ..Plan::default()
+        };
+        let scratch = scratch::Scratch::new()?;
+        let cancel = AtomicBool::new(false);
+        ipod::sync::run(
+            ipod::sync::IpodRun {
+                plan: &plan,
+                folder,
+                uuid: &library.uuid,
+                name: &library.name,
+                covers: HashMap::new(),
+                cancel: &cancel,
+                scratch: &scratch,
+                erase: false,
+                make_room_first: false,
+            },
+            &|_| {},
+        )
+        .map(|_| ())
+    }
+
     /// Whether its destination is there to sync: a folder library's folder,
-    /// with a manifest that names it, or none. An iPod library isn't tied
-    /// to an iPod yet, so it isn't.
+    /// or an iPod library's iPod, with a manifest that names it, or none.
     pub fn connected(&self, library: &ExternalLibrary) -> bool {
         self.destination(library) == Destination::Connected
     }
 
     /// Whether its destination is there, and whose it is (§3.1).
     pub fn destination(&self, library: &ExternalLibrary) -> Destination {
+        if library.kind == ExternalKind::Ipod {
+            return self.find_ipod(library).0;
+        }
         let Some(folder) = folder_of_library(library) else {
             return Destination::Missing;
         };
@@ -310,20 +403,63 @@ impl External {
         }
     }
 
-    /// The volume its folder is on, when it's one to eject.
+    /// An iPod library's iPod, among those mounted (§7.2): the one whose
+    /// manifest names it, or else the only one without a manifest that
+    /// liquidslunk syncs. It takes its manifest at its first sync.
+    pub fn find_ipod(&self, library: &ExternalLibrary) -> (Destination, Option<Ipod>) {
+        let mut free = Vec::new();
+        let mut elsewhere = None;
+        for found in ipod::mounted_in(&self.volumes) {
+            match self.identity(&found.folder()) {
+                Some((uuid, _)) if uuid == library.uuid => {
+                    return (Destination::Connected, Some(found));
+                }
+                Some((_, name)) => {
+                    elsewhere.get_or_insert(name);
+                }
+                None if found.refusal().is_none() => free.push(found),
+                None => {}
+            }
+        }
+        match (free.len(), elsewhere) {
+            (1, _) => (Destination::Connected, free.pop()),
+            (0, Some(name)) => (Destination::Elsewhere(name), None),
+            (0, None) => (Destination::Missing, None),
+            _ => (Destination::Several, None),
+        }
+    }
+
+    /// The iPods mounted now, each with the external library its manifest
+    /// names, if it has one.
+    pub fn mounted_ipods(&self) -> Vec<(Ipod, Option<String>)> {
+        ipod::mounted_in(&self.volumes)
+            .into_iter()
+            .map(|found| {
+                let whose = self.identity(&found.folder()).map(|(_, name)| name);
+                (found, whose)
+            })
+            .collect()
+    }
+
+    /// Where its files go, when that's there: a folder library's folder, or
+    /// an iPod library's iPod's disk.
+    fn destination_root(&self, library: &ExternalLibrary) -> Option<PathBuf> {
+        match library.kind {
+            ExternalKind::Folder => folder_of_library(library)
+                .filter(Folder::is_there)
+                .map(|folder| folder.root().to_path_buf()),
+            ExternalKind::Ipod => self.find_ipod(library).1.map(|found| found.mount),
+        }
+    }
+
+    /// The volume its files are on, when it's one to eject.
     pub fn ejectable(&self, library: &ExternalLibrary) -> Option<PathBuf> {
-        let folder = folder_of_library(library)?;
-        folder
-            .is_there()
-            .then(|| volume::ejectable(folder.root()))?
+        volume::ejectable(&self.destination_root(library)?)
     }
 
     /// The bytes free where its files go.
     pub fn free_bytes(&self, library: &ExternalLibrary) -> Option<u64> {
-        let folder = folder_of_library(library)?;
-        folder
-            .is_there()
-            .then(|| volume::free_space(folder.root()))?
+        volume::free_space(&self.destination_root(library)?)
     }
 
     /// Which external library a manifest names, read again only when the
@@ -341,12 +477,24 @@ impl External {
         identity
     }
 
-    /// Its folder, when it's connected, or why it isn't.
+    /// Its folder, or its iPod's disk, when it's connected, or why it isn't.
     fn connected_folder(&self, library: &ExternalLibrary) -> Result<Folder> {
         if library.kind == ExternalKind::Ipod {
-            return Err(Error::Invalid(
-                "liquidslunk doesn't sync an iPod yet".into(),
-            ));
+            return match self.find_ipod(library) {
+                (Destination::Connected, Some(found)) => match found.refusal() {
+                    Some(refusal) => Err(Error::Invalid(refusal)),
+                    None => Ok(found.folder()),
+                },
+                (Destination::Elsewhere(name), _) => Err(Error::Invalid(format!(
+                    "This iPod belongs to another external library, {name}."
+                ))),
+                (Destination::Several, _) => Err(Error::Invalid(
+                    "Several iPods without liquidslunk's manifest are connected. Eject all but the one to sync.".into(),
+                )),
+                _ => Err(Error::Invalid(
+                    "No iPod is connected. Connect it with its disk use on, so it mounts in Finder.".into(),
+                )),
+            };
         }
         let folder = folder_of_library(library)
             .ok_or_else(|| Error::Invalid("A folder library needs a folder".into()))?;
@@ -359,6 +507,7 @@ impl External {
             Destination::Elsewhere(name) => Err(Error::Invalid(format!(
                 "This folder belongs to another external library, {name}."
             ))),
+            Destination::Several => Err(Error::Invalid("It isn't known which folder".into())),
         }
     }
 
@@ -396,7 +545,7 @@ impl External {
         repo::update(&self.store.conn(), id, &values)?.ok_or_else(|| not_found(id))
     }
 
-    /// Ejects the volume its folder is on, so it can be unplugged.
+    /// Ejects the volume its files are on, so it can be unplugged.
     pub fn eject(&self, id: i64) -> Result<()> {
         let library = self.get(id)?.ok_or_else(|| not_found(id))?;
         if self.syncing().is_some() {
@@ -406,7 +555,7 @@ impl External {
         }
         let mount = self
             .ejectable(&library)
-            .ok_or_else(|| Error::Invalid("Its folder isn't on a disk that's ejected".into()))?;
+            .ok_or_else(|| Error::Invalid("Its files aren't on a disk that's ejected".into()))?;
         volume::eject(&mount)
     }
 
@@ -649,10 +798,11 @@ impl External {
 
     // Syncing
 
-    /// Works out what a sync of a folder library would do (§8.2), and keeps
-    /// it, for `sync()` to run. What should be there is read in one read
-    /// transaction, then the connection is let go before any file is read:
-    /// each source's format, its cover, the manifest, and the destination.
+    /// Works out what a sync would do (§8.2), and keeps it, for `sync()` to
+    /// run. What should be there is read in one read transaction, then the
+    /// connection is let go before any file is read: each source's format,
+    /// its cover, the manifest, and the destination: a folder library's
+    /// folder, or an iPod's database.
     pub fn plan_sync(&self, id: i64) -> Result<Arc<SyncPlan>> {
         let snapshot = self.store.read(|tx| {
             let library = require(tx, id)?;
@@ -676,6 +826,12 @@ impl External {
         })?;
         let (library, ids, mut tags, facts, cover_files) = snapshot;
         let folder = self.connected_folder(&library)?;
+        let on_ipod = library.kind == ExternalKind::Ipod;
+        let found_ipod = if on_ipod {
+            self.find_ipod(&library).1
+        } else {
+            None
+        };
         let profile = &library.profile;
         let template =
             Template::parse(profile.path_template.as_deref().unwrap_or(DEFAULT_TEMPLATE))?;
@@ -692,7 +848,12 @@ impl External {
         let mut inputs = plan::Inputs::default();
         let mut cover_keys: HashMap<i64, manifest::CoverKey> = HashMap::new();
         let mut cover_paths: HashMap<i64, PathBuf> = HashMap::new();
-        if profile.embed_covers || profile.cover_file {
+        let cover_px = if on_ipod {
+            IPOD_COVER_PX
+        } else {
+            u32::try_from(profile.cover_px).unwrap_or(600)
+        };
+        if profile.embed_covers || profile.cover_file || on_ipod {
             let mut checked: HashSet<i64> = HashSet::new();
             for track in &ids {
                 let (Some(tags), Some(facts)) = (tags.get(track), facts.get(track)) else {
@@ -720,7 +881,7 @@ impl External {
                             release,
                             manifest::CoverKey {
                                 source: cover.sha256.clone(),
-                                px: u32::try_from(profile.cover_px).unwrap_or(600),
+                                px: cover_px,
                             },
                         );
                         cover_paths.insert(release, path);
@@ -790,8 +951,8 @@ impl External {
                     conversion: convert::CONVERSION_VERSION,
                     encoder: convert::encoder().to_string(),
                 },
-                cover: profile
-                    .embed_covers
+                // An iPod's, for its artwork
+                cover: (profile.embed_covers || on_ipod)
                     .then(|| cover_keys.get(&release).cloned())
                     .flatten(),
                 source,
@@ -800,17 +961,30 @@ impl External {
             });
         }
 
-        // What's there: the manifest, checked against the disk
+        // What's there: the manifest, checked against the disk, and on an
+        // iPod, against its database
         let manifest_stamp = folder.manifest().stamp();
+        let database_stamp = folder::stat(&folder.path(ipod::ITUNES_DB));
         let loaded = folder.manifest().load()?;
         if let Some(manifest) = &loaded.manifest
             && manifest.external_library != library.uuid
         {
             return Err(Error::Invalid(format!(
-                "This folder belongs to another external library, {}.",
+                "This {} belongs to another external library, {}.",
+                if on_ipod { "iPod" } else { "folder" },
                 manifest.name
             )));
         }
+        let database = if on_ipod {
+            ipod::sync::read_database(&folder)?
+        } else {
+            None
+        };
+        let listed: HashSet<String> = database
+            .iter()
+            .flat_map(|database| &database.tracks)
+            .map(|track| ipod::path_of(&track.location).to_lowercase())
+            .collect();
         for mut entry in loaded
             .manifest
             .map(|manifest| manifest.files)
@@ -825,31 +999,87 @@ impl External {
                 entry.path = from.clone();
                 as_written = true;
             }
-            inputs.present.push(plan::PresentFile { entry, as_written });
+            let listed = !on_ipod || listed.contains(&entry.path.to_lowercase());
+            inputs.present.push(plan::PresentFile {
+                entry,
+                as_written,
+                listed,
+            });
         }
+
+        let covers: HashMap<manifest::CoverKey, PathBuf> = cover_keys
+            .iter()
+            .filter_map(|(release, key)| Some((key.clone(), cover_paths.get(release)?.clone())))
+            .collect();
+        let plan = if on_ipod {
+            // Tracks on the iPod that liquidslunk didn't write (§7.8)
+            let ours: HashSet<String> = inputs
+                .present
+                .iter()
+                .map(|file| file.entry.path.to_lowercase())
+                .collect();
+            let other: Vec<plan::OtherTrack> = database
+                .iter()
+                .flat_map(|database| &database.tracks)
+                .filter_map(|track| {
+                    let path = ipod::path_of(&track.location);
+                    (!ours.contains(&path.to_lowercase())).then(|| plan::OtherTrack {
+                        label: plan::Label {
+                            title: if track.title.is_empty() {
+                                path.clone()
+                            } else {
+                                track.title.clone()
+                            },
+                            artist: track.artist.clone(),
+                            album: track.album.clone(),
+                        },
+                        path,
+                    })
+                })
+                .collect();
+            let present: Vec<&str> = inputs
+                .present
+                .iter()
+                .map(|file| file.entry.path.as_str())
+                .chain(other.iter().map(|track| track.path.as_str()))
+                .collect();
+            let mut names = ipod::Names::new(folder.root(), present);
+            let mut plan = plan::plan_ipod(inputs, &mut |extension| {
+                names.next(extension, &|path| folder.exists(path))
+            });
+            plan.other = other;
+            plan
+        } else {
+            plan::plan(inputs, &|path| folder.exists(path))
+        };
 
         static NEXT: AtomicU64 = AtomicU64::new(1);
         let planned = Arc::new(SyncPlan {
             id: NEXT.fetch_add(1, Ordering::Relaxed),
             free_bytes: volume::free_space(folder.root()),
-            plan: plan::plan(inputs, &|path| folder.exists(path)),
+            ipod: found_ipod,
+            plan,
             library,
             manifest_stamp,
+            database_stamp,
             cover_paths,
+            covers,
         });
         lock(&self.plans).insert(id, planned.clone());
         Ok(planned)
     }
 
-    /// Runs the plan last shown for a folder library (§8.3), with its
-    /// progress. One sync runs at a time, and the library can be browsed
-    /// and edited meanwhile: it works from the plan's snapshot. Refused: a
-    /// plan that isn't the one last shown, one that doesn't fit, and a
-    /// destination that changed since.
+    /// Runs the plan last shown (§8.3), with its progress. One sync runs at
+    /// a time, and the library can be browsed and edited meanwhile: it works
+    /// from the plan's snapshot. Refused: a plan that isn't the one last
+    /// shown, one that doesn't fit, a destination that changed since, and on
+    /// an iPod with tracks from somewhere else, a sync the user didn't agree
+    /// to erase them for (§7.8).
     pub fn sync(
         &self,
         id: i64,
         plan_id: u64,
+        erase: bool,
         progress: &dyn Fn(sync::Progress),
     ) -> Result<sync::Outcome> {
         let planned = lock(&self.plans)
@@ -857,13 +1087,24 @@ impl External {
             .filter(|planned| planned.id == plan_id)
             .cloned()
             .ok_or_else(|| Error::Invalid("The plan is out of date. Look at it again.".into()))?;
+        if !planned.plan.other.is_empty() && !erase {
+            return Err(Error::Invalid(format!(
+                "This iPod has {} from somewhere else. Agree to erase them to sync it.",
+                count_text(planned.plan.other.len(), "track")
+            )));
+        }
         if !planned.fits() {
             return Err(Error::Invalid(format!(
-                "It needs {} more than the folder has free.",
+                "It needs {} more than the {} has free.",
                 bytes_text(
                     planned.plan.bytes_needed()
                         - i64::try_from(planned.free_bytes.unwrap_or(0)).unwrap_or(i64::MAX)
-                )
+                ),
+                if planned.ipod.is_some() {
+                    "iPod"
+                } else {
+                    "folder"
+                }
             )));
         }
         let cancel = Arc::new(AtomicBool::new(false));
@@ -877,25 +1118,52 @@ impl External {
         let _running = Running(&self.running);
         let library = self.get(id)?.ok_or_else(|| not_found(id))?;
         let folder = self.connected_folder(&library)?;
-        if folder.manifest().stamp() != planned.manifest_stamp {
-            return Err(Error::Invalid(
-                "The folder changed since the plan was made. Look at it again.".into(),
-            ));
+        let changed = folder.manifest().stamp() != planned.manifest_stamp
+            || (library.kind == ExternalKind::Ipod
+                && folder::stat(&folder.path(ipod::ITUNES_DB)) != planned.database_stamp);
+        if changed {
+            return Err(Error::Invalid(format!(
+                "The {} changed since the plan was made. Look at it again.",
+                if library.kind == ExternalKind::Ipod {
+                    "iPod"
+                } else {
+                    "folder"
+                }
+            )));
         }
         let scratch = scratch::Scratch::new()?;
-        let outcome = sync::run(
-            sync::Run {
-                plan: &planned.plan,
-                folder: &folder,
-                uuid: &library.uuid,
-                name: &library.name,
-                cover_paths: planned.cover_paths.clone(),
-                cover_px: u32::try_from(library.profile.cover_px).unwrap_or(600),
-                cancel: &cancel,
-                scratch: &scratch,
-            },
-            progress,
-        );
+        let outcome = match library.kind {
+            ExternalKind::Folder => sync::run(
+                sync::Run {
+                    plan: &planned.plan,
+                    folder: &folder,
+                    uuid: &library.uuid,
+                    name: &library.name,
+                    cover_paths: planned.cover_paths.clone(),
+                    cover_px: u32::try_from(library.profile.cover_px).unwrap_or(600),
+                    cancel: &cancel,
+                    scratch: &scratch,
+                },
+                progress,
+            ),
+            ExternalKind::Ipod => ipod::sync::run(
+                ipod::sync::IpodRun {
+                    plan: &planned.plan,
+                    folder: &folder,
+                    uuid: &library.uuid,
+                    name: &library.name,
+                    covers: planned.covers.clone(),
+                    cancel: &cancel,
+                    scratch: &scratch,
+                    erase,
+                    // Room for the new files only once the old ones are gone
+                    make_room_first: planned.free_bytes.is_some_and(|free| {
+                        planned.plan.added > i64::try_from(free).unwrap_or(i64::MAX)
+                    }),
+                },
+                progress,
+            ),
+        };
         lock(&self.plans).remove(&id);
         let outcome = match outcome {
             // A card pulled out midway
@@ -1363,6 +1631,19 @@ fn read_sources(sources: &[(i64, PathBuf)]) -> HashMap<i64, Option<convert::Sour
             .flat_map(|handle| handle.join().unwrap_or_default())
             .collect()
     })
+}
+
+/// A count of things in words: "1 track", "1,234 tracks".
+fn count_text(count: usize, noun: &str) -> String {
+    let digits = count.to_string();
+    let mut grouped = String::new();
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    format!("{grouped} {noun}{}", if count == 1 { "" } else { "s" })
 }
 
 /// A size in words, as Finder shows it: "3.2 GB".

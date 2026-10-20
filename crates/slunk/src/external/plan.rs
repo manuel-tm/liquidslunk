@@ -1,6 +1,7 @@
 //! The plan (4_external_libraries.md §8.2): what a sync would do, worked out
 //! from what should be on a destination and what is, before anything is
-//! written. It's a plain function, so its rules are tested without files.
+//! written. It's plain functions, one for a folder library and one for an
+//! iPod, so their rules are tested without files.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
@@ -37,6 +38,17 @@ pub struct WantedTrack {
 pub struct PresentFile {
     pub entry: Entry,
     pub as_written: bool,
+    /// On an iPod, whether its database lists it. Always, in a folder.
+    pub listed: bool,
+}
+
+/// A track on an iPod that liquidslunk didn't write, which its first sync
+/// erases once the user agrees (§7.8).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OtherTrack {
+    /// Relative to the iPod
+    pub path: String,
+    pub label: Label,
 }
 
 /// What a sync leaves out, and why.
@@ -139,6 +151,8 @@ pub struct Plan {
     pub added: i64,
     /// What the files it removes or replaces took
     pub freed: i64,
+    /// On an iPod, tracks liquidslunk didn't write, which it erases first
+    pub other: Vec<OtherTrack>,
 }
 
 impl Plan {
@@ -161,51 +175,7 @@ pub fn plan(inputs: Inputs, occupied: &dyn Fn(&str) -> bool) -> Plan {
         present,
         mut labels,
     } = inputs;
-    for wanted in &wanted {
-        let tags = &wanted.tags;
-        labels.insert(
-            Subject::Track(wanted.track),
-            Label {
-                title: tags.title.clone(),
-                artist: tags.artist.clone(),
-                album: Some(tags.album.clone()),
-            },
-        );
-        labels
-            .entry(Subject::Release(wanted.release))
-            .or_insert_with(|| Label {
-                title: tags.album.clone(),
-                artist: tags.album_artist.clone(),
-                album: None,
-            });
-    }
-    for file in &present {
-        // A cover.jpg of a release that's left: by its folder
-        if let Written::Cover { release, .. } = &file.entry.written {
-            let folder = file
-                .entry
-                .path
-                .rsplit_once('/')
-                .map_or("", |(folder, _)| folder);
-            labels
-                .entry(Subject::Release(*release))
-                .or_insert_with(|| Label {
-                    title: folder.to_string(),
-                    artist: None,
-                    album: None,
-                });
-        }
-        if let Written::Track { track, tags, .. } = &file.entry.written {
-            let field = |name: &str| tags.get(name).map(|values| values.join(", "));
-            labels
-                .entry(Subject::Track(*track))
-                .or_insert_with(|| Label {
-                    title: field("Title").unwrap_or_else(|| file.entry.path.clone()),
-                    artist: field("Artist"),
-                    album: field("Album"),
-                });
-        }
-    }
+    label_all(&wanted, &present, &mut labels);
     let ours: HashSet<String> = present
         .iter()
         .map(|file| folded(&file.entry.path))
@@ -408,6 +378,221 @@ pub fn plan(inputs: Inputs, occupied: &dyn Fn(&str) -> bool) -> Plan {
     plan
 }
 
+/// Names every track and release a plan mentions: the wanted tracks by
+/// their tags, and the files that are there by their tags as written.
+fn label_all(
+    wanted: &[WantedTrack],
+    present: &[PresentFile],
+    labels: &mut HashMap<Subject, Label>,
+) {
+    for wanted in wanted {
+        let tags = &wanted.tags;
+        labels.insert(
+            Subject::Track(wanted.track),
+            Label {
+                title: tags.title.clone(),
+                artist: tags.artist.clone(),
+                album: Some(tags.album.clone()),
+            },
+        );
+        labels
+            .entry(Subject::Release(wanted.release))
+            .or_insert_with(|| Label {
+                title: tags.album.clone(),
+                artist: tags.album_artist.clone(),
+                album: None,
+            });
+    }
+    for file in present {
+        // A cover.jpg of a release that's left: by its folder
+        if let Written::Cover { release, .. } = &file.entry.written {
+            let folder = file
+                .entry
+                .path
+                .rsplit_once('/')
+                .map_or("", |(folder, _)| folder);
+            labels
+                .entry(Subject::Release(*release))
+                .or_insert_with(|| Label {
+                    title: folder.to_string(),
+                    artist: None,
+                    album: None,
+                });
+        }
+        if let Written::Track { track, tags, .. } = &file.entry.written {
+            labels
+                .entry(Subject::Track(*track))
+                .or_insert_with(|| label_of(tags, &file.entry.path));
+        }
+    }
+}
+
+/// How a file is named by its tags as written, or by its path.
+pub fn label_of(tags: &BTreeMap<String, Vec<String>>, path: &str) -> Label {
+    let field = |name: &str| tags.get(name).map(|values| values.join(", "));
+    Label {
+        title: field("Title").unwrap_or_else(|| path.to_string()),
+        artist: field("Artist"),
+        album: field("Album"),
+    }
+}
+
+/// Works out an iPod's plan (§8.2). The iPod names its own files, so a
+/// track's file keeps its path, and a file written again gets a new one
+/// from `new_path`, given its extension; the old one is removed once the
+/// database no longer lists it. A retag changes only the database, and so
+/// does a file the database doesn't list yet. There are no moves, no
+/// `cover.jpg`s, and nothing else at a path a track could want.
+pub fn plan_ipod(inputs: Inputs, new_path: &mut dyn FnMut(&str) -> String) -> Plan {
+    let Inputs {
+        wanted,
+        kept,
+        left_out,
+        cover_files: _,
+        present,
+        mut labels,
+    } = inputs;
+    label_all(&wanted, &present, &mut labels);
+    let mut tracks_present: HashMap<i64, Vec<&PresentFile>> = HashMap::new();
+    for file in &present {
+        if let Written::Track { track, .. } = &file.entry.written {
+            tracks_present.entry(*track).or_default().push(file);
+        }
+    }
+    let mut claimed: HashSet<&str> = HashSet::new();
+    for track in kept.keys() {
+        for file in tracks_present.get(track).into_iter().flatten() {
+            claimed.insert(&file.entry.path);
+        }
+    }
+
+    let mut plan = Plan::default();
+    for wanted in &wanted {
+        let step = |action, path: String, from: Option<&str>, changes, bytes| Step {
+            action,
+            subject: Subject::Track(wanted.track),
+            path,
+            from: from.map(str::to_string),
+            changes,
+            bytes,
+        };
+        let extension = || {
+            let source = wanted
+                .source
+                .extension()
+                .map(|extension| extension.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
+            wanted.becomes.extension(&source)
+        };
+        // A sync cut short can leave two files for a track: the best one
+        // stays, and the others go
+        let best = tracks_present.get(&wanted.track).and_then(|files| {
+            files
+                .iter()
+                .copied()
+                .max_by_key(|file| match &file.entry.written {
+                    Written::Track { audio, .. } => {
+                        (audio.matches(&wanted.audio), file.as_written, file.listed)
+                    }
+                    Written::Cover { .. } => (false, false, false),
+                })
+        });
+        let Some(file) = best else {
+            plan.added += wanted.bytes;
+            plan.steps.push(step(
+                Action::Add,
+                new_path(&extension()),
+                None,
+                Vec::new(),
+                wanted.bytes,
+            ));
+            continue;
+        };
+        claimed.insert(&file.entry.path);
+        let Written::Track {
+            audio, tags, cover, ..
+        } = &file.entry.written
+        else {
+            continue;
+        };
+        let freed = if file.as_written {
+            file.entry.size as i64
+        } else {
+            0
+        };
+        let from = Some(file.entry.path.as_str());
+        if !audio.matches(&wanted.audio) || !file.as_written {
+            let action = if audio.matches(&wanted.audio) {
+                Action::Restore
+            } else {
+                Action::Convert
+            };
+            plan.added += wanted.bytes;
+            plan.freed += freed;
+            plan.steps.push(step(
+                action,
+                new_path(&extension()),
+                from,
+                Vec::new(),
+                wanted.bytes,
+            ));
+            continue;
+        }
+        let mut changes = changes(tags, &wanted.tags, cover.as_ref(), wanted.cover.as_ref());
+        if !file.listed {
+            changes.push(FieldChange {
+                field: "Listed on the iPod".into(),
+                was: vec!["No".into()],
+                now: vec!["Yes".into()],
+            });
+        }
+        if changes.is_empty() {
+            plan.unchanged += 1;
+        } else {
+            plan.steps.push(step(
+                Action::Retag,
+                file.entry.path.clone(),
+                None,
+                changes,
+                0,
+            ));
+        }
+    }
+
+    for file in &present {
+        if claimed.contains(file.entry.path.as_str()) {
+            continue;
+        }
+        let subject = match file.entry.written {
+            Written::Track { track, .. } => Subject::Track(track),
+            Written::Cover { release, .. } => Subject::Release(release),
+        };
+        let bytes = if file.as_written {
+            file.entry.size as i64
+        } else {
+            0
+        };
+        plan.freed += bytes;
+        plan.steps.push(Step {
+            action: Action::Remove,
+            subject,
+            path: file.entry.path.clone(),
+            from: None,
+            changes: Vec::new(),
+            bytes,
+        });
+    }
+
+    plan.left_out = left_out;
+    plan.labels = labels;
+    plan.present = present.into_iter().map(|file| file.entry).collect();
+    plan.wanted = wanted
+        .into_iter()
+        .map(|wanted| (wanted.track, wanted))
+        .collect();
+    plan
+}
+
 /// Each track's path, told apart from the others' (`unique_paths()`). A
 /// track keeps the path it has while it's one of its template's numbered
 /// forms, so names don't trade places between syncs. `taken` are paths no
@@ -568,9 +753,11 @@ mod tests {
                         .map(|(field, values)| (field.to_string(), values))
                         .collect(),
                     cover: None,
+                    ipod: None,
                 },
             },
             as_written: true,
+            listed: true,
         }
     }
 
@@ -676,5 +863,110 @@ mod tests {
         );
         // What it writes, less the old file a conversion replaces
         assert_eq!((plan.added, plan.freed), (200, 100));
+    }
+
+    #[test]
+    fn an_ipod_names_its_own_files() {
+        let mut converted = wanted(1, "Song");
+        converted.audio = audio("b");
+        let mut unlisted = present(3, "iPod_Control/Music/F01/LSKCCCC.flac", "Three");
+        unlisted.listed = false;
+        let mut stale = present(4, "iPod_Control/Music/F02/LSKDDDD.flac", "Four");
+        stale.as_written = false;
+        let inputs = Inputs {
+            wanted: vec![
+                converted,
+                wanted(2, "Two"),
+                wanted(3, "Three"),
+                wanted(4, "Four"),
+                wanted(6, "New"),
+            ],
+            present: vec![
+                present(1, "iPod_Control/Music/F00/LSKAAAA.flac", "Song"),
+                present(2, "iPod_Control/Music/F00/LSKBBBB.flac", "Old two"),
+                unlisted,
+                stale.clone(),
+                // A sync cut short left a second file for track 4
+                PresentFile {
+                    entry: Entry {
+                        path: "iPod_Control/Music/F03/LSKEEEE.flac".into(),
+                        ..stale.entry.clone()
+                    },
+                    as_written: true,
+                    listed: false,
+                },
+                present(5, "iPod_Control/Music/F00/LSKFFFF.flac", "Gone"),
+            ],
+            ..Inputs::default()
+        };
+        let mut n = 0;
+        let plan = plan_ipod(inputs, &mut |extension| {
+            n += 1;
+            format!("iPod_Control/Music/F09/NEW{n}.{extension}")
+        });
+        assert_eq!(
+            plan.steps
+                .iter()
+                .map(|step| (
+                    step.action,
+                    step.subject,
+                    step.path.as_str(),
+                    step.from.as_deref()
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                (
+                    Action::Convert,
+                    Subject::Track(1),
+                    "iPod_Control/Music/F09/NEW1.flac",
+                    Some("iPod_Control/Music/F00/LSKAAAA.flac")
+                ),
+                (
+                    Action::Retag,
+                    Subject::Track(2),
+                    "iPod_Control/Music/F00/LSKBBBB.flac",
+                    None
+                ),
+                (
+                    Action::Retag,
+                    Subject::Track(3),
+                    "iPod_Control/Music/F01/LSKCCCC.flac",
+                    None
+                ),
+                (
+                    Action::Retag,
+                    Subject::Track(4),
+                    "iPod_Control/Music/F03/LSKEEEE.flac",
+                    None
+                ),
+                (
+                    Action::Add,
+                    Subject::Track(6),
+                    "iPod_Control/Music/F09/NEW2.flac",
+                    None
+                ),
+                (
+                    Action::Remove,
+                    Subject::Track(4),
+                    "iPod_Control/Music/F02/LSKDDDD.flac",
+                    None
+                ),
+                (
+                    Action::Remove,
+                    Subject::Track(5),
+                    "iPod_Control/Music/F00/LSKFFFF.flac",
+                    None
+                ),
+            ]
+        );
+        // A file the database doesn't list is put in it
+        assert_eq!(
+            plan.steps[2].changes,
+            vec![FieldChange {
+                field: "Listed on the iPod".into(),
+                was: vec!["No".into()],
+                now: vec!["Yes".into()],
+            }]
+        );
     }
 }

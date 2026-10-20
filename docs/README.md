@@ -13,10 +13,11 @@ liquidslunk is a port of slunk, an earlier version of the same app. slunk's own 
 | [`development/frontend.md`](development/frontend.md) | How the frontend is built, and its conventions |
 | [`development/backend.md`](development/backend.md) | How the Rust backend is built: the contexts, the database and its migrations, the commands, and the library |
 | [`reference/database.md`](reference/database.md) | The database schema as built, and the rules it enforces |
+| [`reference/ipod.md`](reference/ipod.md) | What liquidslunk reads and writes on an iPod: its iTunesDB, its artwork and Play Counts, byte by byte |
 
 New docs are added as the code they describe lands:
 - `development/` holds how to set up, run and work on the app.
-- `reference/` describes what's built: the database. The commands are documented by their Rust doc comments, which tauri-specta copies into `src/bindings.ts`.
+- `reference/` describes what's built: the database, and the iPod's formats. The commands are documented by their Rust doc comments, which tauri-specta copies into `src/bindings.ts`.
 
 ## Repository layout
 
@@ -24,7 +25,7 @@ New docs are added as the code they describe lands:
 docs/            documentation (this folder)
   design/        design docs (plans)
   development/   setup and conventions for the code
-  reference/     the database schema
+  reference/     the database schema, and the iPod's formats
 src/             the frontend: React, in the app's webview
 src-tauri/       the app: Tauri, its commands, the library, the file protocol
 crates/slunk/    the domain and its database: contexts, repositories,
@@ -53,6 +54,7 @@ liquidslunk only reads your music files: it never moves, copies, renames, delete
 - **Next to the library's database:** `slunk.db`, SQLite's `-wal` and `-shm` files, and `slunk-backups/`.
 - **Its settings,** in the app's config folder ([backend.md](development/backend.md#choosing-the-library)).
 - **An external library's destination,** when it syncs: the files it converts or copies there, `cover.jpg`s, and its manifest and temporary files in `.liquidslunk/`. It replaces or deletes only what its manifest lists, and never writes outside the destination's folder. While it converts, it uses a folder of its own in the system's temporary folder ([backend.md](development/backend.md#syncing-a-folder-library)).
+- **An iPod,** when it syncs: the files it converts or copies into `iPod_Control/Music`, the iTunesDB, the ArtworkDB and its thumbnails, a copy of the old iTunesDB, and its manifest and temporary files beside the iTunesDB. It deletes only what its manifest lists, `Play Counts` once it's counted, and, once you agree, the music files of tracks it didn't write ([reference/ipod.md](reference/ipod.md#the-files)).
 
 ## How we work
 

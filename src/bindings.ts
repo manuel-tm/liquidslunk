@@ -430,10 +430,15 @@ export const commands = {
 	destination: DestinationStatus,
 	/**  The bytes free where its files go, while it's there */
 	freeBytes: number | null,
-	/**  Whether its folder is on a disk that's ejected, like a card */
+	/**
+	 *  Whether its files are on a disk that's ejected, like a card or an
+	 *  iPod
+	 */
 	ejectable: boolean,
 	/**  Whether it's syncing now */
 	syncing: boolean,
+	/**  An iPod library's iPod, while it's connected */
+	ipod: IpodInfo | null,
 }) & (ExternalLibrary) | null, CommandError>(__TAURI_INVOKE("external_library", { args })),
 	/**  A new external library, with no rules yet. */
 	createExternalLibrary: (args: ExternalLibraryInput) => typedError<ExternalLibrary, CommandError>(__TAURI_INVOKE("create_external_library", { args })),
@@ -528,22 +533,28 @@ export const commands = {
 	 */
 	locateExternalLibrary: (args: LocateArgs) => typedError<ExternalLibrary, CommandError>(__TAURI_INVOKE("locate_external_library", { args })),
 	/**
-	 *  Ejects the disk a folder library's folder is on, like a card, so it can
-	 *  be unplugged.
+	 *  Ejects the disk an external library's files are on, like a card or an
+	 *  iPod, so it can be unplugged.
 	 */
 	ejectExternalLibrary: (args: IdArgs) => typedError<null, CommandError>(__TAURI_INVOKE("eject_external_library", { args })),
 	/**
-	 *  Works out what a sync of a folder library would do, without doing
-	 *  anything: what it adds, converts again, restores, retags, moves and
-	 *  removes, what it leaves out and why, and whether it fits. `sync` runs
-	 *  it. Refused when its folder isn't there, or belongs to another external
-	 *  library.
+	 *  The iPods mounted now, each with its free space and the external library
+	 *  it belongs to, for a new iPod library (4_external_libraries.md §7.2).
+	 */
+	mountedIpods: () => typedError<MountedIpod[], CommandError>(__TAURI_INVOKE("mounted_ipods")),
+	/**
+	 *  Works out what a sync would do, without doing anything: what it adds,
+	 *  converts again, restores, retags, moves and removes, what it leaves out
+	 *  and why, whether it fits, and on an iPod, the tracks liquidslunk didn't
+	 *  write. `sync` runs it. Refused when its folder or iPod isn't there, or
+	 *  belongs to another external library.
 	 */
 	syncPlan: (args: IdArgs) => typedError<SyncPlan, CommandError>(__TAURI_INVOKE("sync_plan", { args })),
 	/**
-	 *  Runs the plan `sync_plan` last showed for a folder library, with its
-	 *  progress. One sync runs at a time. Refused: a plan that isn't the one
-	 *  last shown, one that doesn't fit, and a folder that changed since.
+	 *  Runs the plan `sync_plan` last showed, with its progress. One sync runs
+	 *  at a time. Refused: a plan that isn't the one last shown, one that
+	 *  doesn't fit, a folder or an iPod that changed since, and on an iPod with
+	 *  tracks liquidslunk didn't write, a sync without `erase`.
 	 */
 	sync: (args: SyncArgs, progress: Channel<SyncProgress>) => typedError<SyncOutcome, CommandError>(__TAURI_INVOKE("sync", { args, progress })),
 	/**
@@ -1015,12 +1026,17 @@ export type DestinationStatus =
  */
 { type: "connected" } | 
 /**
- *  It isn't there: a folder that moved, a card that isn't in. An iPod
- *  library isn't tied to an iPod yet, so it always is.
+ *  It isn't there: a folder that moved, a card that isn't in, or no
+ *  iPod that's its
  */
 { type: "missing" } | 
 /**  Its manifest names another external library */
-{ type: "elsewhere"; name: string };
+{ type: "elsewhere"; name: string } | 
+/**
+ *  Several iPods without a manifest are connected, and it isn't known
+ *  which is an iPod library's
+ */
+{ type: "several" };
 
 /**  A disc's own title, as printed. */
 export type DiscTitle = {
@@ -1150,8 +1166,8 @@ export type ExternalLibrary = {
 	lastSyncedAt: number | null,
 	/**
 	 *  Whether its destination is there to sync: a folder library's folder,
-	 *  with a manifest that names it, or none yet. An iPod library isn't
-	 *  tied to an iPod yet, so it isn't.
+	 *  or an iPod library's iPod, with a manifest that names it, or none
+	 *  yet.
 	 */
 	connected: boolean,
 	/**  Epoch seconds */
@@ -1172,10 +1188,15 @@ export type ExternalLibraryDetails = {
 	destination: DestinationStatus,
 	/**  The bytes free where its files go, while it's there */
 	freeBytes: number | null,
-	/**  Whether its folder is on a disk that's ejected, like a card */
+	/**
+	 *  Whether its files are on a disk that's ejected, like a card or an
+	 *  iPod
+	 */
 	ejectable: boolean,
 	/**  Whether it's syncing now */
 	syncing: boolean,
+	/**  An iPod library's iPod, while it's connected */
+	ipod: IpodInfo | null,
 } & ExternalLibrary;
 
 /**
@@ -1416,6 +1437,23 @@ export type ImportFilesArgs = {
 	folder: string,
 };
 
+/**  A mounted iPod. */
+export type IpodInfo = {
+	/**  Its volume's name, as Finder shows it */
+	name: string,
+	/**  Where it's mounted */
+	mount: string,
+	/**
+	 *  What it is: "iPod with video (5.5th generation), 30 GB, black", or
+	 *  "An iPod"
+	 */
+	description: string,
+	/**  Why liquidslunk won't sync it: it's another iPod */
+	refusal: string | null,
+	/**  That its model can't be read */
+	warning: string | null,
+};
+
 export type Label = {
 	id: number,
 	/**  The main name */
@@ -1646,6 +1684,14 @@ export type MissingFile = {
 	likelyMove: string | null,
 };
 
+/**  An iPod mounted now, for a new iPod library. */
+export type MountedIpod = {
+	/**  The bytes free on it */
+	freeBytes: number | null,
+	/**  The external library its manifest names, if it has one */
+	externalLibrary: string | null,
+} & IpodInfo;
+
 /**  A name, and its language. */
 export type NameRef = {
 	name: string,
@@ -1724,6 +1770,16 @@ export type PlanLeftOut = {
 	reason: string,
 };
 
+/**
+ *  A track on an iPod that liquidslunk didn't write, which its first sync
+ *  erases once the user agrees.
+ */
+export type PlanOtherTrack = {
+	label: SyncLabel,
+	/**  Relative to the iPod */
+	path: string,
+};
+
 /**  A step of a sync's plan. */
 export type PlanStep = {
 	action: SyncAction,
@@ -1734,7 +1790,7 @@ export type PlanStep = {
 	label: SyncLabel,
 	/**
 	 *  Where the file goes, or a removal's, where it is, relative to the
-	 *  folder
+	 *  folder or the iPod
 	 */
 	path: string,
 	/**  Where it is now, when that's elsewhere */
@@ -2273,6 +2329,11 @@ export type SyncArgs = {
 	id: number,
 	/**  The plan `sync_plan` showed */
 	planId: number,
+	/**
+	 *  On an iPod, erase the tracks liquidslunk didn't write, which the
+	 *  user agreed to
+	 */
+	erase?: boolean | null,
 };
 
 /**  A file a sync couldn't write, and why. */
@@ -2307,8 +2368,10 @@ export type SyncOutcome = {
 	failed: SyncFailure[],
 	/**  Stopped by `cancel_sync`, after the file in hand */
 	cancelled: boolean,
-	/**  Written to the folder */
+	/**  Written to the folder or the iPod */
 	bytes: number,
+	/**  On an iPod, the tracks liquidslunk didn't write that it erased */
+	erased: number,
 };
 
 /**  What a sync would do, before it does anything. */
@@ -2326,10 +2389,17 @@ export type SyncPlan = {
 	freedBytes: number,
 	/**  What it needs: what it writes, less what it frees */
 	neededBytes: number,
-	/**  What's free on the folder's disk */
+	/**  What's free on the folder's disk, or the iPod's */
 	freeBytes: number | null,
 	/**  Whether it fits. A sync that doesn't is refused. */
 	fits: boolean,
+	/**  The iPod it syncs to */
+	ipod: IpodInfo | null,
+	/**
+	 *  On an iPod, the tracks liquidslunk didn't write: `sync` erases them
+	 *  first, with `erase`, and is refused without it
+	 */
+	other: PlanOtherTrack[],
 };
 
 /**  What a running sync says about itself. */
@@ -2338,16 +2408,20 @@ export type SyncProgress = {
 	/**  The plan's steps done, and all of them */
 	done: number,
 	total: number,
-	/**  Written to the folder so far */
+	/**  Written to the folder or the iPod so far */
 	bytes: number,
 	/**  What's in hand: a track's title, or a path */
 	current: string | null,
 };
 
 /**  Where a sync is. */
-export type SyncStage = "removing" | "moving" | 
+export type SyncStage = 
+/**  On an iPod, erasing the tracks liquidslunk didn't write */
+"erasing" | "removing" | "moving" | 
 /**  Adding, converting again and restoring */
-"writing" | "retagging" | "covers" | "finishing";
+"writing" | "retagging" | "covers" | 
+/**  On an iPod, writing its database and artwork */
+"database" | "finishing";
 
 /**  A tag definition, like Genre or Score. */
 export type Tag = {

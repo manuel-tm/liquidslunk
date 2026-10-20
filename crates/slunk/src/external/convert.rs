@@ -166,6 +166,8 @@ pub struct Encoding {
     /// Dithered, since it cuts bits or changes the sample rate of lossless
     /// audio: `afconvert` only rounds unless it's asked to dither
     pub dither: bool,
+    /// With Sound Check data, for an iPod (§7.6)
+    pub sound_check: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -275,6 +277,7 @@ pub fn becomes(
         // Apple's AAC encoder takes at most 48 kHz
         sample_rate: rate.and_then(|rate| (rate > 48_000).then(|| cd_rate(rate))),
         dither: false,
+        sound_check: ipod,
     };
     match source.codec {
         codec if codec.is_lossless() => {
@@ -291,6 +294,7 @@ pub fn becomes(
                     bits: Some(out_bits),
                     sample_rate: (out_rate != rate).then_some(out_rate),
                     dither: out_bits < bits || out_rate != rate,
+                    sound_check: ipod,
                 }
             };
             let own = match codec {
@@ -407,6 +411,9 @@ fn run(source: &Path, encoding: &Encoding, output: &Path) -> Result<()> {
     if encoding.dither {
         // TPDF
         command.args(["--dither", "1"]);
+    }
+    if encoding.sound_check {
+        command.arg("--soundcheck-generate");
     }
     command.arg(source).arg(output);
     let result = command.output().map_err(Error::io(Path::new(AFCONVERT)))?;
@@ -590,6 +597,7 @@ mod tests {
                 bits: None,
                 sample_rate: None,
                 dither: false,
+                sound_check: false,
             })
         };
         assert_eq!(Becomes::Copy.extension("MP3"), "mp3");

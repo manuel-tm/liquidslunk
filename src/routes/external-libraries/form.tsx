@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query"
 import { open } from "@tauri-apps/plugin-dialog"
-import { FolderOpenIcon } from "lucide-react"
+import { FolderOpenIcon, SearchIcon } from "lucide-react"
 import { useState } from "react"
 import { useNavigate, useSearchParams } from "react-router"
 import { toast } from "sonner"
@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import type {
   ExternalKind,
@@ -33,6 +34,7 @@ import type {
 } from "@/bindings"
 import { useDebounced } from "@/hooks/use-debounced"
 import { FORMAT_LABELS, FORMATS, KIND_LABELS } from "@/lib/external"
+import { formatSize } from "@/lib/format"
 import { call, useCommand } from "@/lib/query"
 
 /** The backend's `DEFAULT_TEMPLATE`, which a blank template is */
@@ -57,7 +59,10 @@ export function ExternalLibraryCreate() {
       <PageHeader
         crumbs={[
           { label: "External libraries", to: "/external-libraries" },
-          { label: `New ${KIND_LABELS[kind].toLowerCase()}` },
+          // "New folder library", "New iPod library"
+          {
+            label: `New ${kind === "ipod" ? KIND_LABELS[kind] : KIND_LABELS[kind].toLowerCase()}`,
+          },
         ]}
       />
       <div className="max-w-3xl p-4">
@@ -193,8 +198,11 @@ export function ProfileForm({
             <FieldLabel>Destination</FieldLabel>
             <FieldDescription>
               An iPod with video, 5th or 5.5th generation, with Apple&apos;s
-              firmware.
+              firmware, with its disk use on so it shows in Finder. Its first
+              sync goes to the iPod connected then, which keeps the
+              library&apos;s manifest, so it&apos;s found wherever it mounts.
             </FieldDescription>
+            {!library && <MountedIpods />}
           </Field>
         )}
         <Field>
@@ -394,5 +402,57 @@ function TemplateField({
         )
       )}
     </Field>
+  )
+}
+
+/** The iPods connected now, for a new iPod library (4_external_libraries.md §7.2). */
+function MountedIpods() {
+  const {
+    data: ipods,
+    error,
+    isFetching,
+    refetch,
+  } = useCommand("mountedIpods", undefined, { fresh: true })
+  if (error) return <QueryError error={error} title="Can't look for iPods" />
+  return (
+    <div className="flex flex-col gap-2 text-xs">
+      {!ipods ? (
+        <Skeleton className="h-8 w-full" />
+      ) : ipods.length === 0 ? (
+        <p className="text-muted-foreground">No iPod is connected now.</p>
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {ipods.map((ipod) => (
+            <li key={ipod.mount} className="flex flex-col gap-0.5">
+              <span>
+                <span className="font-medium">{ipod.name}</span> ·{" "}
+                {ipod.description}
+                {ipod.freeBytes !== null &&
+                  ` · ${formatSize(ipod.freeBytes)} free`}
+              </span>
+              {(ipod.refusal ?? ipod.warning ?? ipod.externalLibrary) && (
+                <span className="text-muted-foreground">
+                  {ipod.refusal ??
+                    ipod.warning ??
+                    `It belongs to ${ipod.externalLibrary}.`}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={isFetching}
+          onClick={() => void refetch()}
+        >
+          <SearchIcon data-icon="inline-start" />
+          Look again
+        </Button>
+      </div>
+    </div>
   )
 }

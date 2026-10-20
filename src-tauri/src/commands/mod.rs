@@ -115,6 +115,7 @@ pub fn builder() -> Builder<Wry> {
             external::exported_tags,
             external::locate_external_library,
             external::eject_external_library,
+            external::mounted_ipods,
             external::sync_plan,
             external::sync,
             external::cancel_sync,

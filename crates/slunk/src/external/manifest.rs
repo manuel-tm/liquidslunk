@@ -1,12 +1,13 @@
 //! The manifest (4_external_libraries.md §8.1): what liquidslunk wrote on a
 //! destination, kept on the destination itself, at
-//! `.liquidslunk/manifest.json` in a folder library. The database says what
+//! `.liquidslunk/manifest.json` in a folder library, and at
+//! `iPod_Control/iTunes/liquidslunk.json` on an iPod. The database says what
 //! should be there, and the manifest what is.
 //!
-//! A sync appends each file it finishes to `.liquidslunk/journal.jsonl`, one
-//! line at a time, and rewrites the manifest from it when it ends. So a sync
-//! that's interrupted, by a card pulled out midway, carries on from its last
-//! file at the next one.
+//! A sync appends each file it finishes to a journal beside the manifest,
+//! one line at a time, and rewrites the manifest from it when it ends. So a
+//! sync that's interrupted, by a card pulled out midway, carries on from its
+//! last file at the next one.
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File, OpenOptions};
@@ -23,6 +24,8 @@ pub const VERSION: u32 = 1;
 
 const MANIFEST: &str = "manifest.json";
 const JOURNAL: &str = "journal.jsonl";
+const IPOD_MANIFEST: &str = "liquidslunk.json";
+const IPOD_JOURNAL: &str = "liquidslunk-journal.jsonl";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,12 +61,38 @@ pub enum Written {
         audio: AudioKey,
         /// Its tags as written (`Tags::fields()`)
         tags: BTreeMap<String, Vec<String>>,
-        /// Its embedded cover, if it has one
+        /// Its embedded cover, if it has one, or on an iPod, its artwork
         cover: Option<CoverKey>,
+        /// On an iPod, what its database says of the file
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ipod: Option<IpodFile>,
     },
     /// A `cover.jpg`, in a folder that holds one release's tracks
     #[serde(rename_all = "camelCase")]
     Cover { release: i64, cover: CoverKey },
+}
+
+/// What an iPod's database says of a track's file (§7.4, §7.6), kept so
+/// the database can be written again without reading the file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IpodFile {
+    /// Its id in the database, which it keeps from one sync to the next,
+    /// even when it's converted again
+    pub dbid: u64,
+    /// "aac", "alac" or "mp3"
+    pub kind: String,
+    pub length_ms: u32,
+    /// In kbps
+    pub bitrate: u32,
+    pub sample_rate: u32,
+    pub sound_check: u32,
+    pub pregap: u32,
+    pub postgap: u32,
+    pub sample_count: u64,
+    pub gapless_data: u32,
+    /// When its track was first added, in epoch seconds
+    pub added: i64,
 }
 
 /// What a file's audio was made from, and how: when it changes, the file is
@@ -101,7 +130,8 @@ pub struct CoverKey {
     pub px: u32,
 }
 
-/// A line of the journal.
+/// A line of the journal, made one at a time, so its size doesn't matter.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Change {
@@ -122,22 +152,43 @@ pub struct Loaded {
     pub moved_from: HashMap<String, String>,
 }
 
-/// A destination's `.liquidslunk` folder.
+/// Where a destination's manifest is: a folder library's `.liquidslunk`
+/// folder, or an iPod's `iPod_Control/iTunes`.
 #[derive(Debug, Clone)]
 pub struct ManifestFolder {
     dir: PathBuf,
+    manifest: &'static str,
+    journal: &'static str,
+    /// Whether the folder is liquidslunk's own, to remove with it
+    own: bool,
 }
 
 impl ManifestFolder {
+    /// A folder library's `.liquidslunk` folder.
     pub fn new(dir: PathBuf) -> ManifestFolder {
-        ManifestFolder { dir }
+        ManifestFolder {
+            dir,
+            manifest: MANIFEST,
+            journal: JOURNAL,
+            own: true,
+        }
+    }
+
+    /// An iPod's `iPod_Control/iTunes`, beside its iTunesDB.
+    pub fn ipod(dir: PathBuf) -> ManifestFolder {
+        ManifestFolder {
+            dir,
+            manifest: IPOD_MANIFEST,
+            journal: IPOD_JOURNAL,
+            own: false,
+        }
     }
 
     /// The manifest, with its journal replayed. `None` for a destination
     /// liquidslunk hasn't written yet. A journal's last line, cut short when
     /// the destination went away, is left out.
     pub fn load(&self) -> Result<Loaded> {
-        let path = self.dir.join(MANIFEST);
+        let path = self.dir.join(self.manifest);
         let mut manifest = match fs::read(&path) {
             Ok(bytes) => Some(serde_json::from_slice::<Manifest>(&bytes).map_err(|error| {
                 Error::Invalid(format!(
@@ -157,7 +208,7 @@ impl ManifestFolder {
             ));
         }
         let mut moved_from = HashMap::new();
-        let journal = self.dir.join(JOURNAL);
+        let journal = self.dir.join(self.journal);
         let text = match fs::read_to_string(&journal) {
             Ok(text) => text,
             Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
@@ -194,7 +245,7 @@ impl ManifestFolder {
             external_library: String,
             name: String,
         }
-        let path = self.dir.join(MANIFEST);
+        let path = self.dir.join(self.manifest);
         match fs::read(&path) {
             Ok(bytes) => Ok(serde_json::from_slice::<Identity>(&bytes)
                 .ok()
@@ -206,15 +257,15 @@ impl ManifestFolder {
 
     /// The manifest file's size and mtime, to tell when it changed.
     pub fn stamp(&self) -> Option<(u64, i64)> {
-        super::folder::stat(&self.dir.join(MANIFEST))
+        super::folder::stat(&self.dir.join(self.manifest))
     }
 
     /// Writes the manifest, atomically: to a temporary file, then renamed
     /// over the old one. The journal it now holds is removed.
     pub fn write(&self, manifest: &Manifest) -> Result<()> {
         self.create_dir()?;
-        let path = self.dir.join(MANIFEST);
-        let temporary = self.dir.join(format!("{MANIFEST}.tmp"));
+        let path = self.dir.join(self.manifest);
+        let temporary = self.dir.join(format!("{}.tmp", self.manifest));
         let bytes = serde_json::to_vec(manifest)
             .map_err(|error| Error::Invalid(format!("The manifest can't be written: {error}")))?;
         let mut file = File::create(&temporary).map_err(Error::io(&temporary))?;
@@ -224,7 +275,7 @@ impl ManifestFolder {
         drop(file);
         without_apple_double(&temporary)?;
         fs::rename(&temporary, &path).map_err(Error::io(&path))?;
-        let journal = self.dir.join(JOURNAL);
+        let journal = self.dir.join(self.journal);
         match fs::remove_file(&journal) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
@@ -235,7 +286,7 @@ impl ManifestFolder {
     /// Appends a change to the journal, and waits until it's on the disk.
     pub fn append(&self, change: &Change) -> Result<()> {
         self.create_dir()?;
-        let journal = self.dir.join(JOURNAL);
+        let journal = self.dir.join(self.journal);
         let mut line = serde_json::to_vec(change)
             .map_err(|error| Error::Invalid(format!("The journal can't be written: {error}")))?;
         line.push(b'\n');
@@ -255,7 +306,7 @@ impl ManifestFolder {
     /// Removes the manifest and the journal, and the folder when nothing
     /// else is left in it.
     pub fn remove(&self) -> Result<()> {
-        for name in [MANIFEST, JOURNAL] {
+        for name in [self.manifest, self.journal] {
             let path = self.dir.join(name);
             match fs::remove_file(&path) {
                 Ok(()) => {}
@@ -263,8 +314,10 @@ impl ManifestFolder {
                 Err(error) => return Err(Error::io(&path)(error)),
             }
         }
-        super::folder::remove_empty(&self.dir.join("tmp"))?;
-        super::folder::remove_empty(&self.dir)?;
+        if self.own {
+            super::folder::remove_empty(&self.dir.join("tmp"))?;
+            super::folder::remove_empty(&self.dir)?;
+        }
         Ok(())
     }
 

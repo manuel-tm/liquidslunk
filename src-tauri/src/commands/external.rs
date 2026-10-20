@@ -111,8 +111,8 @@ pub struct ExternalLibrary {
     /// When its last sync ended, in epoch seconds. Null before its first.
     pub last_synced_at: Option<i64>,
     /// Whether its destination is there to sync: a folder library's folder,
-    /// with a manifest that names it, or none yet. An iPod library isn't
-    /// tied to an iPod yet, so it isn't.
+    /// or an iPod library's iPod, with a manifest that names it, or none
+    /// yet.
     pub connected: bool,
     /// Epoch seconds
     pub inserted_at: i64,
@@ -170,10 +170,54 @@ pub struct ExternalLibraryDetails {
     pub destination: DestinationStatus,
     /// The bytes free where its files go, while it's there
     pub free_bytes: Option<i64>,
-    /// Whether its folder is on a disk that's ejected, like a card
+    /// Whether its files are on a disk that's ejected, like a card or an
+    /// iPod
     pub ejectable: bool,
     /// Whether it's syncing now
     pub syncing: bool,
+    /// An iPod library's iPod, while it's connected
+    pub ipod: Option<IpodInfo>,
+}
+
+/// A mounted iPod.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct IpodInfo {
+    /// Its volume's name, as Finder shows it
+    pub name: String,
+    /// Where it's mounted
+    pub mount: String,
+    /// What it is: "iPod with video (5.5th generation), 30 GB, black", or
+    /// "An iPod"
+    pub description: String,
+    /// Why liquidslunk won't sync it: it's another iPod
+    pub refusal: Option<String>,
+    /// That its model can't be read
+    pub warning: Option<String>,
+}
+
+impl From<&domain::Ipod> for IpodInfo {
+    fn from(ipod: &domain::Ipod) -> Self {
+        IpodInfo {
+            name: ipod.name.clone(),
+            mount: ipod.mount.to_string_lossy().into_owned(),
+            description: ipod.description(),
+            refusal: ipod.refusal(),
+            warning: ipod.warning(),
+        }
+    }
+}
+
+/// An iPod mounted now, for a new iPod library.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MountedIpod {
+    #[serde(flatten)]
+    pub ipod: IpodInfo,
+    /// The bytes free on it
+    pub free_bytes: Option<i64>,
+    /// The external library its manifest names, if it has one
+    pub external_library: Option<String>,
 }
 
 /// Whether an external library's destination is there to sync.
@@ -183,11 +227,14 @@ pub enum DestinationStatus {
     /// It's there, and its manifest names this external library, or it has
     /// none yet
     Connected,
-    /// It isn't there: a folder that moved, a card that isn't in. An iPod
-    /// library isn't tied to an iPod yet, so it always is.
+    /// It isn't there: a folder that moved, a card that isn't in, or no
+    /// iPod that's its
     Missing,
     /// Its manifest names another external library
     Elsewhere { name: String },
+    /// Several iPods without a manifest are connected, and it isn't known
+    /// which is an iPod library's
+    Several,
 }
 
 /// An external library to save. An iPod's are what it plays: it has no
@@ -560,6 +607,11 @@ pub fn details(
             Destination::Connected => DestinationStatus::Connected,
             Destination::Missing => DestinationStatus::Missing,
             Destination::Elsewhere(name) => DestinationStatus::Elsewhere { name },
+            Destination::Several => DestinationStatus::Several,
+        },
+        ipod: match found.kind {
+            domain::ExternalKind::Ipod => external.find_ipod(&found).1.as_ref().map(IpodInfo::from),
+            domain::ExternalKind::Folder => None,
         },
         free_bytes: external
             .free_bytes(&found)
@@ -669,12 +721,33 @@ pub async fn locate_external_library(
     .await
 }
 
-/// Ejects the disk a folder library's folder is on, like a card, so it can
-/// be unplugged.
+/// Ejects the disk an external library's files are on, like a card or an
+/// iPod, so it can be unplugged.
 #[tauri::command]
 #[specta::specta]
 pub async fn eject_external_library(app: AppHandle, args: IdArgs) -> Result<(), CommandError> {
     on_library(app, move |library| Ok(library.external.eject(args.id)?)).await
+}
+
+/// The iPods mounted now, each with its free space and the external library
+/// it belongs to, for a new iPod library (4_external_libraries.md §7.2).
+#[tauri::command]
+#[specta::specta]
+pub async fn mounted_ipods(app: AppHandle) -> Result<Vec<MountedIpod>, CommandError> {
+    on_library(app, move |library| {
+        Ok(library
+            .external
+            .mounted_ipods()
+            .into_iter()
+            .map(|(ipod, whose)| MountedIpod {
+                free_bytes: domain::volume::free_space(&ipod.mount)
+                    .map(|free| i64::try_from(free).unwrap_or(i64::MAX)),
+                ipod: IpodInfo::from(&ipod),
+                external_library: whose,
+            })
+            .collect())
+    })
+    .await
 }
 
 /// What a sync does, as `sync_plan` shows it.
@@ -740,7 +813,7 @@ pub struct PlanStep {
     pub release_id: Option<i64>,
     pub label: SyncLabel,
     /// Where the file goes, or a removal's, where it is, relative to the
-    /// folder
+    /// folder or the iPod
     pub path: String,
     /// Where it is now, when that's elsewhere
     pub from: Option<String>,
@@ -748,6 +821,16 @@ pub struct PlanStep {
     pub changes: Vec<TagChange>,
     /// What it writes, estimated, or a removal's, what it frees
     pub bytes: i64,
+}
+
+/// A track on an iPod that liquidslunk didn't write, which its first sync
+/// erases once the user agrees.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanOtherTrack {
+    pub label: SyncLabel,
+    /// Relative to the iPod
+    pub path: String,
 }
 
 /// A track or a cover a sync leaves out, and why.
@@ -778,10 +861,15 @@ pub struct SyncPlan {
     pub freed_bytes: i64,
     /// What it needs: what it writes, less what it frees
     pub needed_bytes: i64,
-    /// What's free on the folder's disk
+    /// What's free on the folder's disk, or the iPod's
     pub free_bytes: Option<i64>,
     /// Whether it fits. A sync that doesn't is refused.
     pub fits: bool,
+    /// The iPod it syncs to
+    pub ipod: Option<IpodInfo>,
+    /// On an iPod, the tracks liquidslunk didn't write: `sync` erases them
+    /// first, with `erase`, and is refused without it
+    pub other: Vec<PlanOtherTrack>,
 }
 
 fn label(plan: &domain::Plan, subject: Subject, path: &str) -> SyncLabel {
@@ -806,11 +894,11 @@ fn subject_ids(subject: Subject) -> (Option<i64>, Option<i64>) {
     }
 }
 
-/// Works out what a sync of a folder library would do, without doing
-/// anything: what it adds, converts again, restores, retags, moves and
-/// removes, what it leaves out and why, and whether it fits. `sync` runs
-/// it. Refused when its folder isn't there, or belongs to another external
-/// library.
+/// Works out what a sync would do, without doing anything: what it adds,
+/// converts again, restores, retags, moves and removes, what it leaves out
+/// and why, whether it fits, and on an iPod, the tracks liquidslunk didn't
+/// write. `sync` runs it. Refused when its folder or iPod isn't there, or
+/// belongs to another external library.
 #[tauri::command]
 #[specta::specta]
 pub async fn sync_plan(app: AppHandle, args: IdArgs) -> Result<SyncPlan, CommandError> {
@@ -866,6 +954,19 @@ pub async fn sync_plan(app: AppHandle, args: IdArgs) -> Result<SyncPlan, Command
                 .free_bytes
                 .map(|free| i64::try_from(free).unwrap_or(i64::MAX)),
             fits: planned.fits(),
+            ipod: planned.ipod.as_ref().map(IpodInfo::from),
+            other: plan
+                .other
+                .iter()
+                .map(|other| PlanOtherTrack {
+                    label: SyncLabel {
+                        title: other.label.title.clone(),
+                        artist: other.label.artist.clone(),
+                        album: other.label.album.clone(),
+                    },
+                    path: other.path.clone(),
+                })
+                .collect(),
         })
     })
     .await
@@ -878,18 +979,27 @@ pub struct SyncArgs {
     pub id: i64,
     /// The plan `sync_plan` showed
     pub plan_id: i64,
+    /// On an iPod, erase the tracks liquidslunk didn't write, which the
+    /// user agreed to
+    #[serde(default)]
+    #[specta(optional)]
+    pub erase: Option<bool>,
 }
 
 /// Where a sync is.
 #[derive(Debug, Clone, Copy, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncStage {
+    /// On an iPod, erasing the tracks liquidslunk didn't write
+    Erasing,
     Removing,
     Moving,
     /// Adding, converting again and restoring
     Writing,
     Retagging,
     Covers,
+    /// On an iPod, writing its database and artwork
+    Database,
     Finishing,
 }
 
@@ -901,7 +1011,7 @@ pub struct SyncProgress {
     /// The plan's steps done, and all of them
     pub done: i64,
     pub total: i64,
-    /// Written to the folder so far
+    /// Written to the folder or the iPod so far
     pub bytes: i64,
     /// What's in hand: a track's title, or a path
     pub current: Option<String>,
@@ -911,11 +1021,13 @@ impl From<Progress> for SyncProgress {
     fn from(progress: Progress) -> Self {
         SyncProgress {
             stage: match progress.stage {
+                Stage::Erasing => SyncStage::Erasing,
                 Stage::Removing => SyncStage::Removing,
                 Stage::Moving => SyncStage::Moving,
                 Stage::Writing => SyncStage::Writing,
                 Stage::Retagging => SyncStage::Retagging,
                 Stage::Covers => SyncStage::Covers,
+                Stage::Database => SyncStage::Database,
                 Stage::Finishing => SyncStage::Finishing,
             },
             done: progress.done as i64,
@@ -950,8 +1062,10 @@ pub struct SyncOutcome {
     pub failed: Vec<SyncFailure>,
     /// Stopped by `cancel_sync`, after the file in hand
     pub cancelled: bool,
-    /// Written to the folder
+    /// Written to the folder or the iPod
     pub bytes: i64,
+    /// On an iPod, the tracks liquidslunk didn't write that it erased
+    pub erased: i64,
 }
 
 impl From<Outcome> for SyncOutcome {
@@ -979,13 +1093,15 @@ impl From<Outcome> for SyncOutcome {
                 .collect(),
             cancelled: outcome.cancelled,
             bytes: i64::try_from(outcome.bytes).unwrap_or(i64::MAX),
+            erased: outcome.erased as i64,
         }
     }
 }
 
-/// Runs the plan `sync_plan` last showed for a folder library, with its
-/// progress. One sync runs at a time. Refused: a plan that isn't the one
-/// last shown, one that doesn't fit, and a folder that changed since.
+/// Runs the plan `sync_plan` last showed, with its progress. One sync runs
+/// at a time. Refused: a plan that isn't the one last shown, one that
+/// doesn't fit, a folder or an iPod that changed since, and on an iPod with
+/// tracks liquidslunk didn't write, a sync without `erase`.
 #[tauri::command]
 #[specta::specta]
 pub async fn sync(
@@ -995,7 +1111,8 @@ pub async fn sync(
 ) -> Result<SyncOutcome, CommandError> {
     on_library(app, move |library| {
         let plan_id = u64::try_from(args.plan_id).unwrap_or(0);
-        let outcome = library.external.sync(args.id, plan_id, &|step| {
+        let erase = args.erase.unwrap_or(false);
+        let outcome = library.external.sync(args.id, plan_id, erase, &|step| {
             let _ = progress.send(step.into());
         })?;
         Ok(outcome.into())

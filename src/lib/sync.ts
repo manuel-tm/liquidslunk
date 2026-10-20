@@ -33,8 +33,16 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener)
 }
 
-/** Runs the plan `syncPlan` showed, hearing its progress as it goes. */
-export async function startSync(libraryId: number, planId: number) {
+/**
+ * Runs the plan `syncPlan` showed, hearing its progress as it goes. On an
+ * iPod with tracks from somewhere else, `erase` is the user's agreement to
+ * erase them first.
+ */
+export async function startSync(
+  libraryId: number,
+  planId: number,
+  erase = false
+) {
   if (current?.running) return
   set({ libraryId, running: true, progress: null, outcome: null, error: null })
   const progress = new Channel<SyncProgress>()
@@ -44,7 +52,11 @@ export async function startSync(libraryId: number, planId: number) {
     }
   }
   try {
-    const outcome = await call("sync", { id: libraryId, planId }, progress)
+    const outcome = await call(
+      "sync",
+      { id: libraryId, planId, erase },
+      progress
+    )
     set({ libraryId, running: false, progress: null, outcome, error: null })
   } catch (error) {
     set({
@@ -75,10 +87,20 @@ export function useSyncRun(): SyncRun | null {
   return useSyncExternalStore(subscribe, () => current)
 }
 
-/** Ejects the disk a folder library's folder is on, so it can be unplugged. */
-export async function ejectLibrary(id: number, folder: string | null) {
+/**
+ * Ejects the disk an external library's files are on, a folder library's
+ * folder or an iPod, so it can be unplugged. `what` names it in the toast.
+ */
+export async function ejectLibrary(
+  id: number,
+  what: { folder: string } | { ipod: string }
+) {
   await call("ejectExternalLibrary", { id })
-  toast.success(`Ejected the disk ${folder ?? ""} is on`)
+  toast.success(
+    "ipod" in what
+      ? `Ejected ${what.ipod}`
+      : `Ejected the disk ${what.folder} is on`
+  )
   void queryClient.invalidateQueries()
 }
 

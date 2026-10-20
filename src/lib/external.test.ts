@@ -10,6 +10,7 @@ import type {
 import {
   describeChange,
   describeMembership,
+  describeOther,
   describeOutcome,
   describePlan,
   describeRule,
@@ -175,6 +176,8 @@ function plan(
     neededBytes: added,
     freeBytes: free,
     fits: free === null || added <= free,
+    ipod: null,
+    other: [],
   }
 }
 
@@ -204,6 +207,16 @@ describe("sync plans", () => {
       "It needs 3.2 GB more than the folder has free."
     )
     expect(describeSpace(plan([], null))).toBeNull()
+    const ipod = {
+      name: "IPOD",
+      mount: "/Volumes/IPOD",
+      description: "iPod with video (5.5th generation), 30 GB, black",
+      refusal: null,
+      warning: null,
+    }
+    expect(
+      describeSpace({ ...plan([step("add", 13_200_000_000)]), ipod })
+    ).toBe("It needs 3.2 GB more than the iPod has free.")
   })
 
   it("say what a retag changes, and how a sync went", () => {
@@ -223,10 +236,17 @@ describe("sync plans", () => {
       failed: [],
       cancelled: false,
       bytes: 0,
+      erased: 0,
     }
     expect(describeOutcome(outcome)).toBe("Added 42, retagged 7 and removed 3.")
     expect(
       describeOutcome({ ...outcome, added: 0, retagged: 0, removed: 0 })
     ).toBe("Nothing changed.")
+    expect(describeOutcome({ ...outcome, erased: 1234, retagged: 0 })).toBe(
+      "Erased 1,234 tracks from somewhere else. Added 42 and removed 3."
+    )
+    expect(describeOther(1234)).toBe(
+      "This iPod has 1,234 tracks from somewhere else. Erase them, then sync?"
+    )
   })
 })

@@ -3,10 +3,11 @@ import {
   FolderSearchIcon,
   ListFilterIcon,
   RefreshCwIcon,
+  SearchIcon,
   UploadIcon,
   XIcon,
 } from "lucide-react"
-import { type ReactNode, useState } from "react"
+import { type ReactNode, useEffect, useState } from "react"
 import { Link, useParams } from "react-router"
 
 import { DeleteButton } from "@/components/delete-button"
@@ -112,9 +113,13 @@ function ExternalLibraryFrame({
               library.syncing ? ["It's syncing. Cancel the sync first."] : []
             }
             detail={
-              removeFiles
-                ? "Its rules go with it, and so does what liquidslunk wrote in its folder. Nothing else there is touched."
-                : "Its rules go with it. What's in its folder stays there."
+              library.kind === "ipod"
+                ? removeFiles
+                  ? "Its rules go with it, and so do the tracks liquidslunk put on the iPod. Nothing else on it is touched."
+                  : "Its rules go with it. What's on the iPod stays there."
+                : removeFiles
+                  ? "Its rules go with it, and so does what liquidslunk wrote in its folder. Nothing else there is touched."
+                  : "Its rules go with it. What's in its folder stays there."
             }
             onDelete={() => remove.mutateAsync(library.id)}
             then="/external-libraries"
@@ -126,18 +131,28 @@ function ExternalLibraryFrame({
               }
             }}
           >
-            {library.destination.type === "connected" && library.folder && (
-              <label className="flex items-start gap-2 text-xs">
-                <Checkbox
-                  checked={removeFiles}
-                  onCheckedChange={(checked) => setRemoveFiles(checked)}
-                />
-                <span>
-                  Also remove the files liquidslunk wrote in{" "}
-                  <span className="font-mono break-all">{library.folder}</span>
-                </span>
-              </label>
-            )}
+            {library.destination.type === "connected" &&
+              (library.folder || library.ipod) && (
+                <label className="flex items-start gap-2 text-xs">
+                  <Checkbox
+                    checked={removeFiles}
+                    onCheckedChange={(checked) => setRemoveFiles(checked)}
+                  />
+                  {library.folder ? (
+                    <span>
+                      Also remove the files liquidslunk wrote in{" "}
+                      <span className="font-mono break-all">
+                        {library.folder}
+                      </span>
+                    </span>
+                  ) : (
+                    <span>
+                      Also remove the tracks liquidslunk put on{" "}
+                      {library.ipod?.name}
+                    </span>
+                  )}
+                </label>
+              )}
           </DeleteButton>
         )}
       </PageHeader>
@@ -175,7 +190,19 @@ export function ExternalLibraryOverview() {
 }
 
 function Overview({ library }: { library: ExternalLibraryDetails }) {
-  const { contents, destination } = library
+  const { contents, destination, ipod } = library
+  const onIpod = library.kind === "ipod"
+  // An iPod is looked for again when the window comes to the front
+  // (4_external_libraries.md §7.2)
+  useEffect(() => {
+    if (!onIpod) return
+    const lookAgain = () =>
+      void queryClient.invalidateQueries({
+        queryKey: ["externalLibrary", { id: library.id }],
+      })
+    window.addEventListener("focus", lookAgain)
+    return () => window.removeEventListener("focus", lookAgain)
+  }, [onIpod, library.id])
   const [syncing, setSyncing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<Error | null>(null)
@@ -188,16 +215,22 @@ function Overview({ library }: { library: ExternalLibraryDetails }) {
       : `Lossless files become ${FORMAT_LABELS[library.format]}${
           library.format === "aac" ? ` at ${library.aacKbps} kbps` : ""
         }${library.cdResolution ? ", at CD resolution" : ""}. Lossy ones are copied.`
+  const free =
+    library.freeBytes !== null
+      ? `, with ${formatSize(library.freeBytes)} free`
+      : ""
   const connected =
     destination.type === "connected"
-      ? library.freeBytes !== null
-        ? `Yes, with ${formatSize(library.freeBytes)} free`
-        : "Yes"
+      ? ipod
+        ? `Yes: ${ipod.name}${free}`
+        : `Yes${free}`
       : destination.type === "elsewhere"
-        ? `No: the folder belongs to another external library, ${destination.name}`
-        : library.folder
-          ? "No: the folder isn't there"
-          : "No: liquidslunk doesn't sync an iPod yet"
+        ? `No: the ${onIpod ? "iPod connected" : "folder"} belongs to another external library, ${destination.name}`
+        : destination.type === "several"
+          ? "No: several iPods are connected, and none is this one's yet. Eject all but the one to sync."
+          : onIpod
+            ? "No: no iPod is connected. Connect it with its disk use on, so it shows in Finder."
+            : "No: the folder isn't there"
   const facts: [string, ReactNode][] = [
     [
       "Kind",
@@ -210,8 +243,17 @@ function Overview({ library }: { library: ExternalLibraryDetails }) {
       "Destination",
       library.folder ? (
         <span className="font-mono break-all">{library.folder}</span>
+      ) : ipod ? (
+        <>
+          {ipod.description}
+          {(ipod.refusal ?? ipod.warning) && (
+            <span className="text-muted-foreground">
+              . {ipod.refusal ?? ipod.warning}
+            </span>
+          )}
+        </>
       ) : (
-        "An iPod with video"
+        "An iPod with video, found when it's connected"
       ),
     ],
     ["Connected", connected],
@@ -269,50 +311,67 @@ function Overview({ library }: { library: ExternalLibraryDetails }) {
           </div>
         ))}
       </dl>
-      {library.kind === "folder" && (
-        <div className="flex flex-wrap items-center gap-2">
-          {mine?.running ? (
-            <Button onClick={() => setSyncing(true)}>
-              <Spinner data-icon="inline-start" />
-              Syncing
-              {mine.progress &&
-                `: ${mine.progress.done} of ${mine.progress.total}`}
-            </Button>
-          ) : (
-            <Button
-              disabled={destination.type !== "connected" || running || busy}
-              onClick={() => setSyncing(true)}
-            >
-              <RefreshCwIcon data-icon="inline-start" />
-              Sync…
-            </Button>
-          )}
-          {library.ejectable && (
-            <Button
-              variant="outline"
-              disabled={running || busy}
-              onClick={() =>
-                act(() => ejectLibrary(library.id, library.folder))
-              }
-            >
-              <UploadIcon data-icon="inline-start" />
-              Eject
-            </Button>
-          )}
-          {destination.type !== "connected" && (
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() =>
-                act(() => locateLibrary(library.id, library.folder))
-              }
-            >
-              <FolderSearchIcon data-icon="inline-start" />
-              Locate…
-            </Button>
-          )}
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {mine?.running ? (
+          <Button onClick={() => setSyncing(true)}>
+            <Spinner data-icon="inline-start" />
+            Syncing
+            {mine.progress &&
+              `: ${mine.progress.done} of ${mine.progress.total}`}
+          </Button>
+        ) : (
+          <Button
+            disabled={destination.type !== "connected" || running || busy}
+            onClick={() => setSyncing(true)}
+          >
+            <RefreshCwIcon data-icon="inline-start" />
+            Sync…
+          </Button>
+        )}
+        {library.ejectable && (
+          <Button
+            variant="outline"
+            disabled={running || busy}
+            onClick={() =>
+              act(() =>
+                ejectLibrary(
+                  library.id,
+                  ipod ? { ipod: ipod.name } : { folder: library.folder ?? "" }
+                )
+              )
+            }
+          >
+            <UploadIcon data-icon="inline-start" />
+            Eject
+          </Button>
+        )}
+        {!onIpod && destination.type !== "connected" && (
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() => act(() => locateLibrary(library.id, library.folder))}
+          >
+            <FolderSearchIcon data-icon="inline-start" />
+            Locate…
+          </Button>
+        )}
+        {onIpod && (
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() =>
+              act(() =>
+                queryClient.invalidateQueries({
+                  queryKey: ["externalLibrary", { id: library.id }],
+                })
+              )
+            }
+          >
+            <SearchIcon data-icon="inline-start" />
+            Look again
+          </Button>
+        )}
+      </div>
       {error && <QueryError error={error} title="Can't do that" />}
       <SyncSheet library={library} open={syncing} onOpenChange={setSyncing} />
     </div>

@@ -41,12 +41,16 @@ pub struct Progress {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stage {
+    /// On an iPod, erasing the tracks liquidslunk didn't write
+    Erasing,
     Removing,
     Moving,
     /// Adding, converting again and restoring
     Writing,
     Retagging,
     Covers,
+    /// On an iPod, writing its database and artwork
+    Database,
     Finishing,
 }
 
@@ -58,6 +62,8 @@ pub struct Outcome {
     pub failed: Vec<Failure>,
     pub cancelled: bool,
     pub bytes: u64,
+    /// On an iPod, the tracks liquidslunk didn't write that it erased
+    pub erased: usize,
 }
 
 /// A file a sync couldn't write, and why. The rest of the sync goes on.
@@ -86,11 +92,7 @@ pub struct Run<'a> {
 /// the rest goes on. A destination that can't be written ends the sync with
 /// its error, keeping what's done.
 pub fn run(run: Run<'_>, progress: &dyn Fn(Progress)) -> Result<Outcome> {
-    let covers = Covers {
-        px: run.cover_px,
-        paths: run.cover_paths.clone(),
-        made: Mutex::new(HashMap::new()),
-    };
+    let covers = Covers::new(run.cover_px, run.cover_paths.clone(), true);
     let mut sync = Sync {
         files: run.plan.present.clone(),
         touched: Vec::new(),
@@ -407,6 +409,7 @@ impl Sync<'_> {
                 audio: wanted.audio.clone(),
                 tags: fields(wanted),
                 cover: prepared.cover.clone(),
+                ipod: None,
             },
         };
         self.outcome.bytes += staged.size;
@@ -463,6 +466,7 @@ impl Sync<'_> {
                     audio,
                     tags: fields(wanted),
                     cover: cover.map(|(_, key)| key),
+                    ipod: None,
                 },
             },
             from: None,
@@ -512,15 +516,15 @@ impl Sync<'_> {
 }
 
 /// A track's file, made in the temporary folder, tagged and ready to copy.
-struct Prepared {
-    path: PathBuf,
+pub(super) struct Prepared {
+    pub path: PathBuf,
     /// The cover embedded in it
-    cover: Option<CoverKey>,
+    pub cover: Option<CoverKey>,
 }
 
 /// Converts or copies a track's audio into the temporary folder, and tags
 /// it. Why not, when it can't be.
-fn prepare(
+pub(super) fn prepare(
     wanted: &WantedTrack,
     index: usize,
     scratch: &Scratch,
@@ -560,13 +564,24 @@ type Made = Arc<std::result::Result<Vec<u8>, String>>;
 
 /// Covers as JPEGs, each release's made once, by whichever file needs it
 /// first.
-struct Covers {
+pub(super) struct Covers {
     px: u32,
     paths: HashMap<i64, PathBuf>,
     made: Mutex<HashMap<i64, Made>>,
+    /// Whether tracks get their cover embedded: an iPod's don't
+    embed: bool,
 }
 
 impl Covers {
+    pub(super) fn new(px: u32, paths: HashMap<i64, PathBuf>, embed: bool) -> Covers {
+        Covers {
+            px,
+            paths,
+            made: Mutex::new(HashMap::new()),
+            embed,
+        }
+    }
+
     fn jpeg(&self, release: i64) -> Made {
         if let Some(made) = self.lock().get(&release) {
             return made.clone();
@@ -582,6 +597,9 @@ impl Covers {
     /// The cover to embed in a track, with what it was made from, or `None`
     /// when it has none, or its cover can't be read.
     fn embedded(&self, wanted: &WantedTrack) -> Option<(Vec<u8>, CoverKey)> {
+        if !self.embed {
+            return None;
+        }
         let key = wanted.cover.clone()?;
         let jpeg = self.jpeg(wanted.release);
         jpeg.as_ref().as_ref().ok().map(|jpeg| (jpeg.clone(), key))
@@ -594,7 +612,7 @@ impl Covers {
     }
 }
 
-fn fields(wanted: &WantedTrack) -> BTreeMap<String, Vec<String>> {
+pub(super) fn fields(wanted: &WantedTrack) -> BTreeMap<String, Vec<String>> {
     wanted
         .tags
         .fields()
@@ -604,7 +622,7 @@ fn fields(wanted: &WantedTrack) -> BTreeMap<String, Vec<String>> {
 }
 
 /// Copies a file's bytes, and none of its attributes.
-fn copy_bytes(from: &Path, to: &Path) -> Result<()> {
+pub(super) fn copy_bytes(from: &Path, to: &Path) -> Result<()> {
     let mut source = File::open(from).map_err(Error::io(from))?;
     let mut target = File::create(to).map_err(Error::io(to))?;
     io::copy(&mut source, &mut target).map_err(Error::io(to))?;

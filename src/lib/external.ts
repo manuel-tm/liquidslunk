@@ -123,7 +123,7 @@ export function describeMembership(membership: ExternalMembership): string {
 }
 
 function count(n: number, noun: string): string {
-  return `${n} ${n === 1 ? noun : `${noun}s`}`
+  return `${n.toLocaleString("en-US")} ${n === 1 ? noun : `${noun}s`}`
 }
 
 /**
@@ -169,7 +169,8 @@ export function describePlan(plan: SyncPlan): string {
 export function describeSpace(plan: SyncPlan): string | null {
   if (plan.freeBytes === null) return null
   if (!plan.fits) {
-    return `It needs ${formatSize(plan.neededBytes - plan.freeBytes)} more than the folder has free.`
+    const where = plan.ipod ? "the iPod" : "the folder"
+    return `It needs ${formatSize(plan.neededBytes - plan.freeBytes)} more than ${where} has free.`
   }
   if (plan.neededBytes <= 0) {
     return `${formatSize(plan.freeBytes)} is free.`
@@ -186,16 +187,34 @@ export function describeChange({ field, was, now }: TagChange): string {
 
 /** Where a running sync is, as its progress says it. */
 export const STAGE_LABELS: Record<SyncStage, string> = {
+  erasing: "Erasing the other music",
   removing: "Removing files",
   moving: "Moving files",
   writing: "Converting and writing",
   retagging: "Retagging",
   covers: "Writing covers",
+  database: "Writing the iPod's database",
   finishing: "Finishing",
 }
 
-/** How a sync went: "Added 42, retagged 7 and removed 3." */
+/**
+ * What an iPod's first sync asks before it erases the tracks liquidslunk
+ * didn't write (4_external_libraries.md §7.8): "This iPod has 1,234 tracks
+ * from somewhere else. Erase them, then sync?"
+ */
+export function describeOther(tracks: number): string {
+  return `This iPod has ${count(tracks, "track")} from somewhere else. Erase ${tracks === 1 ? "it" : "them"}, then sync?`
+}
+
+/**
+ * How a sync went: "Added 42, retagged 7 and removed 3.", after "Erased 12
+ * tracks from somewhere else." on an iPod.
+ */
 export function describeOutcome(outcome: SyncOutcome): string {
+  const erased =
+    outcome.erased > 0
+      ? `Erased ${count(outcome.erased, "track")} from somewhere else. `
+      : ""
   const parts = (
     [
       ["added", outcome.added],
@@ -208,8 +227,10 @@ export function describeOutcome(outcome: SyncOutcome): string {
   )
     .filter(([, n]) => n > 0)
     .map(([verb, n]) => `${verb} ${n}`)
-  if (parts.length === 0) return "Nothing changed."
+  if (parts.length === 0) {
+    return `${erased}${erased ? "Nothing else changed." : "Nothing changed."}`
+  }
   const last = parts.pop()
   const sentence = parts.length > 0 ? `${parts.join(", ")} and ${last}` : last!
-  return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`
+  return `${erased}${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`
 }

@@ -1,9 +1,9 @@
 //! Tags written into files, with lofty (4_external_libraries.md §4.1): each
 //! format's own fields, from the one mapping, and the cover as the front
 //! cover. A file's tags are all replaced, whatever it had: only the
-//! encoder's gapless data, which `afconvert` keeps among an M4A's tags, is
-//! carried over. It only ever writes to a file liquidslunk made: a copy or a
-//! conversion in the temporary folder.
+//! encoder's gapless data and Sound Check, which `afconvert` keeps among an
+//! M4A's tags, are carried over. It only ever writes to a file liquidslunk
+//! made: a copy or a conversion in the temporary folder.
 
 use std::borrow::Cow;
 use std::fs::File;
@@ -85,9 +85,9 @@ pub fn write(path: &Path, tags: &Tags, cover: Option<&[u8]>) -> Result<()> {
                 .map_err(failed)
         }
         FileType::Mp4 => {
-            let gapless = gapless_atom(path)?;
+            let encoders = encoder_atoms(path)?;
             let mut ilst = ilst(tags, picture);
-            if let Some(atom) = gapless {
+            for atom in encoders {
                 ilst.insert(atom);
             }
             ilst.save_to_path(path, options).map_err(failed)
@@ -262,18 +262,23 @@ fn ilst(tags: &Tags, picture: Option<Picture>) -> Ilst {
     ilst
 }
 
-/// The encoder's gapless data in an M4A, `----:com.apple.iTunes:iTunSMPB`:
-/// its delay and padding. `afconvert` writes it among the tags, and an AAC
-/// file without it plays with gaps.
-fn gapless_atom(path: &Path) -> Result<Option<Atom<'static>>> {
+/// What the encoder wrote among an M4A's tags, which is kept: its gapless
+/// data, `----:com.apple.iTunes:iTunSMPB`, its delay and padding, without
+/// which an AAC file plays with gaps; and Sound Check, `iTunNORM`.
+fn encoder_atoms(path: &Path) -> Result<Vec<Atom<'static>>> {
     let mut file = File::open(path).map_err(Error::io(path))?;
     let parsed = Mp4File::read_from(&mut file, ParseOptions::new().read_cover_art(false))
         .map_err(|error| Error::Invalid(format!("Its tags couldn't be read: {error}")))?;
-    let ident = AtomIdent::Freeform {
-        mean: Cow::Borrowed("com.apple.iTunes"),
-        name: Cow::Borrowed("iTunSMPB"),
-    };
-    Ok(parsed.ilst().and_then(|ilst| ilst.get(&ident)).cloned())
+    Ok(["iTunSMPB", "iTunNORM"]
+        .into_iter()
+        .filter_map(|name| {
+            let ident = AtomIdent::Freeform {
+                mean: Cow::Borrowed("com.apple.iTunes"),
+                name: Cow::Borrowed(name),
+            };
+            parsed.ilst()?.get(&ident).cloned()
+        })
+        .collect())
 }
 
 /// An APEv2 tag, for APE, WavPack and Musepack, kept as they are in a folder

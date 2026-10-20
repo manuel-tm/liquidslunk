@@ -57,8 +57,9 @@ liquidslunk ports slunk's schema, behavior and routes ([design §2.1](docs/desig
 
 - liquidslunk never moves, copies, renames, deletes or retags a user's file. Code that touches the user's files may only read them.
 - The only things it writes are next to its database: `slunk.db`, SQLite's `-wal`/`-shm` files, and `slunk-backups/`. Apart from those, it writes its settings in the app's config folder ([design §6.2](docs/design/1_introduction.md#62-the-settings-file)).
-- **External libraries** ([4_external_libraries.md §8.4](docs/design/4_external_libraries.md#84-what-liquidslunk-may-write)) add two places, and only these:
+- **External libraries** ([4_external_libraries.md §8.4](docs/design/4_external_libraries.md#84-what-liquidslunk-may-write)) add these places, and only these:
   - inside an external library's destination: the files a sync converts or copies, `cover.jpg`s, the manifest and its journal in `.liquidslunk/`, and its temporary files. It replaces or deletes only what the manifest lists, and the `._` files macOS makes for its own files on FAT32 and exFAT. It never makes the destination's folder, or writes outside it;
+  - on an iPod, the same in `iPod_Control/Music`, with the manifest, its journal and temporary files in `iPod_Control/iTunes`, and the iPod's databases: the iTunesDB, a copy of the one it replaces, the ArtworkDB and its `.ithmb` files. It also deletes `Play Counts` once it's counted, and, once the user agrees, the music files of tracks it didn't write ([reference/ipod.md](docs/reference/ipod.md#the-files));
   - a sync's own folder in the system's temporary folder, while it converts.
 
   A destination is never inside the library's folder, so the user's files are still only read.
@@ -87,7 +88,7 @@ The schema is slunk's, carried over unchanged. Everything else can change faster
 
 ### External libraries follow their design
 
-External libraries, export and sync, are designed in [4_external_libraries.md](docs/design/4_external_libraries.md) and built in its phases. Build only what the current phase plans. What the design leaves out, like phones, other iPods or reading back from a destination, needs a design of its own first.
+External libraries, export and sync, were designed in [4_external_libraries.md](docs/design/4_external_libraries.md) and built in its phases. What the design leaves out, like phones, other iPods, playlists or reading back from a destination, needs a design of its own first.
 
 ## Before you finish
 

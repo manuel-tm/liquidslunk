@@ -11,7 +11,7 @@ The backend is Rust, built into the app. It was ported from slunk's Node backend
 - **Phase 5:** the catalog context's tracks: the track list, a track with everything saved with it, and a release's whole track list with its disc titles; what a folder suggests for importing it; and adding one alternate name to an artist.
 - **Phase 6:** the library check and its fixes, and the sample data. slunk's backend was removed, with what ran it.
 
-Since the port, later designs add to it: phase 0 of [2_player.md](../design/2_player.md) added `player_tracks`, what the music player shows of the tracks it queues, phase 1 added `release_track_ids`, a release's tracks for the release table's play button ([Commands](#commands)), and phase 2 added the menu bar's Controls menu, with `set_controls_menu` and the `PlayerControl` event ([The menu bar](#the-menu-bar)). Phase 0 of [4_external_libraries.md](../design/4_external_libraries.md) added the external libraries context, with a track's tags as an external library writes them and path templates, and `exported_tags`; phase 1 added external libraries themselves, their rules, what they come to and what that takes, in liquidslunk's first migration of its own, with their commands, and `track_options` for the track picker; phase 2 added syncing a folder library: converting with `afconvert`, covers, writing tags, the manifest, the plan, the sync with its progress and cancelling, ejecting, and Locate ([The external libraries context](#the-external-libraries-context)).
+Since the port, later designs add to it: phase 0 of [2_player.md](../design/2_player.md) added `player_tracks`, what the music player shows of the tracks it queues, phase 1 added `release_track_ids`, a release's tracks for the release table's play button ([Commands](#commands)), and phase 2 added the menu bar's Controls menu, with `set_controls_menu` and the `PlayerControl` event ([The menu bar](#the-menu-bar)). Phase 0 of [4_external_libraries.md](../design/4_external_libraries.md) added the external libraries context, with a track's tags as an external library writes them and path templates, and `exported_tags`; phase 1 added external libraries themselves, their rules, what they come to and what that takes, in liquidslunk's first migration of its own, with their commands, and `track_options` for the track picker; phase 2 added syncing a folder library: converting with `afconvert`, covers, writing tags, the manifest, the plan, the sync with its progress and cancelling, ejecting, and Locate; phase 3 added syncing an iPod: finding it, its iTunesDB, its artwork, gapless data and Sound Check, Play Counts, and erasing other music, with `mounted_ipods` ([The external libraries context](#the-external-libraries-context)).
 
 Each rule on this page has a test.
 
@@ -31,6 +31,7 @@ Each rule on this page has a test.
 | Images | `image` (covers: JPEG, PNG, GIF, BMP, TIFF, WebP) |
 | JSON in the domain | serde_json (an external library's manifest) |
 | Volumes | libc's `statvfs` and `statfs` (free space, mount points), and `diskutil eject` |
+| iPod | liquidslunk's own reader and writer of its databases ([reference/ipod.md](../reference/ipod.md)) |
 | Hashing, walking folders | sha2, walkdir |
 | Text | unicode-normalization (NFC) |
 | Sorting file names | ICU4X's collator (`icu_collator`), with numeric ordering |
@@ -70,9 +71,20 @@ crates/slunk/                the domain and its database, with no Tauri dependen
     manifest.rs              the manifest, and its journal
     plan.rs                  the plan, from what should be there and what is
     sync.rs                  running a plan
-    folder.rs                a folder destination: its files and folders
+    folder.rs                a destination's files and folders: a folder's,
+                             or an iPod's
     scratch.rs               a sync's temporary folder
     volume.rs                free space, mount points, and ejecting
+    ipod/                    the iPod: finding it, and its databases
+      mod.rs                 mounted iPods, paths, new file names, Mac times
+      sysinfo.rs             which iPod it is, from SysInfo
+      itunesdb.rs            the iTunesDB, read and written
+      artwork.rs             the ArtworkDB and its thumbnails
+      audio.rs               what the database needs of a file: gapless
+                             data, Sound Check
+      play_counts.rs         Play Counts
+      bytes.rs               little-endian chunks
+      sync.rs                running a plan on an iPod
   src/media/                 the media context
     mod.rs                   Media: registering, browsing, updating, deleting
     check.rs                 the library check's file part, and its fixes
@@ -131,8 +143,8 @@ crates/slunk/                the domain and its database, with no Tauri dependen
                              templates, names on disk
   tests/external_libraries.rs  external libraries, their rules, what they come
                              to, memberships, and their tables' constraints
-  tests/external_sync.rs     syncing a folder library from start to end, with
-                             afconvert (macOS only)
+  tests/external_sync.rs     syncing a folder library and an iPod from start
+                             to end, with afconvert (macOS only)
   tests/seeds.rs             the sample data
   tests/fixtures/parity/     what slunk's migration runner made
   tests/fixtures/audio/      audio files, what slunk read from them, and the
@@ -361,7 +373,7 @@ node crates/slunk/tests/fixtures/languages/generate.ts
 
 ## The external libraries context
 
-`crates/slunk/src/external/` is the external libraries context ([4_external_libraries.md](../design/4_external_libraries.md)): a selection of the library, for a folder or an iPod. It has the mapping, from phase 0, a track's tags as every external library writes them and its path in a folder library; from phase 1, external libraries, their rules, what they come to, and what that will take; and from phase 2, syncing a folder library. An iPod isn't synced yet. Each rule here has a test in `tests/external.rs`, `tests/external_libraries.rs` or `tests/external_sync.rs`, or next to its code.
+`crates/slunk/src/external/` is the external libraries context ([4_external_libraries.md](../design/4_external_libraries.md)): a selection of the library, for a folder or an iPod. It has the mapping, from phase 0, a track's tags as every external library writes them and its path in a folder library; from phase 1, external libraries, their rules, what they come to, and what that will take; from phase 2, syncing a folder library; and from phase 3, syncing an iPod. Each rule here has a test in `tests/external.rs`, `tests/external_libraries.rs` or `tests/external_sync.rs`, or next to its code.
 
 It reads the catalog's and the tags' tables itself, through their repositories, with one connection ([4_external_libraries.md Appendix E](../design/4_external_libraries.md#appendix-e-the-context-reads-the-catalog-itself)).
 
@@ -372,10 +384,10 @@ An external library is a destination, a selection and a profile (`external/repos
 - **Its kind** is a folder or an iPod, and can't change: "An external library can't change from a folder to an iPod, or back". An unknown id is `NotFound`: "There's no external library 12".
 - **A folder library's folder** is an absolute path, resolved lexically, and never where the user's own files are ([4_external_libraries.md §3.1](../design/4_external_libraries.md#31-its-destination)). Refused: none ("A folder library needs a folder"), a relative one, the library's own folder, one inside it, one that holds it, and one that holds a registered file, which is a range on the path index, as for browsing. A folder belongs to one external library, which the database enforces: "Another external library uses that folder".
 - **Its profile:** the format lossless files become, `original`, `flac`, `alac` or `aac`; AAC's bitrate, 128 to 320 kbps; CD resolution; a path template, checked, and the default when it's blank; and covers: embedded or not, their size, 100 to 3000 pixels, and a `cover.jpg` or not.
-- **An iPod's** profile is what it plays: Apple Lossless or AAC ("An iPod plays Apple Lossless or AAC"), at CD resolution, with no folder, template, embedded covers or `cover.jpg`, whatever's given. It isn't tied to an iPod yet.
-- **Its destination** (`destination()`) is connected when a folder library's folder is there and its manifest names this external library, or it has none yet; missing when the folder isn't there; and elsewhere when its manifest names another external library, which a sync refuses: "This folder belongs to another external library, Car." An iPod library is never connected, yet. The manifest's identity is read again only when its size or mtime changes, so the sidebar's dots don't read it each time.
+- **An iPod's** profile is what it plays: Apple Lossless or AAC ("An iPod plays Apple Lossless or AAC"), at CD resolution, with no folder, template, embedded covers or `cover.jpg`, whatever's given. Its iPod is the one connected at its first sync ([Syncing an iPod](#syncing-an-ipod)).
+- **Its destination** (`destination()`) is connected when a folder library's folder is there and its manifest names this external library, or it has none yet; missing when the folder isn't there; and elsewhere when its manifest names another external library, which a sync refuses: "This folder belongs to another external library, Car." An iPod library's is the mounted iPod whose manifest names it, or else the only one with no manifest that liquidslunk syncs; with several of those, it's `Several`, and a sync is refused until all but one are ejected. The manifest's identity is read again only when its size or mtime changes, so the sidebar's dots don't read it each time.
 - **Locate** (`locate()`) points a folder library at its folder where it is now: one that moved, or a card that mounted under another name. The folder is checked as a new one is, and refused when its manifest names another external library.
-- **Deleting** one deletes its rules, and touches nothing on its destination. With `remove_files`, its destination has to be connected, and what liquidslunk wrote there goes first: the files its manifest lists, the folders that leaves empty, and `.liquidslunk/`. Deleting one that's syncing is refused.
+- **Deleting** one deletes its rules, and touches nothing on its destination. With `remove_files`, its destination has to be connected, and what liquidslunk wrote there goes first: the files its manifest lists, the folders that leaves empty, and `.liquidslunk/`. On an iPod, its tracks' files go, the database is written again without them, and so is the manifest; it's refused while the iPod also has tracks from somewhere else, which a database of liquidslunk's own would leave out. Deleting one that's syncing is refused.
 
 ### Rules and what they come to
 
@@ -425,7 +437,7 @@ A sync works out a plan, shows it, then carries it out ([4_external_libraries.md
 **Tags** (`write_tags.rs`) replace whatever a file had, in each format's own fields, from `Tags` ([A track's tags](#a-tracks-tags)), with the cover as the front cover:
 - **FLAC and Ogg:** Vorbis comments, one per value, and the cover as a `PICTURE` block, or `METADATA_BLOCK_PICTURE` in Ogg.
 - **MP3, AAC in ADTS, WAV and AIFF:** ID3v2.4, several values in one frame separated by nulls, and `TXXX` for `ARTISTS`, `CATALOGNUMBER` and `RELEASETYPE`. ID3v1, APE and RIFF INFO tags are removed.
-- **M4A:** MP4 atoms, one data atom per value, freeform ones as `----:com.apple.iTunes:<NAME>`. The encoder's gapless data, `iTunSMPB`, which `afconvert` writes among the tags, is kept: an AAC file without it plays with gaps.
+- **M4A:** MP4 atoms, one data atom per value, freeform ones as `----:com.apple.iTunes:<NAME>`. What `afconvert` writes among the tags is kept: the encoder's gapless data, `iTunSMPB`, without which an AAC file plays with gaps, and Sound Check, `iTunNORM`.
 - **APE, WavPack and Musepack** kept as they are: APEv2.
 - They're only ever written into a file liquidslunk made: a copy or a conversion in the temporary folder. lofty's `remove_from_path()` opens a file read-only and then fails to truncate it, so tags are removed through a file opened for writing.
 
@@ -461,7 +473,35 @@ A sync appends each change to `.liquidslunk/journal.jsonl` before it renames a f
 - **No AppleDouble files** (`folder.rs`). macOS gives every file and folder a process creates an extended attribute, `com.apple.provenance`, which can't be removed, and FAT32 and exFAT keep extended attributes in a `._` file beside the file, which some players list as a broken track. Opening an existing file for writing makes one too, while a rename doesn't. So every file is written new, never rewritten in place, and the `._` file of each file or folder liquidslunk makes, and of the journal at each append, is deleted as soon as it's made ([4_external_libraries.md Appendix H](../design/4_external_libraries.md#appendix-h-appledouble-files)).
 - **Temporary files:** each sync has its own folder in the system's temporary folder, `liquidslunk-sync-<pid>-<n>`, with a lock held while it runs, and removed when it ends. At launch, those whose lock no sync holds are removed (`scratch::remove_leftovers()`).
 
-**Ejecting** (`eject()`): a folder on a volume other than the Mac's own disk, `/` and the volumes in `/System/Volumes`, is ejected with `diskutil eject`, so it can be unplugged. Not while a sync runs.
+**Ejecting** (`eject()`): a folder on a volume other than the Mac's own disk, `/` and the volumes in `/System/Volumes`, or an iPod, is ejected with `diskutil eject`, so it can be unplugged. Not while a sync runs.
+
+### Syncing an iPod
+
+An iPod library syncs the iPod with video, 5th and 5.5th generations ([4_external_libraries.md §7](../design/4_external_libraries.md#7-the-ipod)). What liquidslunk reads and writes on it, byte by byte, is in [reference/ipod.md](../reference/ipod.md).
+
+**Finding it** (`ipod/mod.rs`): an iPod is a volume in `/Volumes` with an `iPod_Control/iTunes` folder, which it has when its disk use is on. Its model is read from `iPod_Control/Device/SysInfo`: another model is refused ("liquidslunk syncs only the iPod with video (5th and 5.5th generations). This one is model MB029."), and an iPod without one is synced with a warning. `mounted_ipods()` lists them, each with the external library its manifest names. An iPod library's iPod is found as [External libraries](#external-libraries) says; it gets its manifest, `iPod_Control/iTunes/liquidslunk.json`, at its first sync, and is recognized by it wherever it mounts. Tests look in another folder than `/Volumes` (`External::with_volumes()`).
+
+**Its plan** (`plan::plan_ipod()`) is a folder library's, with these differences:
+- **Paths:** the iPod names its own files. A new file goes in one of the `F00` to `F49` music folders already there, at random, as `LSK` and four random letters and digits, with its extension in lowercase. A file written again, converted or restored, gets a new path, and the old file goes once the database no longer lists it. There are no moves, no `cover.jpg`s, and no paths of someone else's to leave alone.
+- **What is there** is the manifest checked against the disk, and against the iTunesDB: a file it lists but the database doesn't, as after an iPod unplugged midway, is retagged with "Listed on the iPod: No → Yes". A sync cut short can leave two files for a track: the one that's best kept stays, and the other is removed.
+- **A retag** changes only the database. **Covers** are the iPod's artwork, made at 200 pixels, so a cover's key is its SHA-256 and 200.
+- **Tracks from somewhere else,** those the iTunesDB lists at paths the manifest doesn't, are the plan's `other`. A sync is refused unless the user agrees to erase them ("This iPod has 1,234 tracks from somewhere else. Agree to erase them to sync it."), with `sync`'s `erase` ([4_external_libraries.md §7.8](../design/4_external_libraries.md#78-an-ipod-with-other-music)).
+- **What each source becomes** is as in a folder library with the iPod's format, and Ogg Vorbis and Opus become AAC. Every conversion passes `--soundcheck-generate`.
+
+**Running it** (`ipod/sync.rs`). The iPod reads only its database, which is written last, so an iPod unplugged midway still plays what it played before:
+1. With `erase`, the files of tracks from somewhere else are deleted, only in `iPod_Control/Music`, and never one the manifest lists.
+2. When what's added wouldn't fit before what's removed is gone, the database is first written without the removed tracks and the files they replace, and those go.
+3. **New files** are converted or copied, and tagged, on one thread per core but one, then their facts are read (below), and each is written to the iPod as a folder library's are, journaled before it's renamed into place. A track written again keeps its `dbid`, and when it was added.
+4. **The database:** the artwork, then the iTunesDB, each under a temporary name in `iPod_Control/iTunes/liquidslunk-tmp`. The old iTunesDB is copied to `iTunesDB.liquidslunk-previous`, the first time in a sync, `Play Counts` is removed, and the new files are renamed over the old ones. Retags are journaled once the database has them.
+5. **Removals:** the files of removed tracks, and those new files replaced.
+6. The manifest is written, and `last_synced_at` is set.
+
+- **Cancelling** stops after the file in hand, and the database is still written, with the retags and removals, for what's done.
+- **The database** is written from the manifest alone, whose files on an iPod keep what it needs: each track's `dbid`, its kind, length, bitrate, sample rate, Sound Check, gapless data, and when it was added. Its tags are the manifest's as written: title, artist, album, album artist, the sort fields, the year from the date, compilation, and track and disc numbers with their totals. It lists the tracks by album artist, album, disc and number, each by its sort form when it has one. The iPod browses by the master playlist's sorted indexes, which sort by the sort fields, so a Japanese title sorts by its transliteration.
+- **Counts:** each track's play count, skips, their last times and its rating are the iPod's: they're read from the database it replaces, with `Play Counts`' added in by position, and carried over by `dbid`. They're never brought into the library.
+- **Facts** (`ipod/audio.rs`), read from the file written: an AAC file's encoder delay, padding and samples from its `iTunSMPB` atom; an Apple Lossless file's samples, with no delay or padding; a copied MP3's from its LAME header and its frames; Sound Check from `iTunNORM`, which `afconvert --soundcheck-generate` adds. The length is the samples played, since lofty's counts the encoder's delay and padding in. Apple Lossless records no bitrate, so it's the file's average.
+- **Artwork** (`ipod/artwork.rs`): each track with a cover gets an image in the ArtworkDB, with a 100 × 100 and a 200 × 200 thumbnail, RGB565, the cover scaled to fit and centred on white. A release's tracks share their thumbnails' pixels. The `.ithmb` files are made again at each write, in the sync's temporary folder: a cover that's the same as before is copied from the old files, and a new one is made from the library's, several at once.
+- **The database's ids** are kept from the one it replaces: its own, its library's and its master playlist's. An iPod without a database gets new ones.
 
 ### A track's tags
 
@@ -652,7 +692,7 @@ The frontend calls the backend through Tauri commands, in `src-tauri/src/command
   - `import.rs` ([Import suggestions](#import-suggestions)): the import's reads, `release_suggestion` and `import_files`, the release's cover and links with the folder's files;
   - `mod.rs`: `languages`, and what they share: the DTOs of what a release refers to, and `Related`, which loads it;
 - `library_check.rs` ([The library check](#the-library-check)): `library_check`, and its fixes, `relink_files` and `rehash_files`;
-- `external.rs` ([The external libraries context](#the-external-libraries-context)): `external_libraries`, each with whether it's connected; `external_library`, its page, with what's in it, what that takes, and a sample track for its template; `create_external_library`, `update_external_library` and `delete_external_library`; its rules, `external_library_rules` and `set_external_library_rules`, each with what it names; the catalog pages', `add_to_external_library`, `remove_from_external_library` and `external_memberships`; `external_library_tracks`, what's in one, a page at a time, as the track list shows tracks; `exported_tags`, a track's tags as an external library writes them, with its cover, and its path by a template, the default one unless one is given, where a template that can't be used is `invalid`, with the reason, and a track that isn't there is null; and syncing ([Syncing a folder library](#syncing-a-folder-library)): `sync_plan`, what a sync would do, with its labels, what's left out and whether it fits; `sync`, which runs it by its id, with its progress through a `Channel`, and returns how it went; `cancel_sync`; `eject_external_library`; and `locate_external_library`. `external_library` says whether its destination is connected, missing or another external library's, what's free there, whether it ejects and whether it's syncing, and `delete_external_library` takes `removeFiles`;
+- `external.rs` ([The external libraries context](#the-external-libraries-context)): `external_libraries`, each with whether it's connected; `external_library`, its page, with what's in it, what that takes, and a sample track for its template; `create_external_library`, `update_external_library` and `delete_external_library`; its rules, `external_library_rules` and `set_external_library_rules`, each with what it names; the catalog pages', `add_to_external_library`, `remove_from_external_library` and `external_memberships`; `external_library_tracks`, what's in one, a page at a time, as the track list shows tracks; `exported_tags`, a track's tags as an external library writes them, with its cover, and its path by a template, the default one unless one is given, where a template that can't be used is `invalid`, with the reason, and a track that isn't there is null; and syncing ([Syncing a folder library](#syncing-a-folder-library), [Syncing an iPod](#syncing-an-ipod)): `sync_plan`, what a sync would do, with its labels, what's left out, whether it fits, and on an iPod, the iPod and its tracks from somewhere else; `sync`, which runs it by its id, with its progress through a `Channel`, and `erase` on an iPod with tracks from somewhere else, and returns how it went; `cancel_sync`; `eject_external_library`; `locate_external_library`; and `mounted_ipods`, the iPods mounted now, with their model, free space and the external library each belongs to. `external_library` says whether its destination is connected, missing, another external library's or one of several iPods, what's free there, whether it ejects, whether it's syncing, and an iPod library's iPod, and `delete_external_library` takes `removeFiles`;
 - `menu.rs` ([The menu bar](#the-menu-bar)): `set_controls_menu`;
 - `tagging.rs` ([The tagging context](#the-tagging-context)): `tags`, `tag`, `tag_options`, `tags_by_ref`, `tag_values`, `tag_value_options`, `create_tag`, `update_tag` and `delete_tag`, which name a tag by its `type` and id; a release's tags, `release_tags` and `set_release_tags`; and the bulk edits, `set_tag_on_releases` and `remove_tag_from_releases`.
 

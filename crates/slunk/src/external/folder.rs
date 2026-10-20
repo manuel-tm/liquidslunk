@@ -1,8 +1,9 @@
-//! A folder destination (4_external_libraries.md §6.3): files reach their
-//! final path whole, written under a temporary name in `.liquidslunk/tmp`
-//! and then renamed, which is atomic on one volume; folders are made as
-//! they're needed and removed when a sync leaves them empty; and there are
-//! no AppleDouble files.
+//! A destination's files (4_external_libraries.md §6.3): a folder library's
+//! folder, or an iPod's disk. Files reach their final path whole, written
+//! under a temporary name in liquidslunk's temporary folder there and then
+//! renamed, which is atomic on one volume; folders are made as they're
+//! needed and removed when a sync leaves them empty; and there are no
+//! AppleDouble files.
 //!
 //! **AppleDouble files.** macOS gives every file and folder a process
 //! creates an extended attribute, `com.apple.provenance`, which can't be
@@ -24,10 +25,14 @@ use crate::{Error, Result};
 /// liquidslunk's own folder at a folder library's root
 pub const OWN: &str = ".liquidslunk";
 
-/// A folder library's folder.
+/// Where an iPod keeps its database, and liquidslunk its manifest
+pub const IPOD_ITUNES: &str = "iPod_Control/iTunes";
+
+/// A folder library's folder, or an iPod's disk.
 #[derive(Debug, Clone)]
 pub struct Folder {
     root: PathBuf,
+    ipod: bool,
 }
 
 /// A file written under a temporary name, waiting to be put in place.
@@ -40,7 +45,19 @@ pub struct Staged {
 
 impl Folder {
     pub fn new(root: impl Into<PathBuf>) -> Folder {
-        Folder { root: root.into() }
+        Folder {
+            root: root.into(),
+            ipod: false,
+        }
+    }
+
+    /// An iPod's disk, at its mount point: its manifest and temporary
+    /// folder are in `iPod_Control/iTunes`.
+    pub fn ipod(mount: impl Into<PathBuf>) -> Folder {
+        Folder {
+            root: mount.into(),
+            ipod: true,
+        }
     }
 
     pub fn root(&self) -> &Path {
@@ -53,14 +70,22 @@ impl Folder {
     }
 
     pub fn manifest(&self) -> ManifestFolder {
-        ManifestFolder::new(self.root.join(OWN))
+        if self.ipod {
+            ManifestFolder::ipod(self.root.join(IPOD_ITUNES))
+        } else {
+            ManifestFolder::new(self.root.join(OWN))
+        }
     }
 
     fn temporary_folder(&self) -> PathBuf {
-        self.root.join(OWN).join("tmp")
+        if self.ipod {
+            self.root.join(IPOD_ITUNES).join("liquidslunk-tmp")
+        } else {
+            self.root.join(OWN).join("tmp")
+        }
     }
 
-    /// Readies it for a sync: makes `.liquidslunk/tmp`, and empties it of
+    /// Readies it for a sync: makes its temporary folder, and empties it of
     /// what an earlier sync left there.
     pub fn prepare(&self) -> Result<()> {
         let temporary = self.temporary_folder();
@@ -72,7 +97,7 @@ impl Folder {
         Ok(())
     }
 
-    /// Removes `.liquidslunk/tmp` once a sync is done with it.
+    /// Removes its temporary folder once a sync is done with it.
     pub fn finish(&self) -> Result<()> {
         remove_empty(&self.temporary_folder()).map(|_| ())
     }
@@ -96,6 +121,13 @@ impl Folder {
     /// waits until they're on the disk. Only its bytes: none of its
     /// attributes.
     pub fn stage(&self, from: &Path) -> Result<Staged> {
+        let mut source = File::open(from).map_err(Error::io(from))?;
+        self.stage_with(|file| io::copy(&mut source, file).map(|_| ()))
+    }
+
+    /// Writes a file into the folder under a temporary name, with `write`,
+    /// and waits until it's on the disk.
+    pub fn stage_with(&self, write: impl FnOnce(&mut File) -> io::Result<()>) -> Result<Staged> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let name = format!(
             "{}-{}",
@@ -103,10 +135,9 @@ impl Folder {
             NEXT.fetch_add(1, Ordering::Relaxed)
         );
         let path = self.temporary_folder().join(name);
-        let mut source = File::open(from).map_err(Error::io(from))?;
         let mut file = File::create(&path).map_err(Error::io(&path))?;
-        let written = io::copy(&mut source, &mut file)
-            .and_then(|_| file.sync_all())
+        let written = write(&mut file)
+            .and_then(|()| file.sync_all())
             .map_err(Error::io(&path));
         drop(file);
         if let Err(error) = written {

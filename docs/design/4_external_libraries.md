@@ -1,6 +1,6 @@
 # External libraries
 
-> **Status: being built.**
+> **Status: complete.** Its four phases (§12) were built by 2026-10-20.
 
 A liquidslunk library holds more music than an iPod or a phone has room for. This design adds external libraries: a selection of the library's releases, artists, tracks and tag values, converted to a format the destination plays, tagged and given covers from the catalog, and kept in step with it. There are two kinds from the start:
 - **a folder library:** files laid out by a path template, for anything that reads a folder of music;
@@ -61,6 +61,8 @@ Out of scope:
 ## 3. What an external library is
 
 ### 3.1 Its destination
+
+> Changed during implementation, see [Appendix J](#appendix-j-an-ipod-library-takes-its-ipod-at-its-first-sync).
 
 - **A folder library** is a folder, like `/Volumes/WALKMAN/MUSIC` or `~/Music/Car`. Its files are laid out by a path template (§6). It's kept as an absolute path. A folder that moved, or a card that mounted under another name, is found again with **Locate…**, and recognized by its manifest (§8.1).
 - **An iPod library** is an iPod. It's chosen from the iPods mounted when it's created (§7.2), and recognized by its manifest wherever it mounts.
@@ -269,6 +271,8 @@ Folder libraries are often FAT32 or exFAT cards, whose names are more limited th
 
 ### 7.1 Which iPods
 
+> Changed during implementation, see [Appendix M](#appendix-m-what-the-ipod-showed).
+
 - **The iPod with video**, with Apple's firmware:
   - 5th generation (2005): A002, A146, A003, A147, A452;
   - 5.5th generation (2006): A444, A446, A664, A448, A450.
@@ -280,6 +284,8 @@ Folder libraries are often FAT32 or exFAT cards, whose names are more limited th
 - **An iPod with Rockbox** doesn't need any of this: Rockbox plays a folder library, FLAC included.
 
 ### 7.2 Finding it
+
+> Changed during implementation, see [Appendix J](#appendix-j-an-ipod-library-takes-its-ipod-at-its-first-sync).
 
 - **It's a volume** in `/Volumes/` with an `iPod_Control/iTunes/` folder. The iPod mounts as one when its disk use is on. Phase 3 checks first that the user's iPod mounts that way on current macOS (§13).
 - **Creating an iPod library** lists the iPods mounted then, with their model and free space.
@@ -306,6 +312,8 @@ iPod_Control/
 
 ### 7.4 The iTunesDB
 
+> Changed during implementation, see [Appendix K](#appendix-k-the-ipods-database-is-written-from-the-manifest).
+
 - **Its shape:** little-endian chunks, each with a four-letter tag (`mhbd`, `mhit`, …), its header's length and its whole length. Strings (`mhod`) are UTF-16LE. Times are seconds since 1904, in local time.
 - **What's written,** following the layout libgpod writes for these iPods, which gtkpod, Rhythmbox and Strawberry used on them for years:
   - `mhbd`, the database, version `0x30`;
@@ -323,6 +331,8 @@ iPod_Control/
 
 ### 7.5 Artwork
 
+> Changed during implementation, see [Appendix M](#appendix-m-what-the-ipod-showed).
+
 - **`ArtworkDB`** has the same kind of chunks: an `mhii` for each image, with an `mhni` for each of its sizes, pointing at its place in an `.ithmb` file. Each `mhit` names its image.
 - **Two sizes, for cover art,** on both generations, both RGB565 little-endian:
   - format 1028, 100 × 100: 20,000 bytes an image;
@@ -335,6 +345,8 @@ iPod_Control/
 
 ### 7.6 Gapless, Sound Check and resolution
 
+> Changed during implementation, see [Appendix L](#appendix-l-what-the-ipod-reads-from-afconverts-files) and [Appendix M](#appendix-m-what-the-ipod-showed).
+
 - **Gapless.** The 5.5th generation plays gapless, and the 5th from firmware 1.2. It needs data in each `mhit`: the samples of silence the encoder added at the start (`pregap`) and at the end (`postgap`), the samples in the track (`samplecount`), and a flag. iTunes worked them out when it copied a file. With them missing, an iPod only played gapless once iTunes had gone through it.
   - liquidslunk reads them from the file it writes: an AAC file's encoder delay and padding from its MP4 headers, and an ALAC file's sample count, with no delay or padding.
   - A copied MP3 needs its LAME header's delay and padding, and `gapless_data`: the bytes from its first frame to the 8th before its last.
@@ -343,6 +355,8 @@ iPod_Control/
 - **Resolution.** Apple Lossless on the iPod is at most 16-bit and 48 kHz. Reports on 24-bit ALAC on the 5.5th generation disagree, so phase 3 checks it (§13). If it plays, the iPod's profile can offer it.
 
 ### 7.7 What the iPod writes back
+
+> Changed during implementation, see [Appendix K](#appendix-k-the-ipods-database-is-written-from-the-manifest).
 
 - **The iPod counts** plays, skips and ratings in `iTunes/Play Counts`, an entry per track, in the database's order. iTunes added them to its library and removed the file.
 - **liquidslunk keeps them on the iPod,** without importing them (§2). At each sync, it adds Play Counts' numbers to the database's, carries them over to the tracks it writes again, by `dbid`, and removes the file, so each count stays with its track. Ratings made on the iPod stay on the iPod.
@@ -396,7 +410,7 @@ A sync starts by working out what it would do, and shows it before it does anyth
 
 ### 8.3 Running it
 
-> Changed during implementation, see [Appendix H](#appendix-h-appledouble-files) and [Appendix I](#appendix-i-a-journal-between-checkpoints).
+> Changed during implementation, see [Appendix H](#appendix-h-appledouble-files), [Appendix I](#appendix-i-a-journal-between-checkpoints) and [Appendix K](#appendix-k-the-ipods-database-is-written-from-the-manifest).
 
 - **Converting** runs several files at once (§5.1). **Writing to the destination** is one file at a time: an iPod's disk is slow, and on USB 2.0.
 - **A file reaches its final path whole.** It's written under a temporary name in the destination, then renamed, which is atomic on the same volume. Converted files are made in the system's temporary folder first, and removed once they're copied. Whatever an earlier run left there is removed at launch.
@@ -507,6 +521,8 @@ external/
 
 ## 11. The frontend
 
+> Changed during implementation, see [Appendix J](#appendix-j-an-ipod-library-takes-its-ipod-at-its-first-sync).
+
 - **The sidebar** gets an External libraries section, listing each one, with whether it's connected. Each opens its page.
 - **`/external-libraries`** lists them, with New folder library… and New iPod library….
 - **`/external-libraries/:id`** has three tabs:
@@ -563,7 +579,7 @@ Each phase ends with something usable and documented, and every check in AGENTS.
 
 ## 13. Risks and checks
 
-> Phase 2's checks are recorded in [Appendix F](#appendix-f-afconvert-dithers-only-when-asked), [Appendix G](#appendix-g-what-afconvert-has-to-be-told) and [Appendix H](#appendix-h-appledouble-files).
+> Phase 2's checks are recorded in [Appendix F](#appendix-f-afconvert-dithers-only-when-asked), [Appendix G](#appendix-g-what-afconvert-has-to-be-told) and [Appendix H](#appendix-h-appledouble-files), and phase 3's in [Appendix M](#appendix-m-what-the-ipod-showed).
 
 Each is checked early in the phase that needs it. Anything that changes this design is recorded as an appendix.
 
@@ -707,4 +723,61 @@ The first draft left these open. They were settled on 2026-10-20:
   - **mtimes:** a shift of whole quarter-hours, up to a day, doesn't count as a change, since FAT32 keeps local time, which a change of time zone or of daylight saving time moves.
   - **A sync never makes its destination's folder,** or anything outside it: a card pulled out midway isn't made again on the Mac's own disk.
 - **Why:** writing a whole manifest, a few hundred kilobytes for a few hundred tracks, after each file on a slow card costs too much, and between checkpoints a card pulled out would leave files that no manifest lists, which a sync then never replaces. Pulling a card image out in the middle of a sync of 283 tracks, the next sync carried on from the 142 done.
+
+## Appendix J: An iPod library takes its iPod at its first sync
+
+- **Date:** 2026-10-20
+- **Affects:** §3.1 Its destination, §7.2 Finding it, §11 The frontend
+- **Was:** an iPod library is chosen from the iPods mounted when it's created, and recognized by its manifest wherever it mounts. A new iPod gets its manifest at its first sync.
+- **Now:**
+  - **Creating an iPod library lists the iPods mounted then,** with their model, what's free and the external library each belongs to, but doesn't tie it to one: nothing in its row names an iPod, and nothing is written on one before a sync.
+  - **Its iPod is the one whose manifest names it,** or else the only one mounted with no manifest that liquidslunk syncs. Its first sync writes its manifest there. With several such iPods mounted, none is chosen, and a sync is refused until all but one are ejected: "Several iPods without liquidslunk's manifest are connected. Eject all but the one to sync."
+  - **An iPod of another library's** makes its page say so, and another model is never chosen.
+  - Its page looks for it when it opens, when the window comes to the front, and on Look again, as §7.2 says.
+- **Why:** a manifest is the only thing that ties an iPod to a library, and §7.2 writes it at the first sync. Writing it at creation would write to an iPod before anything was planned, and iPod libraries made in phase 1 have no iPod at all. The plan names the iPod it syncs, with its model, and its first sync asks before it erases anything (§7.8).
+
+## Appendix K: The iPod's database is written from the manifest
+
+- **Date:** 2026-10-20
+- **Affects:** §7.4 The iTunesDB, §7.7 What the iPod writes back, §8.3 Running it
+- **Was:** the iTunesDB is written at each sync, with each track's numbers, gapless data and Sound Check read from the files written. Play Counts is removed after the new database is in place, with the files of removed tracks.
+- **Now:**
+  - **The manifest keeps what the database needs** of each file on an iPod: its `dbid`, its kind, length, bitrate, sample rate, Sound Check, gapless data, and when it was added. So the database is written again from the manifest and its tags as written, without reading any file, and a track that's only retagged, or kept since its source is missing, is listed as it was.
+  - **A file the manifest lists but the database doesn't,** as when an iPod is unplugged between its new files and its database, is planned as a retag that changes only the database: "Listed on the iPod: No → Yes".
+  - **Play Counts goes just before the new database is renamed in,** not after: it counts by position in the old database, and left beside a new one, it would give its counts to other tracks. An iPod unplugged between the two loses what it counted since the last sync, rather than giving it to the wrong tracks.
+  - **Cancelling** still writes the database, with what was copied in, the retags and the removals, so the iPod lists what's on it.
+  - **The two passes** of §8.3, when the new files wouldn't fit before the removed ones are gone, are a first database without what goes, then the sync as usual.
+  - **Deleting an iPod library with its files** writes an empty database, and is refused while the iPod also has tracks from somewhere else, which a database of liquidslunk's own would leave out.
+  - **The database's layout** is libgpod's, as `docs/reference/ipod.md` describes it. The master playlist's sorted indexes, which the iPod browses by, sort by the sort fields, so §13's check of sort fields is a check of these indexes.
+- **Why:** one source for the database, and no file read at each sync, which on an iPod's disk is slow. Checked with a FAT32 disk image laid out as an iPod: a first sync of 22 tracks, then a sync that erased a track from somewhere else.
+
+## Appendix L: What the iPod reads from afconvert's files
+
+- **Date:** 2026-10-20
+- **Affects:** §7.6 Gapless, Sound Check and resolution
+- **Was:** an AAC file's encoder delay and padding come from its MP4 headers, an ALAC file has only its sample count, and `afconvert --soundcheck-generate` adds Sound Check data that liquidslunk copies into the database.
+- **Now:**
+  - **Sound Check** is `----:com.apple.iTunes:iTunNORM`, among the tags, which `afconvert --soundcheck-generate` writes into AAC and Apple Lossless files alike: ten numbers in hex, the first two the left and right channels'. The louder is written. It's kept when the tags are replaced, as `iTunSMPB` is (Appendix G).
+  - **Apple Lossless gets an `iTunSMPB` too,** with no delay, and the padding of its last 4096-sample packet, which the file's own sample table already leaves out. Its samples are taken from it, and its delay and padding are written as 0.
+  - **The length** is the samples played, at the sample rate: lofty's counts the encoder's delay and padding in, 2,067 ms for 2 seconds of AAC.
+  - **Apple Lossless records no bitrate,** so it's the file's average, from its size and length.
+- **Why:** each is what `afconvert` wrote on this Mac (macOS 27.0.1), read back from a tone, and from the dev library's files.
+
+## Appendix M: What the iPod showed
+
+- **Date:** 2026-10-20
+- **Affects:** §7.1 Which iPods, §7.5 Artwork, §7.6 Gapless, Sound Check and resolution, §13 Risks and checks
+- **Was:** phase 3 checks its risks on the user's iPod (§13): mounting, copied files, the database, gapless playback, 24-bit ALAC, shared artwork and sort fields, and Finder replacing the database.
+- **Now:**
+  - **Mounting:** the user's iPod, formatted for Mac, mounts as `/Volumes/iPod` on macOS 27, HFS+, with its disk use on. Its `SysInfo` is empty, so its model isn't known and it's synced with §7.1's warning; USB names it product 0x1209, the iPod with video.
+  - **The database:** the iPod took the first one liquidslunk wrote, one album in AAC, and every one after: browsing by artist and album, covers, playback and lengths were right. Finder's had 401 tracks and no artwork; they were erased once the user agreed (§7.8), and it's kept as `iTunesDB.liquidslunk-previous`.
+  - **Sort fields:** the Songs list follows the master playlist's sorted index, so Japanese titles sort by their transliterations, among the Latin ones: 雨の朝 as "Ame no Asa", then あしたは遊園地 as "Ashita wa Yuuenchi" once it had one.
+  - **Shared artwork:** a release's tracks pointing at the same pixels show their cover, so each cover is stored once (§7.5).
+  - **Gapless:** the live albums, Slipknot's at Madison Square Garden and Diego Torres' MTV Unplugged, play through without gaps in AAC and in Apple Lossless.
+  - **Copied files:** an MP3 from LAME, without a LAME header and so without gapless data, and an AAC file from Apple's encoder play as they are. No AAC file from another encoder was at hand, so that's unchecked.
+  - **Counts:** plays and skips made on the iPod stayed with their tracks through a retag, a sync that added 47 tracks, and converting 54 tracks again from AAC to Apple Lossless.
+  - **Finder:** when the iPod connected with Finder's own database on it, Finder's device agent wrote it again, taking in its counts. With liquidslunk's on it, Finder left it as it was, three times, with nothing clicked in Finder.
+  - **24-bit ALAC** wasn't checked: an iPod library is always at CD resolution, which plays.
+  - **Time:** converting and writing 54 tracks of Apple Lossless, 1.9 GB, took 2 minutes 44 seconds, about 12 MB a second.
+- **Why:** the user's checks on the iPod itself, of what liquidslunk wrote from the scratch library in `dev-library/sync`. A playlist made on the iPod (On-The-Go) points at tracks by their place in the database, which a sync changes; liquidslunk doesn't carry it over.
 

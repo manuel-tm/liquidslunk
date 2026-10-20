@@ -16,12 +16,14 @@ import { Spinner } from "@/components/ui/spinner"
 import type {
   ExternalLibraryDetails,
   PlanLeftOut,
+  PlanOtherTrack,
   PlanStep,
   SyncAction,
   SyncLabel,
 } from "@/bindings"
 import {
   describeChange,
+  describeOther,
   describeOutcome,
   describePlan,
   describeSpace,
@@ -52,9 +54,10 @@ const SECTIONS: [SyncAction, string][] = [
 
 /**
  * Sync, in a sheet (4_external_libraries.md §11): the plan first, with
- * what it adds, updates and removes, what it leaves out and whether it fits;
- * then its progress, which can be cancelled; then how it went. The sheet can
- * be closed while it runs, and the sync goes on.
+ * what it adds, updates and removes, what it leaves out and whether it fits,
+ * and on an iPod, the tracks from somewhere else its first sync erases
+ * (§7.8); then its progress, which can be cancelled; then how it went. The
+ * sheet can be closed while it runs, and the sync goes on.
  */
 export function SyncSheet({
   library,
@@ -79,12 +82,20 @@ export function SyncSheet({
       <SheetContent side="right" className="sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>Sync {library.name}</SheetTitle>
-          <SheetDescription className="font-mono break-all">
-            {library.folder}
-          </SheetDescription>
+          {library.folder ? (
+            <SheetDescription className="font-mono break-all">
+              {library.folder}
+            </SheetDescription>
+          ) : (
+            <SheetDescription>
+              {library.ipod
+                ? `${library.ipod.name}: ${library.ipod.description}`
+                : "An iPod"}
+            </SheetDescription>
+          )}
         </SheetHeader>
         {mine?.running ? (
-          <Running run={mine} />
+          <Running run={mine} ipod={library.kind === "ipod"} />
         ) : mine ? (
           <Result
             library={library}
@@ -121,6 +132,9 @@ function Plan({
   const anotherRuns = useSyncRun()?.running ?? false
 
   const space = plan && describeSpace(plan)
+  // An iPod's paths are its own, and say nothing
+  const paths = library.kind === "folder"
+  const other = plan?.other.length ?? 0
   return (
     <>
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4">
@@ -137,6 +151,14 @@ function Plan({
         ) : (
           <>
             <div className="flex flex-col gap-1">
+              {plan.ipod?.warning && (
+                <p className="text-muted-foreground">{plan.ipod.warning}</p>
+              )}
+              {other > 0 && (
+                <p className="text-sm text-destructive">
+                  {describeOther(other)}
+                </p>
+              )}
               <p className="text-sm">{describePlan(plan)}</p>
               {space && (
                 <p
@@ -148,11 +170,13 @@ function Plan({
                 </p>
               )}
             </div>
+            <Other tracks={plan.other} />
             {SECTIONS.map(([action, title]) => (
               <Section
                 key={action}
                 title={title}
                 steps={plan.steps.filter((step) => step.action === action)}
+                paths={paths}
               />
             ))}
             <LeftOut items={plan.leftOut} />
@@ -171,23 +195,37 @@ function Plan({
           Look again
         </Button>
         <Button
+          variant={other > 0 ? "destructive" : "default"}
           disabled={
             !plan ||
             isFetching ||
-            plan.steps.length === 0 ||
+            (plan.steps.length === 0 && other === 0) ||
             !plan.fits ||
             anotherRuns
           }
-          onClick={() => plan && void startSync(library.id, plan.id)}
+          onClick={() =>
+            plan && void startSync(library.id, plan.id, plan.other.length > 0)
+          }
         >
-          Sync
+          {other === 0
+            ? "Sync"
+            : `Erase ${other === 1 ? "it" : "them"}, then sync`}
         </Button>
       </SheetFooter>
     </>
   )
 }
 
-function Section({ title, steps }: { title: string; steps: PlanStep[] }) {
+function Section({
+  title,
+  steps,
+  paths,
+}: {
+  title: string
+  steps: PlanStep[]
+  /** Whether to show where each file goes */
+  paths: boolean
+}) {
   if (steps.length === 0) return null
   const bytes = steps.reduce((sum, step) => sum + step.bytes, 0)
   return (
@@ -208,9 +246,11 @@ function Section({ title, steps }: { title: string; steps: PlanStep[] }) {
             className="flex flex-col gap-0.5"
           >
             <Named label={step.label} cover={step.trackId === null} />
-            <span className="font-mono break-all text-muted-foreground">
-              {step.from ? `${step.from} → ${step.path}` : step.path}
-            </span>
+            {paths && (
+              <span className="font-mono break-all text-muted-foreground">
+                {step.from ? `${step.from} → ${step.path}` : step.path}
+              </span>
+            )}
             {step.changes.map((change) => (
               <span key={change.field} className="text-muted-foreground">
                 {describeChange(change)}
@@ -221,6 +261,32 @@ function Section({ title, steps }: { title: string; steps: PlanStep[] }) {
       </ul>
       {steps.length > SHOWN && (
         <p className="text-muted-foreground">and {steps.length - SHOWN} more</p>
+      )}
+    </section>
+  )
+}
+
+/** The tracks on an iPod from somewhere else, which the sync erases. */
+function Other({ tracks }: { tracks: PlanOtherTrack[] }) {
+  if (tracks.length === 0) return null
+  return (
+    <section className="flex flex-col gap-1">
+      <h3 className="font-medium">Erase · {tracks.length}</h3>
+      <p className="text-muted-foreground">
+        Their files are removed from the iPod, and its database lists only what
+        liquidslunk syncs. Nothing else on it is touched.
+      </p>
+      <ul className="flex flex-col gap-1.5">
+        {tracks.slice(0, SHOWN).map((track) => (
+          <li key={track.path}>
+            <Named label={track.label} cover={false} />
+          </li>
+        ))}
+      </ul>
+      {tracks.length > SHOWN && (
+        <p className="text-muted-foreground">
+          and {tracks.length - SHOWN} more
+        </p>
       )}
     </section>
   )
@@ -257,7 +323,7 @@ function Named({ label, cover }: { label: SyncLabel; cover: boolean }) {
   )
 }
 
-function Running({ run }: { run: SyncRun }) {
+function Running({ run, ipod }: { run: SyncRun; ipod: boolean }) {
   const [cancelling, setCancelling] = useState(false)
   const progress = run.progress
   const percent =
@@ -287,6 +353,8 @@ function Running({ run }: { run: SyncRun }) {
         <p className="text-muted-foreground">
           The library can be browsed and edited meanwhile: what changes now
           reaches the next sync. Closing this leaves the sync running.
+          {ipod &&
+            " The iPod's database is written last, so it plays what it had until then."}
         </p>
       </div>
       <SheetFooter className="flex-row justify-end">
@@ -372,7 +440,12 @@ function Result({
               setEjecting(true)
               setEjectError(null)
               try {
-                await ejectLibrary(library.id, library.folder)
+                await ejectLibrary(
+                  library.id,
+                  library.ipod
+                    ? { ipod: library.ipod.name }
+                    : { folder: library.folder ?? "" }
+                )
                 onClose()
               } catch (caught) {
                 setEjectError(caught as Error)
