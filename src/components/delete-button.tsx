@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { type ReactNode, useState } from "react"
 import { useNavigate } from "react-router"
 import { toast } from "sonner"
 
@@ -27,6 +27,7 @@ export function DeleteButton({
   then,
   afterDelete,
   detail,
+  children,
 }: {
   /** What's deleted, as the dialog names it */
   name: string
@@ -42,6 +43,8 @@ export function DeleteButton({
   afterDelete?: () => void
   /** More about what deleting does */
   detail?: string
+  /** Options for the delete, under its description */
+  children?: ReactNode
 }) {
   const navigate = useNavigate()
   const [error, setError] = useState<Error | null>(null)
@@ -64,6 +67,7 @@ export function DeleteButton({
               : (detail ?? "This can't be undone.")}
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {!blocked && children}
         {blocked && (
           <ul className="flex list-disc flex-col gap-1 pl-4 text-xs">
             {blockers.map((blocker) => (

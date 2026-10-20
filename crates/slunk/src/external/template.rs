@@ -209,6 +209,18 @@ impl TrackPath {
         self.numbered(1)
     }
 
+    /// Which of this path's numbered forms a path is: 1 for its own, 2 for
+    /// " (2)", … `None` for a path that isn't one of them.
+    pub fn number_of(&self, path: &str) -> Option<usize> {
+        if self.safe() == path {
+            return Some(1);
+        }
+        let stem = path.strip_suffix(&format!(".{}", replaced(&self.extension)))?;
+        let open = stem.rfind(" (")?;
+        let n: usize = stem[open + 2..].strip_suffix(')')?.parse().ok()?;
+        (n >= 2 && self.numbered(n) == path).then_some(n)
+    }
+
     /// The same, for the `n`th track with this path: from 2, " (2)", " (3)",
     /// … go before the extension.
     pub fn numbered(&self, n: usize) -> String {
@@ -306,7 +318,7 @@ pub fn unique_paths(paths: &[(i64, TrackPath)]) -> HashMap<i64, String> {
 
 /// A path as a disk that ignores case and Unicode normalization compares
 /// it.
-fn folded(path: &str) -> String {
+pub(crate) fn folded(path: &str) -> String {
     path.nfd()
         .collect::<String>()
         .to_lowercase()

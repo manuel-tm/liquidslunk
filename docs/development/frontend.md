@@ -17,7 +17,7 @@ The frontend is slunk's, moved into the app in phase 0, in `src/`. It does every
 - the library check: files missing, moved or changed on disk, unregistered files, and gaps in the catalog;
 - the music player, in the sidebar: a queue of tracks, played or added from the release and track pages, the track list and the release table, with shuffle, repeat, shortcuts, macOS's Now Playing and a Controls menu in the menu bar, and nearly no gap between tracks ([The player](#the-player));
 - tags as exported, on the track page: the track's tags as an external library will write them, and where a folder library will put it ([Tags as exported](#tags-as-exported));
-- external libraries: their list and their section in the sidebar, each one's page with its Overview, Contents and Settings, "Add to external library" on the release, artist and track pages and in the bulk edits, and where each release, artist and track is in one ([External libraries](#external-libraries)).
+- external libraries: their list and their section in the sidebar, each one's page with its Overview, Contents and Settings, "Add to external library" on the release, artist and track pages and in the bulk edits, where each release, artist and track is in one, and syncing a folder library, with its plan, its progress and Eject ([External libraries](#external-libraries)).
 
 Its data comes from Tauri commands, through TanStack Query ([Data](#data)). slunk's frontend read it through GraphQL, and the port moved each page to commands as the context behind it was ported ([design §7.3](../design/1_introduction.md#73-converting-a-route)).
 
@@ -88,6 +88,7 @@ src/
                            which the Settings tab is too
       page.tsx             /external-libraries/:id: Overview, Contents and
                            Settings
+      sync-sheet.tsx       Sync: the plan, the progress and the result
   components/
     app-layout.tsx         the app shell: the player, the sidebar, and the
                            page beside it, or Welcome when no library is
@@ -182,8 +183,10 @@ src/
                            next; queue.test.ts tests them
     tags.ts                tag types, values, and the list's tag filters
     external.ts            external libraries' labels, rules in words and as
-                           inputs, and memberships in words;
+                           inputs, memberships, plans and syncs in words;
                            external.test.ts tests them
+    sync.ts                the sync running, outside the pages; Eject and
+                           Locate
     utils.ts               cn() helper
 ```
 
@@ -198,7 +201,7 @@ src/
 - **The sidebar's header** is the library menu (`LibraryMenu`): the open library's folder name, with "Switch library…", which closes it and goes to Welcome, "Show in Finder", and the recent libraries, which open in its place. Under it are the player's controls ([The player](#the-player)), then Import.
 - **Switching libraries** clears TanStack Query's cache, so nothing from the old library shows. `AppLayout` is keyed by the library's path, so every page mounts again.
 - **Back and forward** (`HistoryButtons`) are in every page's header, before the title, and ⌘[ and ⌘] do the same: a desktop window has no browser buttons. They use the index React Router keeps in `history.state`.
-- **The sidebar** lists each section that's built, in `sections` in `app-sidebar.tsx`, then the external libraries in their own group, each with a dot that's filled while it's connected, and the lists the user manages in theirs, `lists`. The external libraries' label links to their list. A section's link stays active on its pages below it (`/artists/12` keeps Artists active).
+- **The sidebar** lists each section that's built, in `sections` in `app-sidebar.tsx`, then the external libraries in their own group, each with a dot that's filled while it's connected, or a spinner while it syncs, and the lists the user manages in theirs, `lists`. The external libraries' label links to their list. A section's link stays active on its pages below it (`/artists/12` keeps Artists active).
 - **Tabs** that are routes, like an artist's or a release's edit tabs, use `TabLinks`, so each tab is a route.
 - **Wide tables** scroll inside the page: `SidebarInset` has `min-w-0`, so a table can't widen the page past the window.
 - **Unknown ids:** a read or update page whose command returns null renders `NotFound`. A page reads its id with `idParam()` from `@/lib/query`, which parses it with `Number()`, and renders `NotFound` without asking when it isn't an id (`/files/abc`).
@@ -263,7 +266,7 @@ Data comes from Tauri commands, through TanStack Query (design §7.2).
 
 #### External libraries
 
-- **The list and the sidebar** call `externalLibraries`. A page calls `externalLibrary`, with what's in it; Contents `externalLibraryRules`, saved with `setExternalLibraryRules`, and `externalLibraryTracks`; the form `createExternalLibrary` or `updateExternalLibrary`, and `exportedTags` with the template for its example; and Delete `deleteExternalLibrary`.
+- **The list and the sidebar** call `externalLibraries`. A page calls `externalLibrary`, with what's in it; Contents `externalLibraryRules`, saved with `setExternalLibraryRules`, and `externalLibraryTracks`; the form `createExternalLibrary` or `updateExternalLibrary`, and `exportedTags` with the template for its example; and Delete `deleteExternalLibrary`, with `removeFiles` when its checkbox is on. Sync calls `syncPlan`, fresh each time the sheet opens, then `sync` with a `Channel` for its progress, and `cancelSync`; Eject `ejectExternalLibrary`; and Locate `locateExternalLibrary`. These three go through `call()`, in `lib/sync.ts`, and invalidate every query themselves when they end.
 - **The catalog's pages** call `externalMemberships` for where a release, artist or track is, `addToExternalLibrary` and `removeFromExternalLibrary`.
 
 #### Tags
@@ -334,6 +337,7 @@ Once an image is set, it's changed in the edit forms, as before.
 Delete is a button on the read page that opens an `alert-dialog`. `DeleteButton` does it for every entity:
 - While something uses the row, the dialog lists what, instead of offering to delete. The reasons are the entity's `blockers`, from the backend.
 - After a delete, the app goes to the list, with a toast, then runs `afterDelete`, which removes the deleted entity's queries.
+- Its children are options for the delete, shown under its description, like an external library's "Also remove the files liquidslunk wrote in …".
 
 ### Import
 
@@ -390,13 +394,17 @@ The track page ends with "Tags as exported" (`ExportedTags`), closed by default 
 
 ### External libraries
 
-An external library is a selection of the library, for a folder or an iPod ([4_external_libraries.md](../design/4_external_libraries.md); [backend.md](backend.md#the-external-libraries-context)). Nothing syncs yet.
+An external library is a selection of the library, for a folder or an iPod ([4_external_libraries.md](../design/4_external_libraries.md); [backend.md](backend.md#the-external-libraries-context)). A folder library syncs; an iPod library doesn't yet.
 - **`/external-libraries`** lists them, with their kind, destination, whether it's connected and when it was last synced, and has New folder library… and New iPod library….
 - **Creating one** (`/external-libraries/create?kind=folder` or `?kind=ipod`) asks for its name and profile, and a folder library's folder, chosen with a folder dialog. It then goes to its Contents. The template field shows the path it gives the catalog's newest track, or why it can't be used. A folder library keeps the original files by default, and an iPod library makes AAC.
-- **Its page** (`/external-libraries/:id`) has three tabs, each a route, under a header with Delete:
-  - **Overview:** its kind and destination, whether it's connected, what's in it (releases, tracks and about how much they take, and how many a sync will leave out), its format, and when it was last synced.
+- **Its page** (`/external-libraries/:id`) has three tabs, each a route, under a header with Delete. While its folder is connected, Delete's dialog has "Also remove the files liquidslunk wrote in …"; while it syncs, it can't be deleted.
+  - **Overview:** its kind and destination, whether it's connected, with what's free there, or why not ("No: the folder isn't there", "No: the folder belongs to another external library, Car"), what's in it (releases, tracks and about how much they take, and how many a sync will leave out), its format, and when it was last synced. Under them, a folder library's buttons: **Sync…**, while it's connected and no sync runs, which says how far it's got while it syncs, and opens the sheet again; **Eject**, while its folder is on a disk that ejects; and **Locate…**, while it isn't connected, which asks for the folder where it is now, with a folder dialog.
   - **Contents:** its rules, in two lists, "In it" and "Left out", each naming what it names, linking to it, with a button that removes it. A release, an artist or a track is added with its picker, and a tag value with "Add a tag value": a text tag's value, or a number or date tag's range, either end left empty. Releases and tracks are left out with theirs. Each change saves the whole list, and a picker starts afresh after each pick. Below them, the tracks the rules come to, a page of 50 at a time, by release.
   - **Settings:** the same form as creating one, with its kind fixed, and the template's example for its first track.
+- **Sync** (`SyncSheet`), in a sheet ([backend.md](backend.md#syncing-a-folder-library)):
+  - **The plan,** worked out when the sheet opens, and again on Look again: what it does, in short ("Add 42 tracks (1.8 GB), update 7, remove 3."), whether it fits ("It needs 1.8 GB, and 12 GB is free.", or in red, "It needs 3.2 GB more than the folder has free."), then a section for each action, Add, Convert again, Restore, Retag, Move and Remove, and Left out, each listing its first 200: a track by its title, artist and album, or a release's cover, with its path, a move's old path, a retag's changes ("Title: Shoka → 初夏"), or why it's left out. Sync is off while there's nothing to do, it doesn't fit, or another sync runs.
+  - **Its progress:** the stage, the steps done of all of them, as a bar, the track in hand, what's written, and Cancel sync, which stops after the file in hand. The sheet can be closed: the sync goes on, its state is kept outside the pages (`useSyncRun()`, `lib/sync.ts`), and the Overview's Syncing button opens it again.
+  - **The result:** what it did ("Synced. Added 42, retagged 7 and removed 3."), what it wrote, the files it couldn't write and why, or why it stopped, with Eject when the folder ejects, and Close.
 - **"Add to external library"** (`AddToExternalLibrary`) is a menu of them, on the release, artist and track pages and in the release list's bulk edits, with New external library…. A toast says where it went: "Added Scenery to Car".
 - **Where it is** (`ExternalMemberships`): the release, artist and track pages list the external libraries it's in, and why: "On Car", "On Car, through Pink Floyd", "On Car, through Pink Floyd (11 of 12 tracks)", or for a release with only some tracks in, "3 of 12 tracks on Car". Each links to the library's Contents, and its button takes it out: "Remove from Car" for its own rule, or "Leave out of Car" when a broader rule brings it in.
 
@@ -514,7 +522,7 @@ Pressing `d` toggles between light and dark. It's ignored while typing in a fiel
 
 `npm test` runs Vitest (`vitest run`), configured in `vite.config.ts`'s `test`, so `@/` resolves as it does in the app.
 - **Where:** next to what they test, as `src/**/*.test.ts`. They import `describe`, `it` and `expect` from `vitest`, with no globals, so `tsc -b` checks them like the rest of `src/`.
-- **What:** plain functions, in Node, with no DOM. So far that's the player's queue (`lib/queue.test.ts`), and external libraries' rules and memberships in words (`lib/external.test.ts`). Components are checked in screenshots instead.
+- **What:** plain functions, in Node, with no DOM. So far that's the player's queue (`lib/queue.test.ts`), and external libraries' rules, memberships, plans and syncs in words (`lib/external.test.ts`). Components are checked in screenshots instead.
 
 ### Screenshots
 
@@ -531,5 +539,5 @@ npm run screenshot -- /releases releases.png
 - It waits 1.5 seconds for the page to settle, or `WAIT=<ms>`.
 - The picture is the window's webview at its pixel density: 2560×1600 for the 1280×800 window on a Retina display.
 - To click or type first, any W3C WebDriver client works against `127.0.0.1:4445`. `scripts/screenshot.ts` shows the protocol with `fetch`: a session, `execute/async`, `screenshot`. The element click endpoint sends real input, which Base UI's menus need. Element Send Keys types at the end of what a field holds, so clear it first with Element Clear. Native dialogs, like choosing a library, are outside the webview, so WebDriver can't use them.
-- Open menus, popups and dialogs don't show in the picture, though WebDriver finds and clicks what's in them. Check what they say through the DOM, with `execute/async`.
+- Open menus and popovers may not show in the picture, though WebDriver finds and clicks what's in them: check what they say through the DOM, with `execute/async`. A sheet, like Sync's, does show.
 - A release build can be driven the same way: `npm run tauri build -- --no-bundle --features webdriver`, then run `target/release/liquidslunk`.

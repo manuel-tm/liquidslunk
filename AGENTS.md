@@ -57,6 +57,11 @@ liquidslunk ports slunk's schema, behavior and routes ([design §2.1](docs/desig
 
 - liquidslunk never moves, copies, renames, deletes or retags a user's file. Code that touches the user's files may only read them.
 - The only things it writes are next to its database: `slunk.db`, SQLite's `-wal`/`-shm` files, and `slunk-backups/`. Apart from those, it writes its settings in the app's config folder ([design §6.2](docs/design/1_introduction.md#62-the-settings-file)).
+- **External libraries** ([4_external_libraries.md §8.4](docs/design/4_external_libraries.md#84-what-liquidslunk-may-write)) add two places, and only these:
+  - inside an external library's destination: the files a sync converts or copies, `cover.jpg`s, the manifest and its journal in `.liquidslunk/`, and its temporary files. It replaces or deletes only what the manifest lists, and the `._` files macOS makes for its own files on FAT32 and exFAT. It never makes the destination's folder, or writes outside it;
+  - a sync's own folder in the system's temporary folder, while it converts.
+
+  A destination is never inside the library's folder, so the user's files are still only read.
 - For development, use a scratch library in `dev-library/`. Never open a real music library from a development build ([design §6.5](docs/design/1_introduction.md#65-in-development)).
 
 ### Never reference files in `temp/`

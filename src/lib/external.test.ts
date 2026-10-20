@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest"
 
-import type { ExternalMembership, ExternalRule, RuleTarget } from "@/bindings"
+import type {
+  ExternalMembership,
+  ExternalRule,
+  PlanStep,
+  RuleTarget,
+  SyncPlan,
+} from "@/bindings"
 import {
+  describeChange,
   describeMembership,
+  describeOutcome,
+  describePlan,
   describeRule,
+  describeSpace,
   describeTagRule,
   ruleInput,
   sameTarget,
@@ -129,5 +139,94 @@ describe("describeMembership", () => {
     expect(describeMembership(membership({ type: "tracks" }, 1, 1))).toBe(
       "1 of 1 track on Car"
     )
+  })
+})
+
+function step(
+  action: PlanStep["action"],
+  bytes = 0,
+  trackId: number | null = 1
+): PlanStep {
+  return {
+    action,
+    trackId,
+    releaseId: trackId === null ? 1 : null,
+    label: { title: "Dogs", artist: "Pink Floyd", album: "Animals" },
+    path: "Pink Floyd/Animals/02 Dogs.m4a",
+    from: null,
+    changes: [],
+    bytes,
+  }
+}
+
+function plan(
+  steps: PlanStep[],
+  free: number | null = 10_000_000_000
+): SyncPlan {
+  const added = steps.reduce((sum, step) => sum + step.bytes, 0)
+  return {
+    id: 1,
+    libraryId: 1,
+    steps,
+    leftOut: [],
+    unchanged: 120,
+    addedBytes: added,
+    freedBytes: 0,
+    neededBytes: added,
+    freeBytes: free,
+    fits: free === null || added <= free,
+  }
+}
+
+describe("sync plans", () => {
+  it("say what they do, counting tracks", () => {
+    expect(
+      describePlan(
+        plan([
+          step("add", 1_000_000_000),
+          step("add", 800_000_000),
+          step("retag"),
+          step("move"),
+          step("remove"),
+          step("add", 0, null),
+        ])
+      )
+    ).toBe("Add 2 tracks (1.8 GB), update 2, remove 1, and 1 cover.")
+    expect(describePlan(plan([step("retag")]))).toBe("Update 1 track.")
+    expect(describePlan(plan([]))).toBe("Everything is up to date: 120 files.")
+  })
+
+  it("say whether they fit", () => {
+    expect(describeSpace(plan([step("add", 3_200_000_000)]))).toBe(
+      "It needs 3.2 GB, and 10 GB is free."
+    )
+    expect(describeSpace(plan([step("add", 13_200_000_000)]))).toBe(
+      "It needs 3.2 GB more than the folder has free."
+    )
+    expect(describeSpace(plan([], null))).toBeNull()
+  })
+
+  it("say what a retag changes, and how a sync went", () => {
+    expect(
+      describeChange({ field: "Title", was: ["Shoka"], now: ["初夏"] })
+    ).toBe("Title: Shoka → 初夏")
+    expect(
+      describeChange({ field: "Disc title", was: [], now: ["Live"] })
+    ).toBe("Disc title: none → Live")
+    const outcome = {
+      added: 42,
+      converted: 0,
+      restored: 0,
+      retagged: 7,
+      moved: 0,
+      removed: 3,
+      failed: [],
+      cancelled: false,
+      bytes: 0,
+    }
+    expect(describeOutcome(outcome)).toBe("Added 42, retagged 7 and removed 3.")
+    expect(
+      describeOutcome({ ...outcome, added: 0, retagged: 0, removed: 0 })
+    ).toBe("Nothing changed.")
   })
 })

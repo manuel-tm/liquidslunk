@@ -11,15 +11,20 @@ publish.workspace = true
 icu_collator = "2.3.1"
 icu_locale = "2.3.1"
 icu_properties = "2.3.0"
+# Covers: the formats 4_external_libraries.md §4.4 reads, without AVIF
+image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "tiff", "webp"] }
 lofty = "0.25.4"
 rusqlite.workspace = true
 sea-query = { version = "1.0.2", default-features = false, features = ["backend-sqlite", "derive"] }
+serde.workspace = true
+serde_json.workspace = true
 sha2 = "0.11.1"
 thiserror.workspace = true
 unicode-normalization = "0.1.26"
 walkdir = "2.5.0"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
-serde.workspace = true
-serde_json.workspace = true
 tempfile.workspace = true

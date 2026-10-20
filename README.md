@@ -10,7 +10,7 @@ liquidslunk is the next version of slunk, ported to Tauri 2 with its backend in 
 >
 > Then came gapless playback, planned in [3_gapless.md](docs/design/3_gapless.md), which is built: the next track starts in a second element just before the current one ends, so tracks follow each other with nearly no gap.
 >
-> Now come external libraries, planned in [4_external_libraries.md](docs/design/4_external_libraries.md): a selection of the library, converted, tagged and given covers from the catalog, and synced to a folder or to an iPod with video. Its first two phases are built: a track's page shows its tags as an external library will write them, and where a folder library will put it; and external libraries are made and filled, from their own pages and from the catalog's, with their rules, what they come to, and about how much it takes. Nothing is written to them yet.
+> Now come external libraries, planned in [4_external_libraries.md](docs/design/4_external_libraries.md): a selection of the library, converted, tagged and given covers from the catalog, and synced to a folder or to an iPod with video. Its first three phases are built: a track's page shows its tags as an external library writes them; external libraries are made and filled, from their own pages and from the catalog's; and a folder library syncs to a folder or a card, converting with macOS's own encoders, with a plan to look at first, its progress, cancelling, and ejecting the card. Syncing an iPod comes next.
 
 ## Documentation
 

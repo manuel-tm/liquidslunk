@@ -5,8 +5,12 @@ import type {
   OutputFormat,
   RuleInput,
   RuleTarget,
+  SyncOutcome,
+  SyncPlan,
+  SyncStage,
+  TagChange,
 } from "@/bindings"
-import { formatReleased } from "@/lib/format"
+import { formatReleased, formatSize } from "@/lib/format"
 
 /** Each kind, as the pages name it. */
 export const KIND_LABELS: Record<ExternalKind, string> = {
@@ -116,4 +120,96 @@ export function describeMembership(membership: ExternalMembership): string {
       : ""
   const some = tracks < total ? ` (${tracks} of ${total} tracks)` : ""
   return `On ${library.name}${through}${some}`
+}
+
+function count(n: number, noun: string): string {
+  return `${n} ${n === 1 ? noun : `${noun}s`}`
+}
+
+/**
+ * What a sync's plan does, in short, counting tracks: "Add 42 tracks
+ * (1.8 GB), update 7, remove 3." (4_external_libraries.md §8.2).
+ */
+export function describePlan(plan: SyncPlan): string {
+  const tracks = plan.steps.filter((step) => step.trackId !== null)
+  const added = tracks.filter((step) => step.action === "add")
+  const removed = tracks.filter((step) => step.action === "remove")
+  const updated = tracks.length - added.length - removed.length
+  const covers = plan.steps.length - tracks.length
+  const parts: string[] = []
+  if (added.length > 0) {
+    const bytes = added.reduce((sum, step) => sum + step.bytes, 0)
+    parts.push(`add ${count(added.length, "track")} (${formatSize(bytes)})`)
+  }
+  if (updated > 0) {
+    parts.push(
+      parts.length === 0
+        ? `update ${count(updated, "track")}`
+        : `update ${updated}`
+    )
+  }
+  if (removed.length > 0) {
+    parts.push(
+      parts.length === 0
+        ? `remove ${count(removed.length, "track")}`
+        : `remove ${removed.length}`
+    )
+  }
+  if (parts.length === 0) {
+    return covers > 0
+      ? `Write ${count(covers, "cover")}.`
+      : `Everything is up to date: ${count(plan.unchanged, "file")}.`
+  }
+  const sentence = parts.join(", ")
+  const coverPart = covers > 0 ? `, and ${count(covers, "cover")}` : ""
+  return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}${coverPart}.`
+}
+
+/** Whether a plan's sync fits, in words, or how much it's short. */
+export function describeSpace(plan: SyncPlan): string | null {
+  if (plan.freeBytes === null) return null
+  if (!plan.fits) {
+    return `It needs ${formatSize(plan.neededBytes - plan.freeBytes)} more than the folder has free.`
+  }
+  if (plan.neededBytes <= 0) {
+    return `${formatSize(plan.freeBytes)} is free.`
+  }
+  return `It needs ${formatSize(plan.neededBytes)}, and ${formatSize(plan.freeBytes)} is free.`
+}
+
+/** What a retag changes in a field: "Title: Shoka → 初夏". */
+export function describeChange({ field, was, now }: TagChange): string {
+  const shown = (values: string[]) =>
+    values.length === 0 ? "none" : values.join(", ")
+  return `${field}: ${shown(was)} → ${shown(now)}`
+}
+
+/** Where a running sync is, as its progress says it. */
+export const STAGE_LABELS: Record<SyncStage, string> = {
+  removing: "Removing files",
+  moving: "Moving files",
+  writing: "Converting and writing",
+  retagging: "Retagging",
+  covers: "Writing covers",
+  finishing: "Finishing",
+}
+
+/** How a sync went: "Added 42, retagged 7 and removed 3." */
+export function describeOutcome(outcome: SyncOutcome): string {
+  const parts = (
+    [
+      ["added", outcome.added],
+      ["converted again", outcome.converted],
+      ["restored", outcome.restored],
+      ["retagged", outcome.retagged],
+      ["moved", outcome.moved],
+      ["removed", outcome.removed],
+    ] as const
+  )
+    .filter(([, n]) => n > 0)
+    .map(([verb, n]) => `${verb} ${n}`)
+  if (parts.length === 0) return "Nothing changed."
+  const last = parts.pop()
+  const sentence = parts.length > 0 ? `${parts.join(", ")} and ${last}` : last!
+  return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`
 }

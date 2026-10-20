@@ -725,7 +725,7 @@ fn deleting_an_external_library_deletes_its_rules() {
     f.catalog();
     let car = f.folder_library("Car").id;
     f.rules(car, &[(false, artist(1))]);
-    f.external.delete(car).unwrap();
+    f.external.delete(car, false).unwrap();
     assert!(f.external.get(car).unwrap().is_none());
     let rules: i64 = f
         .store

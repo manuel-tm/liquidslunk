@@ -1,19 +1,30 @@
 //! The external libraries context (4_external_libraries.md): a selection of
 //! the library, converted, tagged and given covers from the catalog, for a
-//! folder or an iPod. So far it has the mapping (phase 0), and external
-//! libraries with their rules, what they come to, and what that will take
-//! (phase 1). Nothing is written to a destination yet.
+//! folder or an iPod. It has the mapping (phase 0); external libraries with
+//! their rules, what they come to, and what that will take (phase 1); and
+//! syncing a folder library (phase 2). An iPod isn't synced yet.
 //!
 //! - `repository`: the records the context stores.
 //! - `tags`: a track's tags, worked out from the catalog (§4).
 //! - `template`: path templates, and names on disk (§6).
 //! - `estimate`: what a track's file will take on a destination.
+//! - `convert`: what each source becomes, and `afconvert` (§5).
+//! - `covers`: covers, read, resized, as JPEG (§4.4).
+//! - `write_tags`: tags into files, with lofty (§4.1).
+//! - `manifest`: what's on a destination, and its journal (§8.1).
+//! - `plan`: what a sync would do (§8.2).
+//! - `sync`: running a plan (§8.3).
+//! - `folder`: a folder destination, and its files (§6.3).
+//! - `scratch`: a sync's temporary folder.
+//! - `volume`: a destination's volume: its free space, and ejecting it.
 
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Read;
-use std::path::Path;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 
@@ -27,12 +38,23 @@ use crate::tagging::{TagFilter, TagFilterInput, TagType, tag_filters};
 use crate::text::{clean_or_none, clean_text, trim};
 use crate::{Error, Result};
 
+pub mod convert;
+pub mod covers;
 mod estimate;
+pub mod folder;
+pub mod manifest;
+pub mod plan;
 mod repository;
+pub mod scratch;
+pub mod sync;
 mod tags;
 mod template;
+pub mod volume;
+pub mod write_tags;
 
 pub use estimate::estimated_size;
+pub use folder::Folder;
+pub use plan::Plan;
 pub use repository::*;
 pub use tags::{SortFields, Tags};
 pub use template::{DEFAULT_TEMPLATE, Template, TrackPath, safe_name, unique_paths};
@@ -119,14 +141,68 @@ pub struct Membership {
     pub total: i64,
 }
 
+/// Whether an external library's destination is there to sync (§3.1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Destination {
+    /// It's there, and its manifest names this external library, or it has
+    /// none yet
+    Connected,
+    /// It isn't there: a folder that moved, a card that isn't in, or an
+    /// iPod, which isn't found yet
+    Missing,
+    /// Its manifest names another external library, by its name
+    Elsewhere(String),
+}
+
+/// The external library a manifest names, with the manifest's size and
+/// mtime when it was read: its UUID, and its name then.
+type Identity = ((u64, i64), Option<(String, String)>);
+
+/// A sync's plan, as it was shown, kept until it runs.
+#[derive(Debug)]
+pub struct SyncPlan {
+    /// Which plan it is, so a sync runs the one that was shown
+    pub id: u64,
+    pub library: ExternalLibrary,
+    pub plan: Plan,
+    /// The bytes free on the destination's volume
+    pub free_bytes: Option<u64>,
+    /// The manifest's size and mtime when it was read
+    manifest_stamp: Option<(u64, i64)>,
+    /// Each release's cover in the library
+    cover_paths: HashMap<i64, PathBuf>,
+}
+
+impl SyncPlan {
+    /// Whether what it writes fits in what's free.
+    pub fn fits(&self) -> bool {
+        self.free_bytes
+            .is_none_or(|free| self.plan.bytes_needed() <= i64::try_from(free).unwrap_or(i64::MAX))
+    }
+}
+
 pub struct External {
     store: Arc<Store>,
     media: Arc<Media>,
+    /// The plan last shown for each external library
+    plans: Mutex<HashMap<i64, Arc<SyncPlan>>>,
+    /// The sync running, if one is: its external library, and what cancels
+    /// it
+    running: Mutex<Option<(i64, Arc<AtomicBool>)>>,
+    /// Manifests' identities, by folder, with the manifest's size and mtime
+    /// when it was read, so it's read again only when it changes
+    identities: Mutex<HashMap<PathBuf, Identity>>,
 }
 
 impl External {
     pub fn new(store: Arc<Store>, media: Arc<Media>) -> External {
-        External { store, media }
+        External {
+            store,
+            media,
+            plans: Mutex::new(HashMap::new()),
+            running: Mutex::new(None),
+            identities: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Each track's tags, by id. Ids that aren't tracks are left out.
@@ -186,22 +262,152 @@ impl External {
         repo::update(&conn, id, &values)?.ok_or_else(|| not_found(id))
     }
 
-    /// Deletes an external library and its rules. Its destination's files
-    /// stay where they are. An unknown id deletes nothing.
-    pub fn delete(&self, id: i64) -> Result<()> {
+    /// Deletes an external library and its rules. With `remove_files`, it
+    /// first removes what liquidslunk wrote on its destination, which has to
+    /// be connected: the files its manifest lists, the folders that leaves
+    /// empty, and the manifest. Otherwise its destination's files stay where
+    /// they are. An unknown id deletes nothing.
+    pub fn delete(&self, id: i64, remove_files: bool) -> Result<()> {
+        if self.syncing() == Some(id) {
+            return Err(Error::Invalid(
+                "It's syncing. Cancel the sync first.".into(),
+            ));
+        }
+        if remove_files && let Some(library) = self.get(id)? {
+            let folder = self.connected_folder(&library)?;
+            let loaded = folder.manifest().load()?;
+            let paths: Vec<String> = loaded
+                .manifest
+                .map(|manifest| manifest.files.into_iter().map(|file| file.path).collect())
+                .unwrap_or_default();
+            for path in &paths {
+                folder.remove(path)?;
+            }
+            folder.remove_empty_folders(paths.iter().map(String::as_str))?;
+            folder.manifest().remove()?;
+        }
         repo::delete(&self.store.conn(), id)
     }
 
-    /// Whether its destination is there: a folder library's folder. An iPod
-    /// library isn't tied to an iPod yet, so it isn't.
+    /// Whether its destination is there to sync: a folder library's folder,
+    /// with a manifest that names it, or none. An iPod library isn't tied
+    /// to an iPod yet, so it isn't.
     pub fn connected(&self, library: &ExternalLibrary) -> bool {
-        match library.kind {
-            ExternalKind::Folder => library
-                .folder
-                .as_deref()
-                .is_some_and(|folder| Path::new(folder).is_dir()),
-            ExternalKind::Ipod => false,
+        self.destination(library) == Destination::Connected
+    }
+
+    /// Whether its destination is there, and whose it is (§3.1).
+    pub fn destination(&self, library: &ExternalLibrary) -> Destination {
+        let Some(folder) = folder_of_library(library) else {
+            return Destination::Missing;
+        };
+        if !folder.is_there() {
+            return Destination::Missing;
         }
+        match self.identity(&folder) {
+            Some((uuid, name)) if uuid != library.uuid => Destination::Elsewhere(name),
+            _ => Destination::Connected,
+        }
+    }
+
+    /// The volume its folder is on, when it's one to eject.
+    pub fn ejectable(&self, library: &ExternalLibrary) -> Option<PathBuf> {
+        let folder = folder_of_library(library)?;
+        folder
+            .is_there()
+            .then(|| volume::ejectable(folder.root()))?
+    }
+
+    /// The bytes free where its files go.
+    pub fn free_bytes(&self, library: &ExternalLibrary) -> Option<u64> {
+        let folder = folder_of_library(library)?;
+        folder
+            .is_there()
+            .then(|| volume::free_space(folder.root()))?
+    }
+
+    /// Which external library a manifest names, read again only when the
+    /// manifest changes.
+    fn identity(&self, folder: &Folder) -> Option<(String, String)> {
+        let stamp = folder.manifest().stamp()?;
+        let root = folder.root().to_path_buf();
+        if let Some((known, identity)) = lock(&self.identities).get(&root)
+            && *known == stamp
+        {
+            return identity.clone();
+        }
+        let identity = folder.manifest().identity().ok().flatten();
+        lock(&self.identities).insert(root, (stamp, identity.clone()));
+        identity
+    }
+
+    /// Its folder, when it's connected, or why it isn't.
+    fn connected_folder(&self, library: &ExternalLibrary) -> Result<Folder> {
+        if library.kind == ExternalKind::Ipod {
+            return Err(Error::Invalid(
+                "liquidslunk doesn't sync an iPod yet".into(),
+            ));
+        }
+        let folder = folder_of_library(library)
+            .ok_or_else(|| Error::Invalid("A folder library needs a folder".into()))?;
+        match self.destination(library) {
+            Destination::Connected => Ok(folder),
+            Destination::Missing => Err(Error::Invalid(format!(
+                "The folder isn't there: {}. Connect its disk, or find it with Locate.",
+                folder.root().display()
+            ))),
+            Destination::Elsewhere(name) => Err(Error::Invalid(format!(
+                "This folder belongs to another external library, {name}."
+            ))),
+        }
+    }
+
+    /// Points a folder library at its folder where it is now: one that
+    /// moved, or a card that mounted under another name. The folder is
+    /// checked as a new one is, and refused when its manifest names another
+    /// external library.
+    pub fn locate(&self, id: i64, folder: &str) -> Result<ExternalLibrary> {
+        let conn = self.store.conn();
+        let library = require(&conn, id)?;
+        if library.kind != ExternalKind::Folder {
+            return Err(Error::Invalid(
+                "Only a folder library is located. An iPod is found by its manifest.".into(),
+            ));
+        }
+        let path = self.folder_of(&conn, Some(folder))?;
+        drop(conn);
+        let found = Folder::new(&path);
+        if !found.is_there() {
+            return Err(Error::Invalid(format!("There's no folder at {path}")));
+        }
+        if let Some((uuid, name)) = found.manifest().identity()?
+            && uuid != library.uuid
+        {
+            return Err(Error::Invalid(format!(
+                "This folder belongs to another external library, {name}."
+            )));
+        }
+        let values = ExternalLibraryValues {
+            name: library.name,
+            kind: library.kind,
+            folder: Some(path),
+            profile: library.profile,
+        };
+        repo::update(&self.store.conn(), id, &values)?.ok_or_else(|| not_found(id))
+    }
+
+    /// Ejects the volume its folder is on, so it can be unplugged.
+    pub fn eject(&self, id: i64) -> Result<()> {
+        let library = self.get(id)?.ok_or_else(|| not_found(id))?;
+        if self.syncing().is_some() {
+            return Err(Error::Invalid(
+                "Wait for the sync to end, or cancel it.".into(),
+            ));
+        }
+        let mount = self
+            .ejectable(&library)
+            .ok_or_else(|| Error::Invalid("Its folder isn't on a disk that's ejected".into()))?;
+        volume::eject(&mount)
     }
 
     // Rules
@@ -439,6 +645,283 @@ impl External {
             }
         }
         Ok(memberships)
+    }
+
+    // Syncing
+
+    /// Works out what a sync of a folder library would do (§8.2), and keeps
+    /// it, for `sync()` to run. What should be there is read in one read
+    /// transaction, then the connection is let go before any file is read:
+    /// each source's format, its cover, the manifest, and the destination.
+    pub fn plan_sync(&self, id: i64) -> Result<Arc<SyncPlan>> {
+        let snapshot = self.store.read(|tx| {
+            let library = require(tx, id)?;
+            let ids = members(tx, id, None)?;
+            let tags = tags::read(tx, &ids)?;
+            let facts: HashMap<i64, repo::TrackFileFacts> = repo::file_facts(tx, &ids)?
+                .into_iter()
+                .map(|facts| (facts.track_id, facts))
+                .collect();
+            let cover_ids: Vec<i64> = tags
+                .values()
+                .filter_map(|tags| tags.cover)
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .collect();
+            let covers: HashMap<i64, crate::media::FileRecord> = files::get_many(tx, &cover_ids)?
+                .into_iter()
+                .map(|file| (file.id, file))
+                .collect();
+            Ok((library, ids, tags, facts, covers))
+        })?;
+        let (library, ids, mut tags, facts, cover_files) = snapshot;
+        let folder = self.connected_folder(&library)?;
+        let profile = &library.profile;
+        let template =
+            Template::parse(profile.path_template.as_deref().unwrap_or(DEFAULT_TEMPLATE))?;
+        let root = self.media.library();
+
+        // Each source's format, read from its headers, several at once
+        let sources: Vec<(i64, PathBuf)> = ids
+            .iter()
+            .filter_map(|id| Some((*id, root.absolute(&facts.get(id)?.path))))
+            .collect();
+        let audio = read_sources(&sources);
+
+        // Each release's cover, checked from its headers
+        let mut inputs = plan::Inputs::default();
+        let mut cover_keys: HashMap<i64, manifest::CoverKey> = HashMap::new();
+        let mut cover_paths: HashMap<i64, PathBuf> = HashMap::new();
+        if profile.embed_covers || profile.cover_file {
+            let mut checked: HashSet<i64> = HashSet::new();
+            for track in &ids {
+                let (Some(tags), Some(facts)) = (tags.get(track), facts.get(track)) else {
+                    continue;
+                };
+                let release = facts.release_id;
+                let Some(cover) = tags.cover.and_then(|id| cover_files.get(&id)) else {
+                    continue;
+                };
+                if !checked.insert(release) {
+                    continue;
+                }
+                let path = root.absolute(&cover.path);
+                let checked = if path.is_file() {
+                    covers::check(&path)
+                } else {
+                    Err(format!(
+                        "Its cover is missing from the library: {}",
+                        cover.path
+                    ))
+                };
+                match checked {
+                    Ok(()) => {
+                        cover_keys.insert(
+                            release,
+                            manifest::CoverKey {
+                                source: cover.sha256.clone(),
+                                px: u32::try_from(profile.cover_px).unwrap_or(600),
+                            },
+                        );
+                        cover_paths.insert(release, path);
+                    }
+                    Err(reason) => inputs.left_out.push(plan::LeftOut {
+                        subject: plan::Subject::Release(release),
+                        reason,
+                    }),
+                }
+            }
+        }
+        if profile.cover_file {
+            inputs.cover_files = cover_keys.clone();
+        }
+
+        for track in &ids {
+            let (Some(facts), Some(tags)) = (facts.get(track), tags.remove(track)) else {
+                continue;
+            };
+            let release = facts.release_id;
+            inputs.labels.insert(
+                plan::Subject::Track(*track),
+                plan::Label {
+                    title: tags.title.clone(),
+                    artist: tags.artist.clone(),
+                    album: Some(tags.album.clone()),
+                },
+            );
+            inputs
+                .labels
+                .entry(plan::Subject::Release(release))
+                .or_insert_with(|| plan::Label {
+                    title: tags.album.clone(),
+                    artist: tags.album_artist.clone(),
+                    album: None,
+                });
+            let left_out = |reason: String| plan::LeftOut {
+                subject: plan::Subject::Track(*track),
+                reason,
+            };
+            let source = root.absolute(&facts.path);
+            let Some(Some(read)) = audio.get(track) else {
+                // Its copy on the destination stays as it is
+                inputs.kept.insert(*track, release);
+                inputs.left_out.push(left_out(format!(
+                    "Its file is missing from the library: {}",
+                    facts.path
+                )));
+                continue;
+            };
+            let becomes = match convert::becomes(read, library.kind, profile) {
+                Ok(becomes) => becomes,
+                Err(reason) => {
+                    inputs.left_out.push(left_out(reason));
+                    continue;
+                }
+            };
+            let source_extension = extension(&facts.path);
+            inputs.wanted.push(plan::WantedTrack {
+                track: *track,
+                release,
+                path: template.path(&tags, &becomes.extension(&source_extension)),
+                bytes: becomes.estimated_bytes(read, facts.size_bytes, facts.duration_ms),
+                audio: manifest::AudioKey {
+                    source: facts.sha256.clone(),
+                    becomes: becomes.key(),
+                    conversion: convert::CONVERSION_VERSION,
+                    encoder: convert::encoder().to_string(),
+                },
+                cover: profile
+                    .embed_covers
+                    .then(|| cover_keys.get(&release).cloned())
+                    .flatten(),
+                source,
+                becomes,
+                tags,
+            });
+        }
+
+        // What's there: the manifest, checked against the disk
+        let manifest_stamp = folder.manifest().stamp();
+        let loaded = folder.manifest().load()?;
+        if let Some(manifest) = &loaded.manifest
+            && manifest.external_library != library.uuid
+        {
+            return Err(Error::Invalid(format!(
+                "This folder belongs to another external library, {}.",
+                manifest.name
+            )));
+        }
+        for mut entry in loaded
+            .manifest
+            .map(|manifest| manifest.files)
+            .unwrap_or_default()
+        {
+            let mut as_written = manifest::as_written(&entry, folder.stat(&entry.path));
+            // A move interrupted between the journal and the rename
+            if !as_written
+                && let Some(from) = loaded.moved_from.get(&entry.path)
+                && manifest::as_written(&entry, folder.stat(from))
+            {
+                entry.path = from.clone();
+                as_written = true;
+            }
+            inputs.present.push(plan::PresentFile { entry, as_written });
+        }
+
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let planned = Arc::new(SyncPlan {
+            id: NEXT.fetch_add(1, Ordering::Relaxed),
+            free_bytes: volume::free_space(folder.root()),
+            plan: plan::plan(inputs, &|path| folder.exists(path)),
+            library,
+            manifest_stamp,
+            cover_paths,
+        });
+        lock(&self.plans).insert(id, planned.clone());
+        Ok(planned)
+    }
+
+    /// Runs the plan last shown for a folder library (§8.3), with its
+    /// progress. One sync runs at a time, and the library can be browsed
+    /// and edited meanwhile: it works from the plan's snapshot. Refused: a
+    /// plan that isn't the one last shown, one that doesn't fit, and a
+    /// destination that changed since.
+    pub fn sync(
+        &self,
+        id: i64,
+        plan_id: u64,
+        progress: &dyn Fn(sync::Progress),
+    ) -> Result<sync::Outcome> {
+        let planned = lock(&self.plans)
+            .get(&id)
+            .filter(|planned| planned.id == plan_id)
+            .cloned()
+            .ok_or_else(|| Error::Invalid("The plan is out of date. Look at it again.".into()))?;
+        if !planned.fits() {
+            return Err(Error::Invalid(format!(
+                "It needs {} more than the folder has free.",
+                bytes_text(
+                    planned.plan.bytes_needed()
+                        - i64::try_from(planned.free_bytes.unwrap_or(0)).unwrap_or(i64::MAX)
+                )
+            )));
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        {
+            let mut running = lock(&self.running);
+            if running.is_some() {
+                return Err(Error::Invalid("A sync is already running".into()));
+            }
+            *running = Some((id, cancel.clone()));
+        }
+        let _running = Running(&self.running);
+        let library = self.get(id)?.ok_or_else(|| not_found(id))?;
+        let folder = self.connected_folder(&library)?;
+        if folder.manifest().stamp() != planned.manifest_stamp {
+            return Err(Error::Invalid(
+                "The folder changed since the plan was made. Look at it again.".into(),
+            ));
+        }
+        let scratch = scratch::Scratch::new()?;
+        let outcome = sync::run(
+            sync::Run {
+                plan: &planned.plan,
+                folder: &folder,
+                uuid: &library.uuid,
+                name: &library.name,
+                cover_paths: planned.cover_paths.clone(),
+                cover_px: u32::try_from(library.profile.cover_px).unwrap_or(600),
+                cancel: &cancel,
+                scratch: &scratch,
+            },
+            progress,
+        );
+        lock(&self.plans).remove(&id);
+        let outcome = match outcome {
+            // A card pulled out midway
+            Err(_) if !folder.is_there() => return Err(folder::gone(folder.root())),
+            outcome => outcome?,
+        };
+        if !outcome.cancelled {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0, |since| since.as_secs() as i64);
+            repo::set_last_synced(&self.store.conn(), id, now)?;
+        }
+        Ok(outcome)
+    }
+
+    /// Cancels the sync running, if one is: it stops after the file in
+    /// hand.
+    pub fn cancel_sync(&self) {
+        if let Some((_, cancel)) = lock(&self.running).as_ref() {
+            cancel.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// The external library a sync is running for, if one is.
+    pub fn syncing(&self) -> Option<i64> {
+        lock(&self.running).as_ref().map(|(id, _)| *id)
     }
 
     /// An external library's columns, as they're saved, once they're
@@ -833,6 +1316,69 @@ fn require(conn: &Connection, id: i64) -> Result<ExternalLibrary> {
 
 fn not_found(id: i64) -> Error {
     Error::NotFound(format!("There's no external library {id}"))
+}
+
+/// Clears the sync running when it ends, however it ends.
+struct Running<'a>(&'a Mutex<Option<(i64, Arc<AtomicBool>)>>);
+
+impl Drop for Running<'_> {
+    fn drop(&mut self) {
+        *lock(self.0) = None;
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// A folder library's folder.
+fn folder_of_library(library: &ExternalLibrary) -> Option<Folder> {
+    match library.kind {
+        ExternalKind::Folder => library.folder.as_deref().map(Folder::new),
+        ExternalKind::Ipod => None,
+    }
+}
+
+/// What each source holds, read several at once. `None` for a file that
+/// isn't there.
+fn read_sources(sources: &[(i64, PathBuf)]) -> HashMap<i64, Option<convert::SourceAudio>> {
+    let workers = std::thread::available_parallelism().map_or(1, |n| n.get());
+    let chunk = sources.len().div_ceil(workers).max(1);
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = sources
+            .chunks(chunk)
+            .map(|chunk| {
+                scope.spawn(move || {
+                    chunk
+                        .iter()
+                        .map(|(id, path)| (*id, path.is_file().then(|| convert::read_source(path))))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|handle| handle.join().unwrap_or_default())
+            .collect()
+    })
+}
+
+/// A size in words, as Finder shows it: "3.2 GB".
+fn bytes_text(bytes: i64) -> String {
+    let units = ["bytes", "KB", "MB", "GB", "TB"];
+    let mut value = bytes.max(0) as f64;
+    let mut unit = 0;
+    while value >= 1000.0 && unit < units.len() - 1 {
+        value /= 1000.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{value} bytes")
+    } else {
+        format!("{value:.1} {}", units[unit])
+    }
 }
 
 /// A path's extension, without its dot, in lowercase.

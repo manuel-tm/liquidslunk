@@ -102,7 +102,7 @@ One function, `external::tags(track)`, gives a track's tags, worked out from the
 
 ### 4.1 A track's tags
 
-> Changed during implementation, see [Appendix B](#appendix-b-totals-are-the-last-numbers).
+> Changed during implementation, see [Appendix B](#appendix-b-totals-are-the-last-numbers) and [Appendix G](#appendix-g-what-afconvert-has-to-be-told).
 
 | Field | From the catalog | Vorbis comment | ID3v2.4 | MP4 | iPod |
 |---|---|---|---|---|---|
@@ -167,6 +167,8 @@ Phase 0 builds the mapping, before anything is written. The track page shows a t
 ## 5. Converting audio
 
 ### 5.1 Choosing the encoder
+
+> Changed during implementation, see [Appendix F](#appendix-f-afconvert-dithers-only-when-asked) and [Appendix G](#appendix-g-what-afconvert-has-to-be-told).
 
 | | A. Core Audio, through `afconvert` | B. ffmpeg | C. In Rust |
 |---|---|---|---|
@@ -256,6 +258,8 @@ Folder libraries are often FAT32 or exFAT cards, whose names are more limited th
 **Two tracks with the same path** are told apart before the extension: " (2)", " (3)", in the order of their ids. Paths are compared ignoring case and Unicode normalization, as FAT32, exFAT and APFS compare them. A track keeps the name it was given for as long as its template's result stays the same, so names don't trade places between syncs.
 
 ### 6.3 Files and folders
+
+> Changed during implementation, see [Appendix H](#appendix-h-appledouble-files).
 
 - **Folders** are made as they're needed. A folder is removed when a sync leaves it empty after moving or removing liquidslunk's files from it, and only then: a folder with anything else in it stays.
 - **`cover.jpg`**, when the profile asks for it, is written in each folder that holds one release's tracks, and kept in the manifest like the music.
@@ -354,6 +358,8 @@ iPod_Control/
 
 ### 8.1 The manifest
 
+> Changed during implementation, see [Appendix I](#appendix-i-a-journal-between-checkpoints).
+
 - **Each destination keeps a manifest** of what liquidslunk wrote there: `.liquidslunk/manifest.json` at a folder library's root, and `iPod_Control/iTunes/liquidslunk.json` on an iPod.
 - **It names its external library** by the UUID kept in its row (§9), and has its own format version.
 - **It lists every file liquidslunk wrote** there: its path, its size and mtime as written, and its track's id, with three keys:
@@ -390,6 +396,8 @@ A sync starts by working out what it would do, and shows it before it does anyth
 
 ### 8.3 Running it
 
+> Changed during implementation, see [Appendix H](#appendix-h-appledouble-files) and [Appendix I](#appendix-i-a-journal-between-checkpoints).
+
 - **Converting** runs several files at once (§5.1). **Writing to the destination** is one file at a time: an iPod's disk is slow, and on USB 2.0.
 - **A file reaches its final path whole.** It's written under a temporary name in the destination, then renamed, which is atomic on the same volume. Converted files are made in the system's temporary folder first, and removed once they're copied. Whatever an earlier run left there is removed at launch.
 - **In a folder library,** removals and moves go first, to make room, then additions, conversions and retags.
@@ -404,6 +412,8 @@ A sync starts by working out what it would do, and shows it before it does anyth
 - **One sync at a time.** The library can be browsed and edited while one runs. It works from the plan's snapshot, so an edit made meanwhile reaches the next sync.
 
 ### 8.4 What liquidslunk may write
+
+> Changed during implementation, see [Appendix H](#appendix-h-appledouble-files).
 
 The base design says that liquidslunk writes only next to its database and in its settings (design §2). This design adds, and AGENTS.md's rule changes with it, in phase 2:
 - **Inside an external library's destination, and only there:** the files it converts or copies, `cover.jpg`s, its manifest and its temporary files, and on an iPod, the iTunesDB, the artwork database and its thumbnails.
@@ -553,6 +563,8 @@ Each phase ends with something usable and documented, and every check in AGENTS.
 
 ## 13. Risks and checks
 
+> Phase 2's checks are recorded in [Appendix F](#appendix-f-afconvert-dithers-only-when-asked), [Appendix G](#appendix-g-what-afconvert-has-to-be-told) and [Appendix H](#appendix-h-appledouble-files).
+
 Each is checked early in the phase that needs it. Anything that changes this design is recorded as an appendix.
 
 **Phase 2:**
@@ -646,3 +658,53 @@ The first draft left these open. They were settled on 2026-10-20:
 - **Was:** `External::new(store, catalog, tagging)`.
 - **Now:** `External::new(store, media)`. It reads the catalog's and the tags' tables through their repositories, with one connection, and takes the media context for the library's folder, which a folder library can't be in (§3.1). A tag value rule is checked and read with the lists' `tag_filters()`.
 - **Why:** a sync's plan is read in one read transaction (§8.2), which the catalog's methods, each taking the connection on its own, can't give. The mapping (phase 0) already reads this way.
+
+## Appendix F: afconvert dithers only when asked
+
+- **Date:** 2026-10-20
+- **Affects:** §5.1 Choosing the encoder, §13 Risks and checks
+- **Was:** phase 2 checks whether `afconvert` dithers when it cuts 24 bits to 16. If it truncates, converting moves to Core Audio's API, whose converter can be told to dither.
+- **Now:**
+  - It doesn't dither unless it's asked: a 1 kHz tone at 0.4 of a 16-bit step, in a 24-bit file, came out as digital silence in WAV, FLAC and Apple Lossless.
+  - It has an option for it, `--dither 1`, TPDF, or `2`, noise-shaped, which Core Audio's converter takes. With `--dither 1`, the same tone came out at 0.404 of a step, in ±1 of noise.
+  - So converting stays with `afconvert`, and passes `--dither 1` whenever it cuts the bits of lossless audio or changes its sample rate. A lossless conversion that keeps both, like FLAC to Apple Lossless at 16 bits, isn't dithered, and is bit-exact.
+- **Why:** the fallback isn't needed: `afconvert` is told, as the API would be.
+
+## Appendix G: What afconvert has to be told
+
+- **Date:** 2026-10-20
+- **Affects:** §5.1 Choosing the encoder, §4.1 A track's tags
+- **Was:** Apple Lossless is `-d alac`, FLAC `-d flac`, and AAC `-d aac -b <bitrate> -s 2`. CD resolution is 44.1 kHz for sources at 44.1, 88.2 or 176.4 kHz, and 48 kHz for the rest. A copied file's tags are all replaced.
+- **Now:**
+  - **Lossless always names its bit depth,** from the source's: `-d alac/1` is 16-bit, `/2` 20-bit, `/3` 24-bit. Without it, `afconvert` made 32-bit Apple Lossless from a 16-bit FLAC, and 24-bit FLAC from a 16-bit Apple Lossless file.
+  - **AAC at most 48 kHz:** it's 44.1 kHz from 88.2, 176.4 and 352.8 kHz, as CD resolution is, rather than the 48 kHz `afconvert` picks.
+  - **AAC's bitrate steps down** when Apple's encoder refuses it for a source's sample rate and channels: 44.1 kHz mono takes at most 256 kbps, 22.05 kHz stereo 128, and 8 kHz mono 24. The next lower of 320, 256, 192, 160, 128, 96, 64, 48, 32, 24, 16 and 8 kbps is tried.
+  - **CD resolution never resamples upwards:** a source at 48 kHz or below keeps its rate.
+  - **AAC's gapless data is kept** when the tags are replaced: `afconvert` writes an AAC file's encoder delay and padding as `----:com.apple.iTunes:iTunSMPB`, among the tags, and nowhere else in the file. Without it, players don't trim the encoder's silence.
+  - AAC is encoded at `-q 127`, the encoder's best quality, which took a fifth longer.
+- **Why:** each is what `afconvert` did on this Mac (macOS 27.0.1) with the fixtures and the dev library. The rest of §13's checks for phase 2 changed nothing: Core Audio decodes Ogg Vorbis and Opus, so Ogg becomes AAC on an iPod as §5.2 says; and 11 conversions at once, on this Mac's 12 cores, convert a 78-minute album from FLAC to AAC in 4.7 seconds, 28 seconds one at a time, so a first sync of 1,000 albums converts in about an hour.
+
+## Appendix H: AppleDouble files
+
+- **Date:** 2026-10-20
+- **Affects:** §6.3 Files and folders, §8.3 Running it, §8.4 What liquidslunk may write, §13 Risks and checks
+- **Was:** liquidslunk writes each file's bytes itself, without copying attributes, and phase 2 checks that no `._` files appear on FAT32 and exFAT.
+- **Now:**
+  - They appear anyway. macOS gives every file and folder a process creates an extended attribute, `com.apple.provenance`, which can't be removed, and FAT32 and exFAT keep it in a `._` file beside the file, however its bytes are written. Opening an existing file for writing adds it too; a rename doesn't.
+  - So every file is written new, under a temporary name, then renamed, and never rewritten in place: a retag writes a tagged copy. The `._` file of each file and folder liquidslunk makes on a destination is deleted as soon as it's made, which takes the attribute with it, and the journal's after each line it appends.
+  - §8.4 adds those `._` files to what liquidslunk deletes: they're its own files' attributes.
+  - A destination's temporary files are in `.liquidslunk/tmp`, emptied at the start of each sync, rather than beside their final paths.
+- **Why:** checked on FAT32 and exFAT disk images on this Mac. After a sync of 283 tracks to an exFAT card image, it had no `._` files.
+
+## Appendix I: A journal between checkpoints
+
+- **Date:** 2026-10-20
+- **Affects:** §8.1 The manifest, §8.3 Running it
+- **Was:** the manifest is written atomically at the end of a sync, and at checkpoints along the way. A file's audio key includes the encoder's version. A file is checked against the disk by its size and mtime.
+- **Now:**
+  - **A journal:** each change is appended to `.liquidslunk/journal.jsonl`, and waited on until it's on the disk, before a file is renamed into place, or after one is removed. The manifest is read with its journal replayed, and rewritten atomically when a sync ends, cancelled or not, which removes the journal.
+  - **The encoder's version is recorded, not compared:** it's macOS's, and comparing it would convert everything again after each update. The audio key compares the source, what it became and liquidslunk's own way of converting, a number bumped when that changes.
+  - **mtimes:** a shift of whole quarter-hours, up to a day, doesn't count as a change, since FAT32 keeps local time, which a change of time zone or of daylight saving time moves.
+  - **A sync never makes its destination's folder,** or anything outside it: a card pulled out midway isn't made again on the Mac's own disk.
+- **Why:** writing a whole manifest, a few hundred kilobytes for a few hundred tracks, after each file on a slow card costs too much, and between checkpoints a card pulled out would leave files that no manifest lists, which a sync then never replaces. Pulling a card image out in the middle of a sync of 283 tracks, the next sync carried on from the 142 done.
+

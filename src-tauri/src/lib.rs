@@ -47,6 +47,8 @@ pub fn run() {
         .invoke_handler(commands.invoke_handler())
         .setup(move |app| {
             commands.mount_events(app);
+            // What an earlier run's syncs left in the temporary folder
+            std::thread::spawn(slunk::external::scratch::remove_leftovers);
             app.manage(Libraries::new(&app.path().app_config_dir()?));
             #[cfg(debug_assertions)]
             open_library_argument(app.state::<Libraries>().inner());

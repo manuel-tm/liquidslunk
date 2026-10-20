@@ -557,3 +557,153 @@ fn tracks_with_the_same_path_are_told_apart_by_id() {
     .collect();
     assert_eq!(unique, expected);
 }
+
+/// Tags with something in every field, two values where a field takes
+/// several.
+fn full_tags() -> Tags {
+    Tags {
+        compilation: true,
+        artists: vec!["Ryo Fukui Trio".into(), "Mari".into()],
+        disc_title: Some("Live".into()),
+        media: vec!["CD".into()],
+        release_types: vec!["Album".into(), "Live".into()],
+        sort: SortFields {
+            artist: Some("Fukui Trio".into()),
+            album_artist: Some("Fukui".into()),
+            album: Some("Scenery (sort)".into()),
+            title: Some("Could Happen".into()),
+        },
+        ..tags()
+    }
+}
+
+#[test]
+fn tags_are_written_into_each_format_and_replace_what_was_there() {
+    use lofty::file::TaggedFileExt;
+    use lofty::prelude::*;
+    use lofty::tag::TagType;
+    use slunk::external::write_tags;
+
+    let dir = tempfile::tempdir().unwrap();
+    let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/audio");
+    let mut cover = Vec::new();
+    image::RgbImage::from_pixel(10, 10, image::Rgb([1, 2, 3]))
+        .write_to(
+            &mut std::io::Cursor::new(&mut cover),
+            image::ImageFormat::Jpeg,
+        )
+        .unwrap();
+    let tags = full_tags();
+    for (name, primary) in [
+        ("flac.flac", TagType::VorbisComments),
+        ("aac.m4a", TagType::Mp4Ilst),
+        ("alac.m4a", TagType::Mp4Ilst),
+        ("cbr.mp3", TagType::Id3v2),
+        ("id3v23.mp3", TagType::Id3v2),
+        ("wav.wav", TagType::Id3v2),
+        ("aiff.aiff", TagType::Id3v2),
+        ("adts.aac", TagType::Id3v2),
+    ] {
+        let path = dir.path().join(name);
+        std::fs::copy(fixtures.join(name), &path).unwrap();
+        write_tags::write(&path, &tags, Some(&cover))
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        let file = lofty::read_from_path(&path).unwrap();
+        // Only the one tag is left
+        let types: Vec<TagType> = file.tags().iter().map(|tag| tag.tag_type()).collect();
+        assert_eq!(types, vec![primary], "{name}");
+        let tag = file.tag(primary).unwrap();
+        let text = |key: ItemKey| tag.get_string(key).map(str::to_string);
+        assert_eq!(
+            text(ItemKey::TrackTitle).as_deref(),
+            Some("It Could Happen to You"),
+            "{name}"
+        );
+        assert_eq!(
+            text(ItemKey::TrackArtist).as_deref(),
+            Some("Ryo Fukui Trio"),
+            "{name}"
+        );
+        assert_eq!(
+            text(ItemKey::AlbumTitle).as_deref(),
+            Some("Scenery"),
+            "{name}"
+        );
+        assert_eq!(
+            text(ItemKey::AlbumArtist).as_deref(),
+            Some("Ryo Fukui"),
+            "{name}"
+        );
+        assert_eq!(tag.track(), Some(3), "{name}");
+        assert_eq!(tag.track_total(), Some(12), "{name}");
+        assert_eq!(
+            text(ItemKey::TrackArtistSortOrder).as_deref(),
+            Some("Fukui Trio"),
+            "{name}"
+        );
+        assert_eq!(
+            text(ItemKey::AlbumTitleSortOrder).as_deref(),
+            Some("Scenery (sort)"),
+            "{name}"
+        );
+        assert_eq!(text(ItemKey::Genre), None, "{name}");
+        assert_eq!(tag.pictures().len(), 1, "{name}");
+        assert_eq!(tag.pictures()[0].data(), cover.as_slice(), "{name}");
+    }
+
+    // Several values, as each format holds them
+    let path = dir.path().join("flac.flac");
+    let flac = lofty::flac::FlacFile::read_from(
+        &mut std::fs::File::open(&path).unwrap(),
+        lofty::config::ParseOptions::new(),
+    )
+    .unwrap();
+    let comments = flac.vorbis_comments().unwrap();
+    assert_eq!(
+        comments.get_all("LABEL").collect::<Vec<_>>(),
+        vec!["Trio Records", "Think! Records"]
+    );
+    assert_eq!(comments.get_all("ARTISTS").count(), 2);
+    assert_eq!(comments.get("COMPILATION"), Some("1"));
+    assert_eq!(comments.get("DATE"), Some("1976-05"));
+    assert_eq!(comments.get("DISCSUBTITLE"), Some("Live"));
+    assert_eq!(comments.get("TRACKTOTAL"), Some("12"));
+    let mp3 = lofty::mpeg::MpegFile::read_from(
+        &mut std::fs::File::open(dir.path().join("cbr.mp3")).unwrap(),
+        lofty::config::ParseOptions::new(),
+    )
+    .unwrap();
+    let id3 = mp3.id3v2().unwrap();
+    let frame = |id: &str| {
+        id3.get_text(&lofty::id3::v2::FrameId::Valid(id.to_string().into()))
+            .map(str::to_string)
+    };
+    assert_eq!(
+        frame("TPUB").as_deref(),
+        Some("Trio Records\0Think! Records")
+    );
+    assert_eq!(frame("TRCK").as_deref(), Some("3/12"));
+    assert_eq!(frame("TCMP").as_deref(), Some("1"));
+    assert_eq!(id3.get_user_text("CATALOGNUMBER"), Some("PA-7148"));
+    assert_eq!(id3.get_user_text("RELEASETYPE"), Some("Album\0Live"));
+    let m4a = lofty::mp4::Mp4File::read_from(
+        &mut std::fs::File::open(dir.path().join("aac.m4a")).unwrap(),
+        lofty::config::ParseOptions::new(),
+    )
+    .unwrap();
+    let ilst = m4a.ilst().unwrap();
+    let labels: Vec<String> = ilst
+        .get(&lofty::mp4::AtomIdent::Freeform {
+            mean: "com.apple.iTunes".into(),
+            name: "LABEL".into(),
+        })
+        .unwrap()
+        .data()
+        .filter_map(|data| match data {
+            lofty::mp4::AtomData::UTF8(text) => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(labels, vec!["Trio Records", "Think! Records"]);
+    assert!(ilst.is_compilation());
+}

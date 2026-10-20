@@ -30,7 +30,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { Spinner } from "@/components/ui/spinner"
 import { useCommand } from "@/lib/query"
+import { useSyncRun } from "@/lib/sync"
 
 type Section = { title: string; to: string; icon: LucideIcon }
 
@@ -137,26 +139,31 @@ function ExternalLibraryLink({
 }) {
   const to = `/external-libraries/${id}`
   const active = useMatch({ path: to, end: false }) !== null
+  const run = useSyncRun()
+  const syncing = run?.running === true && run.libraryId === id
+  const status = syncing ? "Syncing" : connected ? "Connected" : "Not connected"
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
         render={<Link to={to} />}
         isActive={active}
-        title={connected ? `${name}: connected` : `${name}: not connected`}
+        title={`${name}: ${status.toLowerCase()}`}
       >
         <ExternalKindIcon kind={kind} />
         <span className="truncate">{name}</span>
-        <span
-          aria-hidden
-          className={
-            connected
-              ? "ml-auto size-1.5 shrink-0 rounded-full bg-primary"
-              : "ml-auto size-1.5 shrink-0 rounded-full border border-muted-foreground"
-          }
-        />
-        <span className="sr-only">
-          {connected ? "Connected" : "Not connected"}
-        </span>
+        {syncing ? (
+          <Spinner aria-hidden className="ml-auto size-3 shrink-0" />
+        ) : (
+          <span
+            aria-hidden
+            className={
+              connected
+                ? "ml-auto size-1.5 shrink-0 rounded-full bg-primary"
+                : "ml-auto size-1.5 shrink-0 rounded-full border border-muted-foreground"
+            }
+          />
+        )}
+        <span className="sr-only">{status}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   )

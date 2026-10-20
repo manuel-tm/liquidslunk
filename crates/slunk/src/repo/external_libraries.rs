@@ -131,6 +131,15 @@ pub fn update(
         .optional()?)
 }
 
+/// Records when an external library's sync ended, in epoch seconds.
+pub fn set_last_synced(conn: &Connection, id: i64, at: i64) -> Result<()> {
+    conn.execute(
+        r#"update "external_libraries" set "last_synced_at" = ? where "id" = ?"#,
+        params![at, id],
+    )?;
+    Ok(())
+}
+
 /// Deletes an external library, and its rules with it. An unknown id
 /// deletes nothing.
 pub fn delete(conn: &Connection, id: i64) -> Result<()> {
@@ -370,6 +379,7 @@ pub struct TrackFileFacts {
     pub duration_ms: Option<i64>,
     pub path: String,
     pub size_bytes: i64,
+    pub sha256: String,
 }
 
 /// Each of these tracks' file facts, in no particular order.
@@ -377,7 +387,7 @@ pub fn file_facts(conn: &Connection, track_ids: &[i64]) -> Result<Vec<TrackFileF
     let mut found = Vec::new();
     for chunk in chunks(track_ids) {
         let sql = format!(
-            r#"select "tracks"."id", "tracks"."release_id", "tracks"."duration_ms", "files"."path", "files"."size_bytes"
+            r#"select "tracks"."id", "tracks"."release_id", "tracks"."duration_ms", "files"."path", "files"."size_bytes", "files"."sha256"
             from "tracks" inner join "files" on "files"."id" = "tracks"."file_id"
             where "tracks"."id" in ({})"#,
             placeholders(chunk.len())
@@ -390,6 +400,7 @@ pub fn file_facts(conn: &Connection, track_ids: &[i64]) -> Result<Vec<TrackFileF
                 duration_ms: row.get(2)?,
                 path: row.get(3)?,
                 size_bytes: row.get(4)?,
+                sha256: row.get(5)?,
             })
         })? {
             found.push(row?);

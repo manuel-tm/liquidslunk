@@ -47,6 +47,13 @@ LICENSE
 
 The same goes for slunk: its repository won't stay around, so nothing here points to its files. What liquidslunk needs from it is copied into this repository, or written into these docs.
 
+## What liquidslunk writes
+
+liquidslunk only reads your music files: it never moves, copies, renames, deletes or retags them. It writes in three places:
+- **Next to the library's database:** `slunk.db`, SQLite's `-wal` and `-shm` files, and `slunk-backups/`.
+- **Its settings,** in the app's config folder ([backend.md](development/backend.md#choosing-the-library)).
+- **An external library's destination,** when it syncs: the files it converts or copies there, `cover.jpg`s, and its manifest and temporary files in `.liquidslunk/`. It replaces or deletes only what its manifest lists, and never writes outside the destination's folder. While it converts, it uses a folder of its own in the system's temporary folder ([backend.md](development/backend.md#syncing-a-folder-library)).
+
 ## How we work
 
 Work flows from design to code to docs:

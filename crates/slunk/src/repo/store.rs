@@ -38,4 +38,16 @@ impl Store {
         tx.commit()?;
         Ok(value)
     }
+
+    /// Runs `work` in a read transaction, so what it reads is one
+    /// consistent picture of the library, whatever another process writes
+    /// meanwhile. It starts with a plain `BEGIN`, which takes no lock until
+    /// the first read.
+    pub fn read<T>(&self, work: impl FnOnce(&Transaction<'_>) -> Result<T>) -> Result<T> {
+        let mut conn = self.conn();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Deferred)?;
+        let value = work(&tx)?;
+        tx.commit()?;
+        Ok(value)
+    }
 }

@@ -426,6 +426,14 @@ export const commands = {
 	 *  catalog's newest. Null with no tracks at all.
 	 */
 	sampleTrackId: number | null,
+	/**  Whether its destination is there, and whose it is */
+	destination: DestinationStatus,
+	/**  The bytes free where its files go, while it's there */
+	freeBytes: number | null,
+	/**  Whether its folder is on a disk that's ejected, like a card */
+	ejectable: boolean,
+	/**  Whether it's syncing now */
+	syncing: boolean,
 }) & (ExternalLibrary) | null, CommandError>(__TAURI_INVOKE("external_library", { args })),
 	/**  A new external library, with no rules yet. */
 	createExternalLibrary: (args: ExternalLibraryInput) => typedError<ExternalLibrary, CommandError>(__TAURI_INVOKE("create_external_library", { args })),
@@ -435,10 +443,11 @@ export const commands = {
 	 */
 	updateExternalLibrary: (args: UpdateExternalLibraryArgs) => typedError<ExternalLibrary, CommandError>(__TAURI_INVOKE("update_external_library", { args })),
 	/**
-	 *  Deletes an external library and its rules. What's on its destination
-	 *  stays there. Returns the id.
+	 *  Deletes an external library and its rules, and with `removeFiles`, what
+	 *  liquidslunk wrote on its destination: the files its manifest lists, the
+	 *  folders that leaves empty, and the manifest. Returns the id.
 	 */
-	deleteExternalLibrary: (args: IdArgs) => typedError<number, CommandError>(__TAURI_INVOKE("delete_external_library", { args })),
+	deleteExternalLibrary: (args: DeleteExternalLibraryArgs) => typedError<number, CommandError>(__TAURI_INVOKE("delete_external_library", { args })),
 	/**  An external library's rules, in the order they were added. */
 	externalLibraryRules: (args: IdArgs) => typedError<ExternalRule[], CommandError>(__TAURI_INVOKE("external_library_rules", { args })),
 	/**  Replaces an external library's rules, and returns them as saved. */
@@ -512,6 +521,36 @@ export const commands = {
 	 */
 	path: string,
 } | null, CommandError>(__TAURI_INVOKE("exported_tags", { args })),
+	/**
+	 *  Points a folder library at its folder where it is now: one that moved,
+	 *  or a card that mounted under another name. Refused when the folder's
+	 *  manifest names another external library.
+	 */
+	locateExternalLibrary: (args: LocateArgs) => typedError<ExternalLibrary, CommandError>(__TAURI_INVOKE("locate_external_library", { args })),
+	/**
+	 *  Ejects the disk a folder library's folder is on, like a card, so it can
+	 *  be unplugged.
+	 */
+	ejectExternalLibrary: (args: IdArgs) => typedError<null, CommandError>(__TAURI_INVOKE("eject_external_library", { args })),
+	/**
+	 *  Works out what a sync of a folder library would do, without doing
+	 *  anything: what it adds, converts again, restores, retags, moves and
+	 *  removes, what it leaves out and why, and whether it fits. `sync` runs
+	 *  it. Refused when its folder isn't there, or belongs to another external
+	 *  library.
+	 */
+	syncPlan: (args: IdArgs) => typedError<SyncPlan, CommandError>(__TAURI_INVOKE("sync_plan", { args })),
+	/**
+	 *  Runs the plan `sync_plan` last showed for a folder library, with its
+	 *  progress. One sync runs at a time. Refused: a plan that isn't the one
+	 *  last shown, one that doesn't fit, and a folder that changed since.
+	 */
+	sync: (args: SyncArgs, progress: Channel<SyncProgress>) => typedError<SyncOutcome, CommandError>(__TAURI_INVOKE("sync", { args, progress })),
+	/**
+	 *  Cancels the sync running, if one is: it stops after the file in hand,
+	 *  and keeps what's done.
+	 */
+	cancelSync: () => typedError<null, CommandError>(__TAURI_INVOKE("cancel_sync")),
 	/**  Tag definitions of one type, or of every type when `type` is left out. */
 	tags: (args: TagsArgs) => typedError<TagPage, CommandError>(__TAURI_INVOKE("tags", { args })),
 	/**  A tag, with what its page and its form show, or null for an unknown id. */
@@ -958,6 +997,31 @@ export type CreditedArtistInput = {
 	creditedAs?: string | null,
 };
 
+/**  An external library to delete. */
+export type DeleteExternalLibraryArgs = {
+	id: number,
+	/**
+	 *  Also remove what liquidslunk wrote on its destination, which has to
+	 *  be connected. Otherwise its files stay there.
+	 */
+	removeFiles?: boolean | null,
+};
+
+/**  Whether an external library's destination is there to sync. */
+export type DestinationStatus = 
+/**
+ *  It's there, and its manifest names this external library, or it has
+ *  none yet
+ */
+{ type: "connected" } | 
+/**
+ *  It isn't there: a folder that moved, a card that isn't in. An iPod
+ *  library isn't tied to an iPod yet, so it always is.
+ */
+{ type: "missing" } | 
+/**  Its manifest names another external library */
+{ type: "elsewhere"; name: string };
+
 /**  A disc's own title, as printed. */
 export type DiscTitle = {
 	cdNumber: number,
@@ -1085,8 +1149,9 @@ export type ExternalLibrary = {
 	/**  When its last sync ended, in epoch seconds. Null before its first. */
 	lastSyncedAt: number | null,
 	/**
-	 *  Whether its destination is there: a folder library's folder. An iPod
-	 *  library isn't tied to an iPod yet, so it isn't.
+	 *  Whether its destination is there to sync: a folder library's folder,
+	 *  with a manifest that names it, or none yet. An iPod library isn't
+	 *  tied to an iPod yet, so it isn't.
 	 */
 	connected: boolean,
 	/**  Epoch seconds */
@@ -1103,6 +1168,14 @@ export type ExternalLibraryDetails = {
 	 *  catalog's newest. Null with no tracks at all.
 	 */
 	sampleTrackId: number | null,
+	/**  Whether its destination is there, and whose it is */
+	destination: DestinationStatus,
+	/**  The bytes free where its files go, while it's there */
+	freeBytes: number | null,
+	/**  Whether its folder is on a disk that's ejected, like a card */
+	ejectable: boolean,
+	/**  Whether it's syncing now */
+	syncing: boolean,
 } & ExternalLibrary;
 
 /**
@@ -1526,6 +1599,13 @@ export type ListItemsArgs = {
 
 export type ListKind = "release_formats" | "release_media";
 
+/**  A folder library's folder, where it is now. */
+export type LocateArgs = {
+	id: number,
+	/**  An absolute path */
+	folder: string,
+};
+
 /**  Why something is in an external library. */
 export type MembershipReason = 
 /**  A rule names it */
@@ -1633,6 +1713,36 @@ export type PageArgs = {
 	 *  alternate name finds them too.
 	 */
 	q?: string | null,
+};
+
+/**  A track or a cover a sync leaves out, and why. */
+export type PlanLeftOut = {
+	trackId: number | null,
+	/**  A release whose cover is left out */
+	releaseId: number | null,
+	label: SyncLabel,
+	reason: string,
+};
+
+/**  A step of a sync's plan. */
+export type PlanStep = {
+	action: SyncAction,
+	/**  A track's file. Null for a release's `cover.jpg`. */
+	trackId: number | null,
+	/**  A `cover.jpg`'s release */
+	releaseId: number | null,
+	label: SyncLabel,
+	/**
+	 *  Where the file goes, or a removal's, where it is, relative to the
+	 *  folder
+	 */
+	path: string,
+	/**  Where it is now, when that's elsewhere */
+	from: string | null,
+	/**  What a retag changes, or a move that retags too */
+	changes: TagChange[],
+	/**  What it writes, estimated, or a removal's, what it frees */
+	bytes: number,
 };
 
 /**  A Controls menu item that was clicked, for the player to do. */
@@ -2137,6 +2247,108 @@ export type SuggestedTrack = {
 	release: ReleaseHeader,
 };
 
+/**  What a sync does, as `sync_plan` shows it. */
+export type SyncAction = 
+/**  A file that should be there and isn't */
+"add" | 
+/**
+ *  Converted again: its audio file or its format changed. A `cover.jpg`
+ *  whose cover changed.
+ */
+"convert" | 
+/**
+ *  Its file is missing on the destination, or not as liquidslunk wrote
+ *  it
+ */
+"restore" | 
+/**  Its tags or cover changed */
+"retag" | 
+/**  Its path changed, and its tags too when `changes` says so */
+"move" | 
+/**  It's left the selection, or been deleted */
+"remove";
+
+/**  The plan to run. */
+export type SyncArgs = {
+	id: number,
+	/**  The plan `sync_plan` showed */
+	planId: number,
+};
+
+/**  A file a sync couldn't write, and why. */
+export type SyncFailure = {
+	trackId: number | null,
+	releaseId: number | null,
+	path: string,
+	reason: string,
+};
+
+/**
+ *  How a plan names a track, by its title, artist and album, or a release,
+ *  by its title and artist.
+ */
+export type SyncLabel = {
+	title: string,
+	artist: string | null,
+	album: string | null,
+};
+
+/**
+ *  How a sync went: the steps done, by action, and the files it couldn't
+ *  write.
+ */
+export type SyncOutcome = {
+	added: number,
+	converted: number,
+	restored: number,
+	retagged: number,
+	moved: number,
+	removed: number,
+	failed: SyncFailure[],
+	/**  Stopped by `cancel_sync`, after the file in hand */
+	cancelled: boolean,
+	/**  Written to the folder */
+	bytes: number,
+};
+
+/**  What a sync would do, before it does anything. */
+export type SyncPlan = {
+	/**  Which plan it is: `sync` runs it by this id */
+	id: number,
+	libraryId: number,
+	steps: PlanStep[],
+	leftOut: PlanLeftOut[],
+	/**  Files that stay as they are */
+	unchanged: number,
+	/**  What it writes, estimated */
+	addedBytes: number,
+	/**  What the files it removes or replaces take */
+	freedBytes: number,
+	/**  What it needs: what it writes, less what it frees */
+	neededBytes: number,
+	/**  What's free on the folder's disk */
+	freeBytes: number | null,
+	/**  Whether it fits. A sync that doesn't is refused. */
+	fits: boolean,
+};
+
+/**  What a running sync says about itself. */
+export type SyncProgress = {
+	stage: SyncStage,
+	/**  The plan's steps done, and all of them */
+	done: number,
+	total: number,
+	/**  Written to the folder so far */
+	bytes: number,
+	/**  What's in hand: a track's title, or a path */
+	current: string | null,
+};
+
+/**  Where a sync is. */
+export type SyncStage = "removing" | "moving" | 
+/**  Adding, converting again and restoring */
+"writing" | "retagging" | "covers" | "finishing";
+
 /**  A tag definition, like Genre or Score. */
 export type Tag = {
 	id: number,
@@ -2149,6 +2361,13 @@ export type Tag = {
 export type TagArgs = {
 	type: TagType,
 	id: number,
+};
+
+/**  A field a retag changes: "Title: Shoka → 初夏". */
+export type TagChange = {
+	field: string,
+	was: string[],
+	now: string[],
 };
 
 /**

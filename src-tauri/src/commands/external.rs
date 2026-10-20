@@ -1,15 +1,19 @@
 //! The external libraries context's commands (4_external_libraries.md §10):
 //! external libraries, their rules, what they come to and what that will
 //! take, and where the catalog's releases, artists and tracks are in them;
-//! and a track's tags as an external library writes them, with the path a
-//! template gives it.
+//! a track's tags as an external library writes them, with the path a
+//! template gives it; and syncing a folder library: its plan, the sync with
+//! its progress, cancelling it, ejecting, and finding a folder that moved.
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use slunk::external::{self as domain, DEFAULT_TEMPLATE, Template};
+use slunk::external::plan::{Action, Subject};
+use slunk::external::sync::{Outcome, Progress, Stage};
+use slunk::external::{self as domain, DEFAULT_TEMPLATE, Destination, Template};
 use specta::Type;
 use tauri::AppHandle;
+use tauri::ipc::Channel;
 
 use super::catalog::releases::ReleaseHeader;
 use super::catalog::tracks::{TrackListItem, list_items};
@@ -106,8 +110,9 @@ pub struct ExternalLibrary {
     pub cover_file: bool,
     /// When its last sync ended, in epoch seconds. Null before its first.
     pub last_synced_at: Option<i64>,
-    /// Whether its destination is there: a folder library's folder. An iPod
-    /// library isn't tied to an iPod yet, so it isn't.
+    /// Whether its destination is there to sync: a folder library's folder,
+    /// with a manifest that names it, or none yet. An iPod library isn't
+    /// tied to an iPod yet, so it isn't.
     pub connected: bool,
     /// Epoch seconds
     pub inserted_at: i64,
@@ -161,6 +166,28 @@ pub struct ExternalLibraryDetails {
     /// A track to show the path template with: its first, or else the
     /// catalog's newest. Null with no tracks at all.
     pub sample_track_id: Option<i64>,
+    /// Whether its destination is there, and whose it is
+    pub destination: DestinationStatus,
+    /// The bytes free where its files go, while it's there
+    pub free_bytes: Option<i64>,
+    /// Whether its folder is on a disk that's ejected, like a card
+    pub ejectable: bool,
+    /// Whether it's syncing now
+    pub syncing: bool,
+}
+
+/// Whether an external library's destination is there to sync.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum DestinationStatus {
+    /// It's there, and its manifest names this external library, or it has
+    /// none yet
+    Connected,
+    /// It isn't there: a folder that moved, a card that isn't in. An iPod
+    /// library isn't tied to an iPod yet, so it always is.
+    Missing,
+    /// Its manifest names another external library
+    Elsewhere { name: String },
 }
 
 /// An external library to save. An iPod's are what it plays: it has no
@@ -529,6 +556,16 @@ pub fn details(
     let contents = external.contents(args.id)?;
     Ok(Some(ExternalLibraryDetails {
         sample_track_id: external.sample_track(args.id)?,
+        destination: match external.destination(&found) {
+            Destination::Connected => DestinationStatus::Connected,
+            Destination::Missing => DestinationStatus::Missing,
+            Destination::Elsewhere(name) => DestinationStatus::Elsewhere { name },
+        },
+        free_bytes: external
+            .free_bytes(&found)
+            .map(|free| i64::try_from(free).unwrap_or(i64::MAX)),
+        ejectable: external.ejectable(&found).is_some(),
+        syncing: external.syncing() == Some(args.id),
         contents: Contents {
             releases: contents.releases,
             tracks: contents.tracks,
@@ -576,17 +613,406 @@ pub fn update(
     Ok(library_dto(library, saved))
 }
 
-/// Deletes an external library and its rules. What's on its destination
-/// stays there. Returns the id.
+/// An external library to delete.
+#[derive(Debug, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteExternalLibraryArgs {
+    pub id: i64,
+    /// Also remove what liquidslunk wrote on its destination, which has to
+    /// be connected. Otherwise its files stay there.
+    #[serde(default)]
+    #[specta(optional)]
+    pub remove_files: Option<bool>,
+}
+
+/// Deletes an external library and its rules, and with `removeFiles`, what
+/// liquidslunk wrote on its destination: the files its manifest lists, the
+/// folders that leaves empty, and the manifest. Returns the id.
 #[tauri::command]
 #[specta::specta]
-pub async fn delete_external_library(app: AppHandle, args: IdArgs) -> Result<i64, CommandError> {
+pub async fn delete_external_library(
+    app: AppHandle,
+    args: DeleteExternalLibraryArgs,
+) -> Result<i64, CommandError> {
     on_library(app, move |library| delete(library, args)).await
 }
 
-pub fn delete(library: &Library, args: IdArgs) -> Result<i64, CommandError> {
-    library.external.delete(args.id)?;
+pub fn delete(library: &Library, args: DeleteExternalLibraryArgs) -> Result<i64, CommandError> {
+    library
+        .external
+        .delete(args.id, args.remove_files.unwrap_or(false))?;
     Ok(args.id)
+}
+
+/// A folder library's folder, where it is now.
+#[derive(Debug, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct LocateArgs {
+    pub id: i64,
+    /// An absolute path
+    pub folder: String,
+}
+
+/// Points a folder library at its folder where it is now: one that moved,
+/// or a card that mounted under another name. Refused when the folder's
+/// manifest names another external library.
+#[tauri::command]
+#[specta::specta]
+pub async fn locate_external_library(
+    app: AppHandle,
+    args: LocateArgs,
+) -> Result<ExternalLibrary, CommandError> {
+    on_library(app, move |library| {
+        let located = library.external.locate(args.id, &args.folder)?;
+        Ok(library_dto(library, located))
+    })
+    .await
+}
+
+/// Ejects the disk a folder library's folder is on, like a card, so it can
+/// be unplugged.
+#[tauri::command]
+#[specta::specta]
+pub async fn eject_external_library(app: AppHandle, args: IdArgs) -> Result<(), CommandError> {
+    on_library(app, move |library| Ok(library.external.eject(args.id)?)).await
+}
+
+/// What a sync does, as `sync_plan` shows it.
+#[derive(Debug, Clone, Copy, Serialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncAction {
+    /// A file that should be there and isn't
+    Add,
+    /// Converted again: its audio file or its format changed. A `cover.jpg`
+    /// whose cover changed.
+    Convert,
+    /// Its file is missing on the destination, or not as liquidslunk wrote
+    /// it
+    Restore,
+    /// Its tags or cover changed
+    Retag,
+    /// Its path changed, and its tags too when `changes` says so
+    Move,
+    /// It's left the selection, or been deleted
+    Remove,
+}
+
+impl From<Action> for SyncAction {
+    fn from(action: Action) -> Self {
+        match action {
+            Action::Add => SyncAction::Add,
+            Action::Convert => SyncAction::Convert,
+            Action::Restore => SyncAction::Restore,
+            Action::Retag => SyncAction::Retag,
+            Action::Move => SyncAction::Move,
+            Action::Remove => SyncAction::Remove,
+        }
+    }
+}
+
+/// How a plan names a track, by its title, artist and album, or a release,
+/// by its title and artist.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncLabel {
+    pub title: String,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+}
+
+/// A field a retag changes: "Title: Shoka → 初夏".
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TagChange {
+    pub field: String,
+    pub was: Vec<String>,
+    pub now: Vec<String>,
+}
+
+/// A step of a sync's plan.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanStep {
+    pub action: SyncAction,
+    /// A track's file. Null for a release's `cover.jpg`.
+    pub track_id: Option<i64>,
+    /// A `cover.jpg`'s release
+    pub release_id: Option<i64>,
+    pub label: SyncLabel,
+    /// Where the file goes, or a removal's, where it is, relative to the
+    /// folder
+    pub path: String,
+    /// Where it is now, when that's elsewhere
+    pub from: Option<String>,
+    /// What a retag changes, or a move that retags too
+    pub changes: Vec<TagChange>,
+    /// What it writes, estimated, or a removal's, what it frees
+    pub bytes: i64,
+}
+
+/// A track or a cover a sync leaves out, and why.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanLeftOut {
+    pub track_id: Option<i64>,
+    /// A release whose cover is left out
+    pub release_id: Option<i64>,
+    pub label: SyncLabel,
+    pub reason: String,
+}
+
+/// What a sync would do, before it does anything.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncPlan {
+    /// Which plan it is: `sync` runs it by this id
+    pub id: i64,
+    pub library_id: i64,
+    pub steps: Vec<PlanStep>,
+    pub left_out: Vec<PlanLeftOut>,
+    /// Files that stay as they are
+    pub unchanged: i64,
+    /// What it writes, estimated
+    pub added_bytes: i64,
+    /// What the files it removes or replaces take
+    pub freed_bytes: i64,
+    /// What it needs: what it writes, less what it frees
+    pub needed_bytes: i64,
+    /// What's free on the folder's disk
+    pub free_bytes: Option<i64>,
+    /// Whether it fits. A sync that doesn't is refused.
+    pub fits: bool,
+}
+
+fn label(plan: &domain::Plan, subject: Subject, path: &str) -> SyncLabel {
+    match plan.labels.get(&subject) {
+        Some(label) => SyncLabel {
+            title: label.title.clone(),
+            artist: label.artist.clone(),
+            album: label.album.clone(),
+        },
+        None => SyncLabel {
+            title: path.to_string(),
+            artist: None,
+            album: None,
+        },
+    }
+}
+
+fn subject_ids(subject: Subject) -> (Option<i64>, Option<i64>) {
+    match subject {
+        Subject::Track(id) => (Some(id), None),
+        Subject::Release(id) => (None, Some(id)),
+    }
+}
+
+/// Works out what a sync of a folder library would do, without doing
+/// anything: what it adds, converts again, restores, retags, moves and
+/// removes, what it leaves out and why, and whether it fits. `sync` runs
+/// it. Refused when its folder isn't there, or belongs to another external
+/// library.
+#[tauri::command]
+#[specta::specta]
+pub async fn sync_plan(app: AppHandle, args: IdArgs) -> Result<SyncPlan, CommandError> {
+    on_library(app, move |library| {
+        let planned = library.external.plan_sync(args.id)?;
+        let plan = &planned.plan;
+        Ok(SyncPlan {
+            id: i64::try_from(planned.id).unwrap_or(i64::MAX),
+            library_id: planned.library.id,
+            steps: plan
+                .steps
+                .iter()
+                .map(|step| {
+                    let (track_id, release_id) = subject_ids(step.subject);
+                    PlanStep {
+                        action: step.action.into(),
+                        track_id,
+                        release_id,
+                        label: label(plan, step.subject, &step.path),
+                        path: step.path.clone(),
+                        from: step.from.clone(),
+                        changes: step
+                            .changes
+                            .iter()
+                            .map(|change| TagChange {
+                                field: change.field.clone(),
+                                was: change.was.clone(),
+                                now: change.now.clone(),
+                            })
+                            .collect(),
+                        bytes: step.bytes,
+                    }
+                })
+                .collect(),
+            left_out: plan
+                .left_out
+                .iter()
+                .map(|left| {
+                    let (track_id, release_id) = subject_ids(left.subject);
+                    PlanLeftOut {
+                        track_id,
+                        release_id,
+                        label: label(plan, left.subject, ""),
+                        reason: left.reason.clone(),
+                    }
+                })
+                .collect(),
+            unchanged: plan.unchanged as i64,
+            added_bytes: plan.added,
+            freed_bytes: plan.freed,
+            needed_bytes: plan.bytes_needed(),
+            free_bytes: planned
+                .free_bytes
+                .map(|free| i64::try_from(free).unwrap_or(i64::MAX)),
+            fits: planned.fits(),
+        })
+    })
+    .await
+}
+
+/// The plan to run.
+#[derive(Debug, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncArgs {
+    pub id: i64,
+    /// The plan `sync_plan` showed
+    pub plan_id: i64,
+}
+
+/// Where a sync is.
+#[derive(Debug, Clone, Copy, Serialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncStage {
+    Removing,
+    Moving,
+    /// Adding, converting again and restoring
+    Writing,
+    Retagging,
+    Covers,
+    Finishing,
+}
+
+/// What a running sync says about itself.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncProgress {
+    pub stage: SyncStage,
+    /// The plan's steps done, and all of them
+    pub done: i64,
+    pub total: i64,
+    /// Written to the folder so far
+    pub bytes: i64,
+    /// What's in hand: a track's title, or a path
+    pub current: Option<String>,
+}
+
+impl From<Progress> for SyncProgress {
+    fn from(progress: Progress) -> Self {
+        SyncProgress {
+            stage: match progress.stage {
+                Stage::Removing => SyncStage::Removing,
+                Stage::Moving => SyncStage::Moving,
+                Stage::Writing => SyncStage::Writing,
+                Stage::Retagging => SyncStage::Retagging,
+                Stage::Covers => SyncStage::Covers,
+                Stage::Finishing => SyncStage::Finishing,
+            },
+            done: progress.done as i64,
+            total: progress.total as i64,
+            bytes: i64::try_from(progress.bytes).unwrap_or(i64::MAX),
+            current: progress.current,
+        }
+    }
+}
+
+/// A file a sync couldn't write, and why.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncFailure {
+    pub track_id: Option<i64>,
+    pub release_id: Option<i64>,
+    pub path: String,
+    pub reason: String,
+}
+
+/// How a sync went: the steps done, by action, and the files it couldn't
+/// write.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncOutcome {
+    pub added: i64,
+    pub converted: i64,
+    pub restored: i64,
+    pub retagged: i64,
+    pub moved: i64,
+    pub removed: i64,
+    pub failed: Vec<SyncFailure>,
+    /// Stopped by `cancel_sync`, after the file in hand
+    pub cancelled: bool,
+    /// Written to the folder
+    pub bytes: i64,
+}
+
+impl From<Outcome> for SyncOutcome {
+    fn from(outcome: Outcome) -> Self {
+        let done = |action| outcome.done.get(&action).copied().unwrap_or(0) as i64;
+        SyncOutcome {
+            added: done(Action::Add),
+            converted: done(Action::Convert),
+            restored: done(Action::Restore),
+            retagged: done(Action::Retag),
+            moved: done(Action::Move),
+            removed: done(Action::Remove),
+            failed: outcome
+                .failed
+                .into_iter()
+                .map(|failure| {
+                    let (track_id, release_id) = subject_ids(failure.subject);
+                    SyncFailure {
+                        track_id,
+                        release_id,
+                        path: failure.path,
+                        reason: failure.reason,
+                    }
+                })
+                .collect(),
+            cancelled: outcome.cancelled,
+            bytes: i64::try_from(outcome.bytes).unwrap_or(i64::MAX),
+        }
+    }
+}
+
+/// Runs the plan `sync_plan` last showed for a folder library, with its
+/// progress. One sync runs at a time. Refused: a plan that isn't the one
+/// last shown, one that doesn't fit, and a folder that changed since.
+#[tauri::command]
+#[specta::specta]
+pub async fn sync(
+    app: AppHandle,
+    args: SyncArgs,
+    progress: Channel<SyncProgress>,
+) -> Result<SyncOutcome, CommandError> {
+    on_library(app, move |library| {
+        let plan_id = u64::try_from(args.plan_id).unwrap_or(0);
+        let outcome = library.external.sync(args.id, plan_id, &|step| {
+            let _ = progress.send(step.into());
+        })?;
+        Ok(outcome.into())
+    })
+    .await
+}
+
+/// Cancels the sync running, if one is: it stops after the file in hand,
+/// and keeps what's done.
+#[tauri::command]
+#[specta::specta]
+pub async fn cancel_sync(app: AppHandle) -> Result<(), CommandError> {
+    on_library(app, move |library| {
+        library.external.cancel_sync();
+        Ok(())
+    })
+    .await
 }
 
 /// An external library's rules, in the order they were added.
@@ -1130,7 +1556,11 @@ mod tests {
             RuleTarget::Artist { artist } if artist.name == "Ryo Fukui"
         ));
 
-        assert_eq!(delete(&library, IdArgs { id: car.id }).unwrap(), car.id);
+        let args = DeleteExternalLibraryArgs {
+            id: car.id,
+            remove_files: None,
+        };
+        assert_eq!(delete(&library, args).unwrap(), car.id);
         assert!(details(&library, IdArgs { id: car.id }).unwrap().is_none());
     }
 }

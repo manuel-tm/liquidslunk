@@ -11,7 +11,7 @@ The backend is Rust, built into the app. It was ported from slunk's Node backend
 - **Phase 5:** the catalog context's tracks: the track list, a track with everything saved with it, and a release's whole track list with its disc titles; what a folder suggests for importing it; and adding one alternate name to an artist.
 - **Phase 6:** the library check and its fixes, and the sample data. slunk's backend was removed, with what ran it.
 
-Since the port, later designs add to it: phase 0 of [2_player.md](../design/2_player.md) added `player_tracks`, what the music player shows of the tracks it queues, phase 1 added `release_track_ids`, a release's tracks for the release table's play button ([Commands](#commands)), and phase 2 added the menu bar's Controls menu, with `set_controls_menu` and the `PlayerControl` event ([The menu bar](#the-menu-bar)). Phase 0 of [4_external_libraries.md](../design/4_external_libraries.md) added the external libraries context, with a track's tags as an external library writes them and path templates, and `exported_tags`; phase 1 added external libraries themselves, their rules, what they come to and what that takes, in liquidslunk's first migration of its own, with their commands, and `track_options` for the track picker ([The external libraries context](#the-external-libraries-context)).
+Since the port, later designs add to it: phase 0 of [2_player.md](../design/2_player.md) added `player_tracks`, what the music player shows of the tracks it queues, phase 1 added `release_track_ids`, a release's tracks for the release table's play button ([Commands](#commands)), and phase 2 added the menu bar's Controls menu, with `set_controls_menu` and the `PlayerControl` event ([The menu bar](#the-menu-bar)). Phase 0 of [4_external_libraries.md](../design/4_external_libraries.md) added the external libraries context, with a track's tags as an external library writes them and path templates, and `exported_tags`; phase 1 added external libraries themselves, their rules, what they come to and what that takes, in liquidslunk's first migration of its own, with their commands, and `track_options` for the track picker; phase 2 added syncing a folder library: converting with `afconvert`, covers, writing tags, the manifest, the plan, the sync with its progress and cancelling, ejecting, and Locate ([The external libraries context](#the-external-libraries-context)).
 
 Each rule on this page has a test.
 
@@ -27,7 +27,10 @@ Each rule on this page has a test.
 | Menu bar | Tauri's menus |
 | Plugins | tauri-plugin-dialog (choosing a library), tauri-plugin-opener (Finder, opening files), tauri-plugin-single-instance |
 | Content types | mime_guess |
-| Audio | lofty |
+| Audio | lofty; converting with macOS's `afconvert` |
+| Images | `image` (covers: JPEG, PNG, GIF, BMP, TIFF, WebP) |
+| JSON in the domain | serde_json (an external library's manifest) |
+| Volumes | libc's `statvfs` and `statfs` (free space, mount points), and `diskutil eject` |
 | Hashing, walking folders | sha2, walkdir |
 | Text | unicode-normalization (NFC) |
 | Sorting file names | ICU4X's collator (`icu_collator`), with numeric ordering |
@@ -56,11 +59,20 @@ crates/slunk/                the domain and its database, with no Tauri dependen
   src/external/              the external libraries context
     mod.rs                   External: external libraries, their rules, what
                              they come to, memberships; a track's tags, and
-                             its path
+                             its path; plans, syncs, eject and Locate
     repository.rs            the records the context stores
     tags.rs                  a track's tags, from the catalog
     template.rs              path templates, and names on disk
     estimate.rs              what a track's file will take on a destination
+    convert.rs               what each source becomes, and afconvert
+    covers.rs                covers, checked, resized, as JPEG
+    write_tags.rs            tags into files, with lofty
+    manifest.rs              the manifest, and its journal
+    plan.rs                  the plan, from what should be there and what is
+    sync.rs                  running a plan
+    folder.rs                a folder destination: its files and folders
+    scratch.rs               a sync's temporary folder
+    volume.rs                free space, mount points, and ejecting
   src/media/                 the media context
     mod.rs                   Media: registering, browsing, updating, deleting
     check.rs                 the library check's file part, and its fixes
@@ -119,6 +131,8 @@ crates/slunk/                the domain and its database, with no Tauri dependen
                              templates, names on disk
   tests/external_libraries.rs  external libraries, their rules, what they come
                              to, memberships, and their tables' constraints
+  tests/external_sync.rs     syncing a folder library from start to end, with
+                             afconvert (macOS only)
   tests/seeds.rs             the sample data
   tests/fixtures/parity/     what slunk's migration runner made
   tests/fixtures/audio/      audio files, what slunk read from them, and the
@@ -145,7 +159,7 @@ src-tauri/
 
 **Contexts** are structs, like slunk's context factories, wired once when a library opens (`Library::new()` in `src-tauri/src/library.rs`), as slunk's `server.ts` wired them: `Media::new(store, library)` takes the store and the library on disk, `Catalog::new(store, media)` the store and the media context, which it registers files with, `Tagging::new(store)` the store, `LibraryCheck::new(media, catalog)` the media context and the catalog, and `External::new(store, media)` the store, which it reads the catalog through, and the media context, for the library's folder. The library holds the media context and the catalog in `Arc`s, which they share. Commands call contexts, and contexts call repositories.
 
-**The store** (`repo/store.rs`) holds the library's one connection, behind a mutex. `store.conn()` takes it. `store.transaction(|tx| …)` runs a closure in a transaction, started with `BEGIN IMMEDIATE`, which takes the write lock at once: another process writing the library, like the database commands, makes it wait for the lock (`busy_timeout`) rather than fail midway. A context that writes inside another's transaction takes the `tx`, as `Media::insert_prepared(tx, prepared)` does, so there's no nesting. A context reads files before taking the connection, never while holding it: `prepare_files()` looks up what's registered, lets go of the connection, then reads and hashes the rest.
+**The store** (`repo/store.rs`) holds the library's one connection, behind a mutex. `store.conn()` takes it. `store.transaction(|tx| …)` runs a closure in a transaction, started with `BEGIN IMMEDIATE`, which takes the write lock at once: another process writing the library, like the database commands, makes it wait for the lock (`busy_timeout`) rather than fail midway. `store.read(|tx| …)` runs one in a read transaction, a plain `BEGIN`, so what it reads is one consistent picture of the library, as a sync's plan reads it. A context that writes inside another's transaction takes the `tx`, as `Media::insert_prepared(tx, prepared)` does, so there's no nesting. A context reads files before taking the connection, never while holding it: `prepare_files()` looks up what's registered, lets go of the connection, then reads and hashes the rest.
 
 **Errors** meant for the user are `slunk::Error::Invalid`, with slunk's words ("There's no file at music/a.flac"), and `NotFound` for something that isn't there ("There's no file 12"). Commands turn them into `invalid` and `notFound`.
 
@@ -347,7 +361,7 @@ node crates/slunk/tests/fixtures/languages/generate.ts
 
 ## The external libraries context
 
-`crates/slunk/src/external/` is the external libraries context ([4_external_libraries.md](../design/4_external_libraries.md)): a selection of the library, for a folder or an iPod. So far it has the mapping, from phase 0, a track's tags as every external library will write them and its path in a folder library; and from phase 1, external libraries, their rules, what they come to, and what that will take. Nothing is written to a destination yet. Each rule here has a test in `tests/external.rs` or `tests/external_libraries.rs`, or next to its code.
+`crates/slunk/src/external/` is the external libraries context ([4_external_libraries.md](../design/4_external_libraries.md)): a selection of the library, for a folder or an iPod. It has the mapping, from phase 0, a track's tags as every external library writes them and its path in a folder library; from phase 1, external libraries, their rules, what they come to, and what that will take; and from phase 2, syncing a folder library. An iPod isn't synced yet. Each rule here has a test in `tests/external.rs`, `tests/external_libraries.rs` or `tests/external_sync.rs`, or next to its code.
 
 It reads the catalog's and the tags' tables itself, through their repositories, with one connection ([4_external_libraries.md Appendix E](../design/4_external_libraries.md#appendix-e-the-context-reads-the-catalog-itself)).
 
@@ -359,8 +373,9 @@ An external library is a destination, a selection and a profile (`external/repos
 - **A folder library's folder** is an absolute path, resolved lexically, and never where the user's own files are ([4_external_libraries.md §3.1](../design/4_external_libraries.md#31-its-destination)). Refused: none ("A folder library needs a folder"), a relative one, the library's own folder, one inside it, one that holds it, and one that holds a registered file, which is a range on the path index, as for browsing. A folder belongs to one external library, which the database enforces: "Another external library uses that folder".
 - **Its profile:** the format lossless files become, `original`, `flac`, `alac` or `aac`; AAC's bitrate, 128 to 320 kbps; CD resolution; a path template, checked, and the default when it's blank; and covers: embedded or not, their size, 100 to 3000 pixels, and a `cover.jpg` or not.
 - **An iPod's** profile is what it plays: Apple Lossless or AAC ("An iPod plays Apple Lossless or AAC"), at CD resolution, with no folder, template, embedded covers or `cover.jpg`, whatever's given. It isn't tied to an iPod yet.
-- **Connected** (`connected()`): a folder library's folder is there. An iPod library never is, yet.
-- **Deleting** one deletes its rules, and touches nothing on its destination.
+- **Its destination** (`destination()`) is connected when a folder library's folder is there and its manifest names this external library, or it has none yet; missing when the folder isn't there; and elsewhere when its manifest names another external library, which a sync refuses: "This folder belongs to another external library, Car." An iPod library is never connected, yet. The manifest's identity is read again only when its size or mtime changes, so the sidebar's dots don't read it each time.
+- **Locate** (`locate()`) points a folder library at its folder where it is now: one that moved, or a card that mounted under another name. The folder is checked as a new one is, and refused when its manifest names another external library.
+- **Deleting** one deletes its rules, and touches nothing on its destination. With `remove_files`, its destination has to be connected, and what liquidslunk wrote there goes first: the files its manifest lists, the folders that leaves empty, and `.liquidslunk/`. Deleting one that's syncing is refused.
 
 ### Rules and what they come to
 
@@ -382,6 +397,71 @@ A track is in an external library when a rule includes it and no rule leaves it 
 - an artist: the external libraries with a rule for it.
 
 **What it will take** (`contents()`): its releases, its tracks, and an estimate of their size (`estimated_size()`, `external/estimate.rs`), by what each source becomes ([4_external_libraries.md §5.2](../design/4_external_libraries.md#52-what-each-source-becomes)): a lossless file that becomes AAC takes its duration at the bitrate; anything else, copied or lossless, its own size. An `.m4a` counts at its own size, since its extension doesn't say whether it's AAC or Apple Lossless, and covers aren't counted. Tracks a sync will leave out are counted apart: APE, WavPack and Musepack except in a folder library that keeps the originals, and DSF, DFF and WMA always. `sample_track()` gives a track to show the path template with: the first one in it, or else the catalog's newest.
+
+### Syncing a folder library
+
+A sync works out a plan, shows it, then carries it out ([4_external_libraries.md §8](../design/4_external_libraries.md#8-syncing)). `plan_sync()` keeps the plan it works out, and `sync()` runs that plan, by its id: a plan that isn't the last one shown is refused ("The plan is out of date. Look at it again."), and so is one whose folder's manifest changed since.
+
+**What each source becomes** (`convert.rs`), read from the file's headers with lofty, not from its extension, since an `.m4a` may be AAC or Apple Lossless:
+
+| Source | Keep the original | FLAC | Apple Lossless | AAC |
+|---|---|---|---|---|
+| FLAC, ALAC, WAV, AIFF | Copied | FLAC | ALAC | AAC |
+| MP3, AAC, Ogg Vorbis, Opus | Copied | Copied | Copied | Copied |
+| APE, WavPack, Musepack | Copied | Left out | Left out | Left out |
+| DSF, DFF, WMA | Left out | Left out | Left out | Left out |
+
+- A file in the format it would become is copied. At CD resolution, a lossless file above 16 bits or 48 kHz is converted, even to its own format: to 16 bits, at 44.1 kHz from 88.2, 176.4 or 352.8 kHz, at 48 kHz from other rates above 48 kHz, and at its own rate otherwise. Without CD resolution, lossless keeps its bits, up to 24.
+- A file that's left out is listed with its reason: "Core Audio can't convert APE, so it's only copied, to a folder library that keeps the originals", "liquidslunk can't tag DSD files".
+
+**Converting** runs `/usr/bin/afconvert` directly, never through a shell, reading the source and writing into the sync's temporary folder:
+- **AAC** is `-d aac -b <bitrate> -s 2 -q 127`: constrained VBR, at the encoder's best quality, in an M4A, at 44.1 or 48 kHz when the source is above 48 kHz. Apple's encoder takes at most some bitrate for a sample rate and channels (8 kHz mono, 24 kbps; 44.1 kHz mono, 256 kbps), so when it refuses the profile's, the next lower of 320, 256, 192, 160, 128, 96, 64, 48, 32, 24, 16 and 8 kbps is tried.
+- **Apple Lossless and FLAC** always name their bit depth (`-d alac/1` is 16-bit, `/2` 20-bit, `/3` 24-bit): otherwise `afconvert` makes 32-bit Apple Lossless from a 16-bit FLAC. Lossless transcodes are bit-exact.
+- **Dither:** `afconvert` only rounds when it cuts bits, unless it's asked, so a conversion that cuts bits or changes the sample rate of lossless audio passes `--dither 1`, TPDF ([4_external_libraries.md Appendix F](../design/4_external_libraries.md#appendix-f-afconvert-dithers-only-when-asked)).
+- A file `afconvert` can't convert is a failure of that file, with what it said, and the rest of the sync goes on.
+
+**Covers** (`covers.rs`): a release's cover, at most the profile's size on its longest side, never enlarged, as a JPEG at quality 90, transparent pixels on white. A JPEG already within the size is written as it is. A plan checks a cover from its headers only, and lists one it can't read, or in another format than JPEG, PNG, GIF, BMP, TIFF or WebP, as left out, with its reason. The tracks are written without it.
+
+**Tags** (`write_tags.rs`) replace whatever a file had, in each format's own fields, from `Tags` ([A track's tags](#a-tracks-tags)), with the cover as the front cover:
+- **FLAC and Ogg:** Vorbis comments, one per value, and the cover as a `PICTURE` block, or `METADATA_BLOCK_PICTURE` in Ogg.
+- **MP3, AAC in ADTS, WAV and AIFF:** ID3v2.4, several values in one frame separated by nulls, and `TXXX` for `ARTISTS`, `CATALOGNUMBER` and `RELEASETYPE`. ID3v1, APE and RIFF INFO tags are removed.
+- **M4A:** MP4 atoms, one data atom per value, freeform ones as `----:com.apple.iTunes:<NAME>`. The encoder's gapless data, `iTunSMPB`, which `afconvert` writes among the tags, is kept: an AAC file without it plays with gaps.
+- **APE, WavPack and Musepack** kept as they are: APEv2.
+- They're only ever written into a file liquidslunk made: a copy or a conversion in the temporary folder. lofty's `remove_from_path()` opens a file read-only and then fails to truncate it, so tags are removed through a file opened for writing.
+
+**The manifest** (`manifest.rs`) is `.liquidslunk/manifest.json` at the folder's root: its format's version, the external library's UUID and its name then, and each file liquidslunk wrote, with its path, its size and mtime as read back once written, and what it holds:
+- a track's file: its track, its audio key (the source's SHA-256, what it became, like "aac 256 kbps", and liquidslunk's way of converting, `CONVERSION_VERSION`; the encoder, macOS's version, is recorded but not compared, so an update doesn't convert everything again), its tags as written (`Tags::fields()`), and its cover's key (the cover's SHA-256 and its size);
+- a `cover.jpg`: its release and its cover's key.
+
+A sync appends each change to `.liquidslunk/journal.jsonl` before it renames a file into place, or after it removes one, and waits until the line is on the disk. The manifest is read with its journal replayed, a last line cut short left out, and rewritten atomically, a temporary file then a rename, when a sync ends, which removes the journal. So a sync interrupted by a card pulled out carries on from its last file ([4_external_libraries.md Appendix I](../design/4_external_libraries.md#appendix-i-a-journal-between-checkpoints)). A file is as written when its size and mtime are: FAT32 keeps local time, so a shift of whole quarter-hours, up to a day, from a change of time zone or of daylight saving time, doesn't count.
+
+**The plan** (`plan.rs`, a plain function of what should be there and what is):
+- **What should be there** is read in one read transaction (`Store::read()`): the tracks the rules come to, their tags, their files and their releases' covers. Then the connection is let go, and the sources' headers are read, several at once.
+- **What is there** is the manifest, each file checked against the disk by its size and mtime, without hashing.
+- **Paths** come from the template, told apart as `unique_paths()` tells them apart, except that a track keeps the path it has while it's one of its template's numbered forms, so names don't trade places between syncs.
+- **Each track:** added when it has no file; converted again when its audio key changed; restored when its file is missing or not as written; moved when its path changed, and retagged too when its tags or cover changed; retagged when only those changed. A retag says what changed, field by field: "Title: Shoka → 初夏".
+- **A `cover.jpg`**, when the profile asks for one, in each folder that holds one release's tracks: added, written again when its cover changed, or restored.
+- **Removed:** what's there and no longer wanted.
+- **Left out:** a file liquidslunk didn't write at a track's path, which is never replaced ("A file liquidslunk didn't write is at …"); a track whose source is missing from the library, whose copy stays as it is; a source that can't be converted; a cover that can't be read.
+- **Space:** what it writes, estimated (AAC from durations and the bitrate, lossless in proportion to the bits and the rate it keeps, copies at their size), less what the files it removes or replaces take, against what's free on the folder's volume. A sync that doesn't fit is refused: "It needs 3.2 GB more than the folder has free."
+
+**Running it** (`sync.rs`):
+1. `.liquidslunk/tmp` is made and emptied of what an earlier sync left.
+2. **Removals**, and the old files of tracks written again at a new path, go first, to make room.
+3. **Moves:** a file is renamed to its new path. A move to a path another move has yet to leave waits for it, and when every one waits, one moves aside first.
+4. **Additions, conversions and restores:** converted or copied, then tagged, in the sync's temporary folder (`scratch.rs`), on one thread per core but one; written to the folder one at a time, as they're ready. Each file is copied byte by byte, without its attributes, under a temporary name in `.liquidslunk/tmp`, waited on until it's on the disk, then renamed into place, which is atomic on one volume.
+5. **Retags:** the file is copied into the temporary folder, tagged there, and written back the same way, over the old one.
+6. **Covers,** the same way.
+7. The manifest is written, the folders the sync left empty are removed, those with anything else in them stay, and `last_synced_at` is set, unless it was cancelled.
+
+- **Progress** reports the stage, the steps done and all of them, the bytes written, and the track in hand. **Cancelling** (`cancel_sync()`) stops after the file in hand, and keeps what's done.
+- **One sync at a time:** another is refused while one runs. The library can be browsed and edited meanwhile: the sync works from the plan.
+- **Failures:** a file that can't be converted or tagged is listed, and the sync goes on. A folder that can't be written ends the sync with its error, keeping what's done. A folder that's gone, a card pulled out, says so: "/Volumes/CARD/Music isn't there any more: its disk may have been ejected or unplugged. Connect it again, and the next sync carries on from there."
+- **Never outside the folder:** a sync makes folders only inside its destination's folder, never the folder itself or anything above it, so a card that's gone isn't made again on the Mac's own disk.
+- **No AppleDouble files** (`folder.rs`). macOS gives every file and folder a process creates an extended attribute, `com.apple.provenance`, which can't be removed, and FAT32 and exFAT keep extended attributes in a `._` file beside the file, which some players list as a broken track. Opening an existing file for writing makes one too, while a rename doesn't. So every file is written new, never rewritten in place, and the `._` file of each file or folder liquidslunk makes, and of the journal at each append, is deleted as soon as it's made ([4_external_libraries.md Appendix H](../design/4_external_libraries.md#appendix-h-appledouble-files)).
+- **Temporary files:** each sync has its own folder in the system's temporary folder, `liquidslunk-sync-<pid>-<n>`, with a lock held while it runs, and removed when it ends. At launch, those whose lock no sync holds are removed (`scratch::remove_leftovers()`).
+
+**Ejecting** (`eject()`): a folder on a volume other than the Mac's own disk, `/` and the volumes in `/System/Volumes`, is ejected with `diskutil eject`, so it can be unplugged. Not while a sync runs.
 
 ### A track's tags
 
@@ -572,7 +652,7 @@ The frontend calls the backend through Tauri commands, in `src-tauri/src/command
   - `import.rs` ([Import suggestions](#import-suggestions)): the import's reads, `release_suggestion` and `import_files`, the release's cover and links with the folder's files;
   - `mod.rs`: `languages`, and what they share: the DTOs of what a release refers to, and `Related`, which loads it;
 - `library_check.rs` ([The library check](#the-library-check)): `library_check`, and its fixes, `relink_files` and `rehash_files`;
-- `external.rs` ([The external libraries context](#the-external-libraries-context)): `external_libraries`, each with whether it's connected; `external_library`, its page, with what's in it, what that takes, and a sample track for its template; `create_external_library`, `update_external_library` and `delete_external_library`; its rules, `external_library_rules` and `set_external_library_rules`, each with what it names; the catalog pages', `add_to_external_library`, `remove_from_external_library` and `external_memberships`; `external_library_tracks`, what's in one, a page at a time, as the track list shows tracks; and `exported_tags`, a track's tags as an external library writes them, with its cover, and its path by a template, the default one unless one is given. A template that can't be used is `invalid`, with the reason, and a track that isn't there is null;
+- `external.rs` ([The external libraries context](#the-external-libraries-context)): `external_libraries`, each with whether it's connected; `external_library`, its page, with what's in it, what that takes, and a sample track for its template; `create_external_library`, `update_external_library` and `delete_external_library`; its rules, `external_library_rules` and `set_external_library_rules`, each with what it names; the catalog pages', `add_to_external_library`, `remove_from_external_library` and `external_memberships`; `external_library_tracks`, what's in one, a page at a time, as the track list shows tracks; `exported_tags`, a track's tags as an external library writes them, with its cover, and its path by a template, the default one unless one is given, where a template that can't be used is `invalid`, with the reason, and a track that isn't there is null; and syncing ([Syncing a folder library](#syncing-a-folder-library)): `sync_plan`, what a sync would do, with its labels, what's left out and whether it fits; `sync`, which runs it by its id, with its progress through a `Channel`, and returns how it went; `cancel_sync`; `eject_external_library`; and `locate_external_library`. `external_library` says whether its destination is connected, missing or another external library's, what's free there, whether it ejects and whether it's syncing, and `delete_external_library` takes `removeFiles`;
 - `menu.rs` ([The menu bar](#the-menu-bar)): `set_controls_menu`;
 - `tagging.rs` ([The tagging context](#the-tagging-context)): `tags`, `tag`, `tag_options`, `tags_by_ref`, `tag_values`, `tag_value_options`, `create_tag`, `update_tag` and `delete_tag`, which name a tag by its `type` and id; a release's tags, `release_tags` and `set_release_tags`; and the bulk edits, `set_tag_on_releases` and `remove_tag_from_releases`.
 

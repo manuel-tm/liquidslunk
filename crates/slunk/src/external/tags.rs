@@ -74,6 +74,53 @@ pub struct SortFields {
     pub title: Option<String>,
 }
 
+impl Tags {
+    /// The fields as they're written, by name, in the order §4.1 lists
+    /// them, each with its values: the manifest keeps them, so a sync can
+    /// say what changed. A field with no value is left out, and so is the
+    /// cover, which the manifest keeps apart.
+    pub fn fields(&self) -> Vec<(&'static str, Vec<String>)> {
+        let one = |value: &Option<String>| value.iter().cloned().collect::<Vec<_>>();
+        let fields = vec![
+            ("Title", vec![self.title.clone()]),
+            ("Artist", one(&self.artist)),
+            ("Artists", self.artists.clone()),
+            ("Album", vec![self.album.clone()]),
+            ("Album artist", one(&self.album_artist)),
+            (
+                "Compilation",
+                if self.compilation {
+                    vec!["Yes".into()]
+                } else {
+                    vec![]
+                },
+            ),
+            ("Date", one(&self.date)),
+            (
+                "Track",
+                vec![format!("{} of {}", self.track_number, self.track_total)],
+            ),
+            (
+                "Disc",
+                vec![format!("{} of {}", self.disc_number, self.disc_total)],
+            ),
+            ("Disc title", one(&self.disc_title)),
+            ("Label", self.labels.clone()),
+            ("Catalog number", one(&self.catalog_number)),
+            ("Media", self.media.clone()),
+            ("Release type", self.release_types.clone()),
+            ("Artist sort", one(&self.sort.artist)),
+            ("Album artist sort", one(&self.sort.album_artist)),
+            ("Album sort", one(&self.sort.album)),
+            ("Title sort", one(&self.sort.title)),
+        ];
+        fields
+            .into_iter()
+            .filter(|(_, values)| !values.is_empty())
+            .collect()
+    }
+}
+
 /// Each track's tags, by id, read with one connection. Ids that aren't
 /// tracks are left out.
 pub(crate) fn read(conn: &Connection, track_ids: &[i64]) -> Result<HashMap<i64, Tags>> {

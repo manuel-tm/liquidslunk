@@ -1,5 +1,11 @@
 import { useMutation } from "@tanstack/react-query"
-import { ListFilterIcon, XIcon } from "lucide-react"
+import {
+  FolderSearchIcon,
+  ListFilterIcon,
+  RefreshCwIcon,
+  UploadIcon,
+  XIcon,
+} from "lucide-react"
 import { type ReactNode, useState } from "react"
 import { Link, useParams } from "react-router"
 
@@ -22,6 +28,7 @@ import { TagValueInput } from "@/components/tag-value-input"
 import { Title } from "@/components/titles"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
   Popover,
@@ -29,6 +36,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Table,
   TableBody,
@@ -53,7 +61,9 @@ import {
 import { formatDateTime, formatDuration, formatSize } from "@/lib/format"
 import { textProps } from "@/lib/languages"
 import { call, idParam, queryClient, useCommand } from "@/lib/query"
+import { ejectLibrary, locateLibrary, useSyncRun } from "@/lib/sync"
 import { ProfileForm } from "@/routes/external-libraries/form"
+import { SyncSheet } from "@/routes/external-libraries/sync-sheet"
 import { NotFound } from "@/routes/not-found"
 
 /** The queries of one external library, which a delete removes. */
@@ -79,8 +89,10 @@ function ExternalLibraryFrame({
     { id: libraryId ?? 0 },
     { enabled: libraryId !== null }
   )
+  const [removeFiles, setRemoveFiles] = useState(false)
   const remove = useMutation({
-    mutationFn: (id: number) => call("deleteExternalLibrary", { id }),
+    mutationFn: (id: number) =>
+      call("deleteExternalLibrary", { id, removeFiles }),
   })
   if (libraryId === null || library === null) return <NotFound />
   const base = `/external-libraries/${id}`
@@ -96,8 +108,14 @@ function ExternalLibraryFrame({
         {library && (
           <DeleteButton
             name={library.name}
-            blockers={[]}
-            detail="Its rules go with it. What's on its destination stays there."
+            blockers={
+              library.syncing ? ["It's syncing. Cancel the sync first."] : []
+            }
+            detail={
+              removeFiles
+                ? "Its rules go with it, and so does what liquidslunk wrote in its folder. Nothing else there is touched."
+                : "Its rules go with it. What's in its folder stays there."
+            }
             onDelete={() => remove.mutateAsync(library.id)}
             then="/external-libraries"
             afterDelete={() => {
@@ -107,7 +125,20 @@ function ExternalLibraryFrame({
                 })
               }
             }}
-          />
+          >
+            {library.destination.type === "connected" && library.folder && (
+              <label className="flex items-start gap-2 text-xs">
+                <Checkbox
+                  checked={removeFiles}
+                  onCheckedChange={(checked) => setRemoveFiles(checked)}
+                />
+                <span>
+                  Also remove the files liquidslunk wrote in{" "}
+                  <span className="font-mono break-all">{library.folder}</span>
+                </span>
+              </label>
+            )}
+          </DeleteButton>
         )}
       </PageHeader>
       <div className="flex flex-col gap-4 p-4 text-xs">
@@ -144,13 +175,29 @@ export function ExternalLibraryOverview() {
 }
 
 function Overview({ library }: { library: ExternalLibraryDetails }) {
-  const { contents } = library
+  const { contents, destination } = library
+  const [syncing, setSyncing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+  const run = useSyncRun()
+  const running = run?.running ?? false
+  const mine = run?.libraryId === library.id ? run : null
   const format =
     library.format === "original"
       ? "Files are kept as they are."
       : `Lossless files become ${FORMAT_LABELS[library.format]}${
           library.format === "aac" ? ` at ${library.aacKbps} kbps` : ""
         }${library.cdResolution ? ", at CD resolution" : ""}. Lossy ones are copied.`
+  const connected =
+    destination.type === "connected"
+      ? library.freeBytes !== null
+        ? `Yes, with ${formatSize(library.freeBytes)} free`
+        : "Yes"
+      : destination.type === "elsewhere"
+        ? `No: the folder belongs to another external library, ${destination.name}`
+        : library.folder
+          ? "No: the folder isn't there"
+          : "No: liquidslunk doesn't sync an iPod yet"
   const facts: [string, ReactNode][] = [
     [
       "Kind",
@@ -167,14 +214,7 @@ function Overview({ library }: { library: ExternalLibraryDetails }) {
         "An iPod with video"
       ),
     ],
-    [
-      "Connected",
-      library.connected
-        ? "Yes"
-        : library.folder
-          ? "No: the folder isn't there"
-          : "No",
-    ],
+    ["Connected", connected],
     [
       "In it",
       contents.tracks === 0 ? (
@@ -201,18 +241,81 @@ function Overview({ library }: { library: ExternalLibraryDetails }) {
     ["Format", format],
     [
       "Last synced",
-      library.lastSyncedAt ? formatDateTime(library.lastSyncedAt) : "Never",
+      mine?.running
+        ? "Syncing now"
+        : library.lastSyncedAt
+          ? formatDateTime(library.lastSyncedAt)
+          : "Never",
     ],
   ]
+  const act = async (work: () => Promise<unknown>) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await work()
+    } catch (caught) {
+      setError(caught as Error)
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
-    <dl className="grid max-w-3xl grid-cols-[minmax(6rem,auto)_1fr] gap-x-4 gap-y-2">
-      {facts.map(([label, value]) => (
-        <div key={label} className="contents">
-          <dt className="text-muted-foreground">{label}</dt>
-          <dd>{value}</dd>
+    <div className="flex max-w-3xl flex-col gap-4">
+      <dl className="grid grid-cols-[minmax(6rem,auto)_1fr] gap-x-4 gap-y-2">
+        {facts.map(([label, value]) => (
+          <div key={label} className="contents">
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {library.kind === "folder" && (
+        <div className="flex flex-wrap items-center gap-2">
+          {mine?.running ? (
+            <Button onClick={() => setSyncing(true)}>
+              <Spinner data-icon="inline-start" />
+              Syncing
+              {mine.progress &&
+                `: ${mine.progress.done} of ${mine.progress.total}`}
+            </Button>
+          ) : (
+            <Button
+              disabled={destination.type !== "connected" || running || busy}
+              onClick={() => setSyncing(true)}
+            >
+              <RefreshCwIcon data-icon="inline-start" />
+              Sync…
+            </Button>
+          )}
+          {library.ejectable && (
+            <Button
+              variant="outline"
+              disabled={running || busy}
+              onClick={() =>
+                act(() => ejectLibrary(library.id, library.folder))
+              }
+            >
+              <UploadIcon data-icon="inline-start" />
+              Eject
+            </Button>
+          )}
+          {destination.type !== "connected" && (
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() =>
+                act(() => locateLibrary(library.id, library.folder))
+              }
+            >
+              <FolderSearchIcon data-icon="inline-start" />
+              Locate…
+            </Button>
+          )}
         </div>
-      ))}
-    </dl>
+      )}
+      {error && <QueryError error={error} title="Can't do that" />}
+      <SyncSheet library={library} open={syncing} onOpenChange={setSyncing} />
+    </div>
   )
 }
 
