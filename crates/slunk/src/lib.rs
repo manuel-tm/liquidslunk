@@ -12,6 +12,8 @@
 //!   releases and tracks.
 //! - `library_check`: the library check, over the media context and the
 //!   catalog.
+//! - `external`: the external libraries context: so far, a track's tags as
+//!   an external library writes them, and its path in a folder library.
 //! - `dates`: dates as they're typed, stored and shown.
 //! - `languages`: language tags, as they're saved.
 //! - `paging`: a list's page, sort and search.
@@ -20,6 +22,7 @@
 pub mod catalog;
 pub mod dates;
 pub mod error;
+pub mod external;
 pub mod languages;
 pub mod library_check;
 pub mod media;

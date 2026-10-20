@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router"
 import { ButtonLink } from "@/components/button-link"
 import { CreditLines } from "@/components/credit-lines"
 import { DeleteButton } from "@/components/delete-button"
+import { ExportedTags } from "@/components/exported-tags"
 import { artistUrl, Names } from "@/components/names"
 import { PageHeader } from "@/components/page-header"
 import { QueueMenu } from "@/components/player/play-buttons"
@@ -18,7 +19,10 @@ import { formatDuration } from "@/lib/format"
 import { call, idParam, queryClient, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
 
-/** `/tracks/:id`: a track, with its audio, credits, tags and files. */
+/**
+ * `/tracks/:id`: a track, with its audio, credits, tags and files, and its tags
+ * as an external library writes them.
+ */
 export function TrackRead() {
   const { id = "" } = useParams()
   const trackId = idParam(id)
@@ -180,6 +184,11 @@ export function TrackRead() {
                 </>
               )}
             </dl>
+            <ExportedTags
+              trackId={track.id}
+              titleLanguage={track.titleLanguage ?? track.release.titleLanguage}
+              releaseLanguage={track.release.titleLanguage}
+            />
           </>
         )}
       </div>

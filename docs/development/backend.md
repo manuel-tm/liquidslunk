@@ -11,7 +11,7 @@ The backend is Rust, built into the app. It was ported from slunk's Node backend
 - **Phase 5:** the catalog context's tracks: the track list, a track with everything saved with it, and a release's whole track list with its disc titles; what a folder suggests for importing it; and adding one alternate name to an artist.
 - **Phase 6:** the library check and its fixes, and the sample data. slunk's backend was removed, with what ran it.
 
-Since the port, later designs add to it: phase 0 of [2_player.md](../design/2_player.md) added `player_tracks`, what the music player shows of the tracks it queues, phase 1 added `release_track_ids`, a release's tracks for the release table's play button ([Commands](#commands)), and phase 2 added the menu bar's Controls menu, with `set_controls_menu` and the `PlayerControl` event ([The menu bar](#the-menu-bar)).
+Since the port, later designs add to it: phase 0 of [2_player.md](../design/2_player.md) added `player_tracks`, what the music player shows of the tracks it queues, phase 1 added `release_track_ids`, a release's tracks for the release table's play button ([Commands](#commands)), and phase 2 added the menu bar's Controls menu, with `set_controls_menu` and the `PlayerControl` event ([The menu bar](#the-menu-bar)). Phase 0 of [4_external_libraries.md](../design/4_external_libraries.md) added the external libraries context, with a track's tags as an external library writes them and path templates, and `exported_tags` ([The external libraries context](#the-external-libraries-context)).
 
 Each rule on this page has a test.
 
@@ -53,6 +53,10 @@ crates/slunk/                the domain and its database, with no Tauri dependen
   src/dates.rs               dates as they're typed, stored and shown
   src/library_check.rs       the library check, over the media context and
                              the catalog
+  src/external/              the external libraries context
+    mod.rs                   External: a track's tags, and its path
+    tags.rs                  a track's tags, from the catalog
+    template.rs              path templates, and names on disk
   src/media/                 the media context
     mod.rs                   Media: registering, browsing, updating, deleting
     check.rs                 the library check's file part, and its fixes
@@ -105,6 +109,8 @@ crates/slunk/                the domain and its database, with no Tauri dependen
   tests/languages.rs         language tags, checked against Node's
   tests/tagging.rs           the tagging context's rules
   tests/library_check.rs     the library check's rules
+  tests/external.rs          the external libraries context's rules: tags,
+                             templates, names on disk
   tests/seeds.rs             the sample data
   tests/fixtures/parity/     what slunk's migration runner made
   tests/fixtures/audio/      audio files, what slunk read from them, and the
@@ -129,7 +135,7 @@ src-tauri/
 
 `crates/slunk` doesn't depend on Tauri, so its tests run with a plain `cargo test`, and the CLI uses it directly. Its repositories are plain functions over a `&Connection`, and a `Transaction` is one.
 
-**Contexts** are structs, like slunk's context factories, wired once when a library opens (`Library::new()` in `src-tauri/src/library.rs`), as slunk's `server.ts` wired them: `Media::new(store, library)` takes the store and the library on disk, `Catalog::new(store, media)` the store and the media context, which it registers files with, `Tagging::new(store)` the store, and `LibraryCheck::new(media, catalog)` the media context and the catalog. The library holds the media context and the catalog in `Arc`s, which they share. Commands call contexts, and contexts call repositories.
+**Contexts** are structs, like slunk's context factories, wired once when a library opens (`Library::new()` in `src-tauri/src/library.rs`), as slunk's `server.ts` wired them: `Media::new(store, library)` takes the store and the library on disk, `Catalog::new(store, media)` the store and the media context, which it registers files with, `Tagging::new(store)` the store, `LibraryCheck::new(media, catalog)` the media context and the catalog, and `External::new(store)` the store, which it reads the catalog through. The library holds the media context and the catalog in `Arc`s, which they share. Commands call contexts, and contexts call repositories.
 
 **The store** (`repo/store.rs`) holds the library's one connection, behind a mutex. `store.conn()` takes it. `store.transaction(|tx| …)` runs a closure in a transaction, started with `BEGIN IMMEDIATE`, which takes the write lock at once: another process writing the library, like the database commands, makes it wait for the lock (`busy_timeout`) rather than fail midway. A context that writes inside another's transaction takes the `tx`, as `Media::insert_prepared(tx, prepared)` does, so there's no nesting. A context reads files before taking the connection, never while holding it: `prepare_files()` looks up what's registered, lets go of the connection, then reads and hashes the rest.
 
@@ -331,6 +337,80 @@ node crates/slunk/tests/fixtures/languages/generate.ts
 - **Relinking** (`relink_files()`) points files that moved at their new paths, one move at a time, as editing a file's path does: each file is read again, and a path that's taken, or has no file, is refused. A refused move leaves the ones before it saved.
 - **Rehashing** (`rehash_files()`) reads changed files again: every file is read first, so one that's gone fails the call before anything is saved ("There's no file at music/a.flac"). Then their size, mtime and hash are saved in one transaction, and the tracks whose audio they are get their durations read again, saved where they differ. Ids that aren't registered are left out.
 
+## The external libraries context
+
+`crates/slunk/src/external/` is the external libraries context ([4_external_libraries.md](../design/4_external_libraries.md)). So far it has the mapping, from phase 0: a track's tags as every external library will write them, whatever its format, and its path in a folder library. Nothing writes them yet. Each rule here has a test in `tests/external.rs`, or next to its code.
+
+### A track's tags
+
+`tags_of()` works out tracks' tags from the catalog (`external/tags.rs`). It reads everything they need with one connection, with a query per kind of row. It writes only what the catalog's own structure says, the same for every external library:
+
+| Field | From the catalog |
+|---|---|
+| Title | The track's main title, with its features: "Bridges (feat. Mari, Sander)" |
+| Artist | Who performs the track (`performers()`, [Tracks](#tracks)), joined with ", " |
+| Artists | Each performer, then each feature |
+| Album | The release's main title |
+| Album artist | The release's artists, joined with ", ". A compilation's is its release artist, like an artist named "Various Artists" |
+| Compilation | A various-artists release |
+| Date, and year | The release date, as precise as it's known: `2006`, `2006-01` or `2006-01-10` |
+| Track | Its number, and the last track number on its disc |
+| Disc | Its disc, and the release's last disc |
+| Disc title | Its disc's main title |
+| Label | The release's labels, by their main names, in order |
+| Catalog number | The release's |
+| Media, and release type | The release's media and formats, as they're named, in the release's order: by their own ids |
+| Sort fields | Below |
+| Cover | The release's cover. Tracks don't have their own |
+
+- **Artists are named as credited:** the name printed on each link. An "&" is only ever part of a name.
+- **A field with no value isn't written:** a list is empty, and anything else `None`.
+- **Tag values and credit lines aren't read.** Which tags exist and what roles say is up to the user, so no rule turns them into fields (4_external_libraries.md §4.3).
+
+**Sort fields**, for the artist, the album artist, the album and the title, are what players sort by instead of a name or title that isn't in Latin script ([4_external_libraries.md Appendix A](../design/4_external_libraries.md#appendix-a-sort-fields-when-a-language-isnt-known)):
+- **Latin script:** a text is in Latin script when none of its characters belongs to another script, by ICU's script property. Digits, punctuation and spaces belong to none (`is_latin()`).
+- **A title** sorts as its first alternate title that's a Latin-script form of it: in Latin script, with a language tagged with the Latin script, in the title's own language, like `ja-Latn` for `ja`, or in any language when the title's own isn't known. A track's title without a language has its release's. So "初夏" sorts as "Shoka", in `ja-Latn`, and not as its translation, "Early Summer", in `en`.
+- **A name an artist is credited with** sorts as the artist's main name when that's in Latin script, whatever its language, or else as the first of the artist's alternate names that's a form of it. A real name isn't one.
+- **Names joined with ", "** sort as each one's sort name, or else the name itself: "福居良, Mari" sorts as "Ryo Fukui, Mari". When none of them has one, there's no sort field.
+
+### Path templates
+
+`Template::parse()` reads a folder library's path template (`external/template.rs`), and `path()` gives a track's path from its tags and its file's extension. The default, `DEFAULT_TEMPLATE`:
+
+```
+${album_artist}/[${year} - ]${album}/[${disc}-]${track_number:2} ${track_title}.${format}
+```
+
+gives `Ryo Fukui/1976 - Scenery/01 It Could Happen to You.flac`, and `…/2-01 ….flac` on a release with two discs.
+
+| Variable | Its value |
+|---|---|
+| `${album_artist}`, `${artist}` | The album artist and the artist, as tagged |
+| `${album}` | The release's title |
+| `${year}`, `${date}` | The release date's year, and the date as precise as it's known |
+| `${cd_number}`, `${cd_count}` | The track's disc, and the release's last disc |
+| `${disc}` | The track's disc on a release with more than one, and empty on a release with one |
+| `${disc_title}` | Its disc's title |
+| `${track_number}`, `${track_count}` | The track's number, and the last one on its disc |
+| `${track_title}` | The track's title, as tagged, with its features |
+| `${label}`, `${catalog_number}` | The release's first label, and its catalog number |
+| `${format}` | The file's extension: `flac`, `m4a`, `mp3` |
+
+- **`${name:N}`** pads a number to N digits, from 1 to 9: `${track_number:2}` is `03`, and 123 stays 123.
+- **`[…]`** is left out when a variable in it is empty. It can hold a `/`, so a folder can be optional: `[${disc_title}/]`. Brackets can't go inside brackets.
+- **`/`** in the template's own text separates folders. A value's own `/` doesn't: it's replaced, so a title can't make a folder.
+- **Refused:** a template is cleaned like other text, then refused, with the reason, when it has a variable it doesn't know (`${genre} isn't a template variable`), pads a variable that isn't a number, leaves a `${` or a `[` open, has a `]` with no `[` or brackets inside brackets, doesn't end in `.${format}`, or has neither `${track_number}` nor `${track_title}`, which would give every track of a release the same name.
+
+**Names on disk** are made safe for FAT32 and exFAT, each folder's and the file's (`safe_name()`):
+- in NFC, with `/ \ : * ? " < > |` and control characters as `_`;
+- without leading dots, which hide a file on macOS and Linux ("...And Justice for All"), or trailing dots and spaces, which Windows drops;
+- at most 255 UTF-16 code units, cut at a character, and a file's name before its extension;
+- `_` for a name left empty.
+
+**Two tracks with the same path** are told apart by `unique_paths()`. Paths are compared ignoring case and Unicode normalization, as FAT32, exFAT and APFS compare them. The track with the lowest id keeps the path, and the others get " (2)", " (3)", … before the extension, skipping any path another track has.
+
+**The track page** shows a track's tags with its path by a template, in a folder library that keeps the original files, so the file keeps its extension, in lowercase (`exported()`).
+
 ## The database
 
 ### Connection
@@ -450,6 +530,7 @@ The frontend calls the backend through Tauri commands, in `src-tauri/src/command
   - `import.rs` ([Import suggestions](#import-suggestions)): the import's reads, `release_suggestion` and `import_files`, the release's cover and links with the folder's files;
   - `mod.rs`: `languages`, and what they share: the DTOs of what a release refers to, and `Related`, which loads it;
 - `library_check.rs` ([The library check](#the-library-check)): `library_check`, and its fixes, `relink_files` and `rehash_files`;
+- `external.rs` ([The external libraries context](#the-external-libraries-context)): `exported_tags`, a track's tags as an external library writes them, with its cover, and its path by a template, the default one unless one is given. A template that can't be used is `invalid`, with the reason, and a track that isn't there is null;
 - `menu.rs` ([The menu bar](#the-menu-bar)): `set_controls_menu`;
 - `tagging.rs` ([The tagging context](#the-tagging-context)): `tags`, `tag`, `tag_options`, `tags_by_ref`, `tag_values`, `tag_value_options`, `create_tag`, `update_tag` and `delete_tag`, which name a tag by its `type` and id; a release's tags, `release_tags` and `set_release_tags`; and the bulk edits, `set_tag_on_releases` and `remove_tag_from_releases`.
 
@@ -532,4 +613,4 @@ The app's CSP allows `slunk:` and `http://slunk.localhost` in `img-src` and `med
 
 - **Formatting and linting:** `cargo fmt`, and `cargo clippy --workspace --all-targets` with no warnings.
 - **Tests:** `cargo test --workspace`. Tests make their own temporary databases and files, and never read `dev-library/`. Audio and language tag tests use the committed fixtures in `crates/slunk/tests/fixtures/`.
-- **Comments** cite the base design as "design §5.6". slunk's docs aren't in the repository, so they aren't cited.
+- **Comments** cite the base design as "design §5.6", and a later design by its file name, as "4_external_libraries.md §4". slunk's docs aren't in the repository, so they aren't cited.

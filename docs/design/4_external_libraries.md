@@ -1,6 +1,6 @@
 # External libraries
 
-> **Status: in design.**
+> **Status: being built.**
 
 A liquidslunk library holds more music than an iPod or a phone has room for. This design adds external libraries: a selection of the library's releases, artists, tracks and tag values, converted to a format the destination plays, tagged and given covers from the catalog, and kept in step with it. There are two kinds from the start:
 - **a folder library:** files laid out by a path template, for anything that reads a folder of music;
@@ -102,6 +102,8 @@ One function, `external::tags(track)`, gives a track's tags, worked out from the
 
 ### 4.1 A track's tags
 
+> Changed during implementation, see [Appendix B](#appendix-b-totals-are-the-last-numbers).
+
 | Field | From the catalog | Vorbis comment | ID3v2.4 | MP4 | iPod |
 |---|---|---|---|---|---|
 | Title | The track's title, with its features: "Bridges (feat. Mari, Sander)" (§4.2) | `TITLE` | `TIT2` | `©nam` | Title |
@@ -129,6 +131,8 @@ One function, `external::tags(track)`, gives a track's tags, worked out from the
 - **Nothing is written for a field with no value,** like a release with no date.
 
 ### 4.2 Names and titles
+
+> Changed during implementation, see [Appendix A](#appendix-a-sort-fields-when-a-language-isnt-known).
 
 - **Artists are named as credited:** the name printed on the release, "ALIKA" for Alika, as the release page shows it. So an artist credited two ways shows up twice in the iPod's Artists menu.
 - **Featured artists are in the title:** "Bridges (feat. Mari, Sander)", as the release page shows them. The artist field is only the performers, so the iPod's Artists menu doesn't get an entry for each combination. `ARTISTS` lists everyone.
@@ -205,6 +209,8 @@ How it runs:
 ## 6. Folder libraries
 
 ### 6.1 Path templates
+
+> Changed during implementation, see [Appendix B](#appendix-b-totals-are-the-last-numbers) and [Appendix C](#appendix-c-the-default-template-leaves-out-a-missing-year).
 
 A folder library's profile has a path template. The default:
 
@@ -589,3 +595,30 @@ The first draft left these open. They were settled on 2026-10-20:
 5. **Artists' names:** as credited, always. It isn't a setting (§4.2).
 6. **The user's iPod** is formatted for Mac, on its original disk, and mounts on this Mac with its disk use on. Phase 3 checks it first (§13).
 7. **No denormalizing the user's own vocabulary.** Whether a library has genres or scores at all is up to its user, so no logic depends on them: tag values aren't written, nor is a Score turned into stars. By the same rule, neither are credit lines, whose roles are free text (§4.3).
+
+## Appendix A: Sort fields when a language isn't known
+
+- **Date:** 2026-10-20
+- **Affects:** §4.2 Names and titles
+- **Was:** a form in a name's own language is one whose language is the name's own language with `-Latn`, like `ja-Latn` for a `ja` title. For an artist, the main name counts too.
+- **Now:**
+  - A Latin-script form of a name or title is one of its alternate names or titles that's in Latin script, and whose language is tagged with the Latin script: in the same language, like `ja-Latn` for `ja`, or in any language when the name's own language isn't known. So "新しい光", with no language, sorts as "Atarashii Hikari", in `ja-Latn`, and a translation in `en` still isn't a form.
+  - A name an artist is credited with sorts as the artist's main name when that's in Latin script, whatever its language. Otherwise, it sorts as the first of the artist's alternate names that's a form of it.
+  - A real name isn't a form of the artist's name, so it's never a sort field.
+- **Why:** in the dev libraries, track and release titles have no language, and neither have most main names, like "Ryo Fukui". As written, "新しい光" and a link crediting Ryo Fukui as "福居良" got no sort field, so the Japanese releases would sort after Z.
+
+## Appendix B: Totals are the last numbers
+
+- **Date:** 2026-10-20
+- **Affects:** §4.1 A track's tags, §6.1 Path templates
+- **Was:** a track's total, `TRACKTOTAL` and `${track_count}`, is the tracks on its disc.
+- **Now:** it's the last track number on its disc, as the disc's total is the release's last disc.
+- **Why:** a release cataloged in part, like one with only its tracks 1 and 4, gave "track 4 of 2". The last number is never less than the track's own.
+
+## Appendix C: The default template leaves out a missing year
+
+- **Date:** 2026-10-20
+- **Affects:** §6.1 Path templates
+- **Was:** `${album_artist}/${year} - ${album}/[${disc}-]${track_number:2} ${track_title}.${format}`
+- **Now:** `${album_artist}/[${year} - ]${album}/[${disc}-]${track_number:2} ${track_title}.${format}`
+- **Why:** a release with no date got a folder named " - Scenery", starting with a space and a dash.

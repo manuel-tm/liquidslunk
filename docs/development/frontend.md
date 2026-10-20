@@ -15,7 +15,8 @@ The frontend is slunk's, moved into the app in phase 0, in `src/`. It does every
 - bulk edits on the release list: setting or removing a tag on many releases;
 - the import: a release built from a folder, step by step, with titles split at " = " and artists matched by any of their names;
 - the library check: files missing, moved or changed on disk, unregistered files, and gaps in the catalog;
-- the music player, in the sidebar: a queue of tracks, played or added from the release and track pages, the track list and the release table, with shuffle, repeat, shortcuts, macOS's Now Playing and a Controls menu in the menu bar, and nearly no gap between tracks ([The player](#the-player)).
+- the music player, in the sidebar: a queue of tracks, played or added from the release and track pages, the track list and the release table, with shuffle, repeat, shortcuts, macOS's Now Playing and a Controls menu in the menu bar, and nearly no gap between tracks ([The player](#the-player));
+- tags as exported, on the track page: the track's tags as an external library will write them, and where a folder library will put it ([Tags as exported](#tags-as-exported)).
 
 Its data comes from Tauri commands, through TanStack Query ([Data](#data)). slunk's frontend read it through GraphQL, and the port moved each page to commands as the context behind it was ported ([design §7.3](../design/1_introduction.md#73-converting-a-route)).
 
@@ -133,6 +134,8 @@ src/
     tags-editor.tsx        a release's or track's tags, as rows to edit
     tag-values.tsx         a tag's values, each linking to the filtered list
     tag-filters.tsx        a list's tag filters: chips, and "Tag filter"
+    exported-tags.tsx      a track's tags as an external library writes them,
+                           for the track page
     release-table.tsx      the release table, with a column set per page
     names.tsx              names that link to their pages: "A, B, C"
     credit-lines.tsx       credit lines, as "Engineer – A, B"
@@ -241,7 +244,7 @@ Data comes from Tauri commands, through TanStack Query (design §7.2).
 #### Tracks and the import
 
 - **The track list** (`routes/tracks/list.tsx`) calls `tracks`, with its page, sort, search, release and tag filters; the page also names the release it filters on, for its picker (`filterRelease`).
-- **The track page** calls `trackPage`, and Delete `deleteTrack`.
+- **The track page** calls `trackPage`, and Delete `deleteTrack`. Its Tags as exported calls `exportedTags`, once it's opened.
 - **The track form** calls `trackForm`: with `id`, the track it edits, and for a new track, the release and audio file that `?release=` and `?file=` prefill it with. It saves with `createTrack` or `updateTrack`, tags included.
 - **The import** reads with `releaseSuggestion` (the release step), `releaseTracks` with the folder, whose `trackSuggestions` are the folder's rows (the tracks step), and `importFiles`, the release's cover and links with the folder's files (the files step). Its steps save with the edit tabs' commands, and `OtherNamesOffer` with `addArtistName`.
 
@@ -360,6 +363,13 @@ A disc can have its own title, as printed: "Live At Madison Square Garden - Febr
 
   "Genre is Rock and Score ≥ 8" is `?text.3=Rock&number.5.min=8`. Each filter is a chip ("Score ≥ 8") that removes it, and "Tag filter" adds one: "is" or "contains" for text, a range for numbers and dates (`TagFilters`). `TagFilters` names the chips with the `tagsByRef` command; the list's own query only sends the filters.
 
+### Tags as exported
+
+The track page ends with "Tags as exported" (`ExportedTags`), closed by default ([4_external_libraries.md §11](../design/4_external_libraries.md#11-the-frontend)). It's a table of the track's tags as every external library will write them, whatever its format, and the path a folder library that keeps the original files will give it, by the default template ([backend.md](backend.md#the-external-libraries-context)). It's how the mapping is checked against real releases.
+- It reads `exportedTags` only once it's opened.
+- A field with no value isn't written, so it has no row. A field written as several values, like Artists or Label, shows each one as a badge.
+- The title and the album have their languages' `lang`, and every value has `dir="auto"`.
+
 ### Bulk edits
 
 The release list's rows have checkboxes (`bulk-edit.tsx`). The selection is kept by id, across pages, until it's cleared.
@@ -431,7 +441,7 @@ WebKit takes about a quarter of a second to start an element's clock, loaded or 
 
 | Purpose | Components |
 |---|---|
-| Layout and navigation | `sidebar`, `breadcrumb`, `separator`, `scroll-area`, `tabs` |
+| Layout and navigation | `sidebar`, `breadcrumb`, `separator`, `scroll-area`, `tabs`, `collapsible` |
 | Showing data | `table`, `card`, `item`, `badge`, `avatar`, `skeleton`, `empty`, `tooltip` |
 | Forms | `field`, `label`, `input`, `input-group`, `textarea`, `select`, `combobox`, `checkbox`, `switch`, `toggle`, `toggle-group`, `calendar`, `slider` |
 | Overlays | `dialog`, `alert-dialog`, `sheet`, `popover`, `dropdown-menu` |

@@ -17,6 +17,7 @@ use crate::error::CommandError;
 use crate::library::{Libraries, Library};
 
 pub mod catalog;
+pub mod external;
 pub mod library;
 pub mod library_check;
 pub mod media;
@@ -99,6 +100,7 @@ pub fn builder() -> Builder<Wry> {
             catalog::import::release_suggestion,
             catalog::import::import_files,
             catalog::languages,
+            external::exported_tags,
             tagging::tags,
             tagging::tag,
             tagging::tag_options,

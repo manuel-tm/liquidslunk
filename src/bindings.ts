@@ -405,6 +405,53 @@ export const commands = {
 	 *  language picker.
 	 */
 	languages: () => typedError<string[], CommandError>(__TAURI_INVOKE("languages")),
+	/**
+	 *  A track's tags as an external library writes them, and its path by a
+	 *  template, the default one unless one is given, or null for an unknown id.
+	 *  A template that can't be used is `invalid`, with the reason.
+	 */
+	exportedTags: (args: ExportedTagsArgs) => typedError<{
+	/**  With its features: "Bridges (feat. Mari, Sander)" */
+	title: string,
+	/**  Who performs it, as credited, joined with ", " */
+	artist: string | null,
+	/**  Each performer, then each feature, as credited */
+	artists: string[],
+	/**  The release's title */
+	album: string,
+	/**  The release's artists, as credited, joined with ", " */
+	albumArtist: string | null,
+	/**  A various-artists release */
+	compilation: boolean,
+	/**  `2006`, `2006-01` or `2006-01-10` */
+	date: string | null,
+	trackNumber: number,
+	/**  The last track number on its disc */
+	trackTotal: number,
+	discNumber: number,
+	/**  The release's last disc */
+	discTotal: number,
+	discTitle: string | null,
+	labels: string[],
+	catalogNumber: string | null,
+	media: string[],
+	/**  The release's formats */
+	releaseTypes: string[],
+	/**  What players sort the artist by, when it isn't in Latin script */
+	artistSort: string | null,
+	albumArtistSort: string | null,
+	albumSort: string | null,
+	titleSort: string | null,
+	/**  The release's cover */
+	cover: File | null,
+	/**  The template the path comes from */
+	template: string,
+	/**
+	 *  Where a folder library that keeps the original files puts the track,
+	 *  by the template
+	 */
+	path: string,
+} | null, CommandError>(__TAURI_INVOKE("exported_tags", { args })),
 	/**  Tag definitions of one type, or of every type when `type` is left out. */
 	tags: (args: TagsArgs) => typedError<TagPage, CommandError>(__TAURI_INVOKE("tags", { args })),
 	/**  A tag, with what its page and its form show, or null for an unknown id. */
@@ -867,6 +914,61 @@ export type ErrorKind =
 "noLibrary" | "notFound" | 
 /**  A message for the user, which a form shows as it is. */
 "invalid" | "internal";
+
+/**
+ *  A track's tags, as every external library writes them, whatever its
+ *  format (4_external_libraries.md §4.1). A field with no value isn't
+ *  written: it's null or empty.
+ */
+export type ExportedTags = {
+	/**  With its features: "Bridges (feat. Mari, Sander)" */
+	title: string,
+	/**  Who performs it, as credited, joined with ", " */
+	artist: string | null,
+	/**  Each performer, then each feature, as credited */
+	artists: string[],
+	/**  The release's title */
+	album: string,
+	/**  The release's artists, as credited, joined with ", " */
+	albumArtist: string | null,
+	/**  A various-artists release */
+	compilation: boolean,
+	/**  `2006`, `2006-01` or `2006-01-10` */
+	date: string | null,
+	trackNumber: number,
+	/**  The last track number on its disc */
+	trackTotal: number,
+	discNumber: number,
+	/**  The release's last disc */
+	discTotal: number,
+	discTitle: string | null,
+	labels: string[],
+	catalogNumber: string | null,
+	media: string[],
+	/**  The release's formats */
+	releaseTypes: string[],
+	/**  What players sort the artist by, when it isn't in Latin script */
+	artistSort: string | null,
+	albumArtistSort: string | null,
+	albumSort: string | null,
+	titleSort: string | null,
+	/**  The release's cover */
+	cover: File | null,
+	/**  The template the path comes from */
+	template: string,
+	/**
+	 *  Where a folder library that keeps the original files puts the track,
+	 *  by the template
+	 */
+	path: string,
+};
+
+export type ExportedTagsArgs = {
+	/**  A track */
+	id: number,
+	/**  A path template. Default: the default template. */
+	template?: string | null,
+};
 
 /**  A file the user registered. liquidslunk only reads it. */
 export type File = {

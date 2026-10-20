@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use rusqlite::ErrorCode;
 use serde::Serialize;
 use slunk::catalog::Catalog;
+use slunk::external::External;
 use slunk::library_check::LibraryCheck;
 use slunk::media::Media;
 use slunk::repo::connection::{self, DATABASE_FILE};
@@ -33,6 +34,7 @@ pub struct Library {
     pub catalog: Arc<Catalog>,
     pub tagging: Tagging,
     pub library_check: LibraryCheck,
+    pub external: External,
 }
 
 impl Library {
@@ -46,6 +48,7 @@ impl Library {
             db: db.to_path_buf(),
             folder: folder_of(db),
             library_check: LibraryCheck::new(media.clone(), catalog.clone()),
+            external: External::new(store.clone()),
             catalog,
             tagging: Tagging::new(store.clone()),
             media,

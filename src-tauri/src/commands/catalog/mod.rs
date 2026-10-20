@@ -162,7 +162,7 @@ pub fn in_use(library: &Library) -> Result<Vec<String>, CommandError> {
 }
 
 /// Registered files by id, as DTOs.
-fn files_by_id(
+pub(crate) fn files_by_id(
     library: &Library,
     ids: &[i64],
 ) -> Result<std::collections::HashMap<i64, File>, CommandError> {

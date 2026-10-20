@@ -9,6 +9,8 @@ liquidslunk is the next version of slunk, ported to Tauri 2 with its backend in 
 > Then came a music player, planned in [2_player.md](docs/design/2_player.md), which is built: the player in the sidebar, with its shortcuts and macOS's Now Playing; its queue, with shuffle, repeat, play next and add to queue, from the release and track pages, the track list and the release table; and a Controls menu in the menu bar.
 >
 > Then came gapless playback, planned in [3_gapless.md](docs/design/3_gapless.md), which is built: the next track starts in a second element just before the current one ends, so tracks follow each other with nearly no gap.
+>
+> Now come external libraries, planned in [4_external_libraries.md](docs/design/4_external_libraries.md): a selection of the library, converted, tagged and given covers from the catalog, and synced to a folder or to an iPod with video. Its first phase is built: a track's page shows its tags as an external library will write them, and where a folder library will put it. Nothing is written yet.
 
 ## Documentation
 
