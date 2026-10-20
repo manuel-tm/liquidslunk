@@ -1,6 +1,6 @@
 //! The commands the frontend calls, one module per context, with their DTOs
-//! (design §5.4). tauri-specta writes `src/bindings.ts` from them whenever a
-//! debug build starts.
+//! (backend.md, "Commands"). tauri-specta writes `src/bindings.ts` from them
+//! whenever a debug build starts.
 //!
 //! - Every command is `async`, and does its database and disk work on Tokio's
 //!   blocking pool: a command that isn't `async` runs on the main thread. The

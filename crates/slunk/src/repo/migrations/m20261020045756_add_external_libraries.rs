@@ -1,8 +1,8 @@
-//! External libraries (4_external_libraries.md §9): a destination, a folder
-//! or an iPod, with its profile, and its rules, which say what's in it. What's
-//! on each destination is the destination's own manifest, not a table. It's
-//! the first migration since slunk's eight, so slunk can't open a library once
-//! it has run.
+//! External libraries (database.md, "External libraries"): a destination, a
+//! folder or an iPod, with its profile, and its rules, which say what's in it.
+//! What's on each destination is the destination's own manifest, not a table.
+//! It's the first migration since slunk's eight, so slunk can't open a library
+//! once it has run.
 //!
 //! - The database checks each kind: a folder library has its folder and its
 //!   path template, and an iPod has neither, and takes only what it plays:

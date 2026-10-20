@@ -1,9 +1,9 @@
-//! The iPod's artwork (4_external_libraries.md §7.5): `Artwork/ArtworkDB`,
-//! which says where each track's thumbnails are, and the `.ithmb` files
-//! that hold their pixels. The iPod with video shows covers at two sizes,
-//! both RGB565 little-endian: 100 × 100 (format 1028) and 200 × 200 (1029).
-//! Each image names its track by the track's `dbid`, and each track names
-//! its image by the image's id.
+//! The iPod's artwork (ipod.md, "The ArtworkDB and thumbnails"):
+//! `Artwork/ArtworkDB`, which says where each track's thumbnails are, and the
+//! `.ithmb` files that hold their pixels. The iPod with video shows covers at
+//! two sizes, both RGB565 little-endian: 100 × 100 (format 1028) and 200 × 200
+//! (1029). Each image names its track by the track's `dbid`, and each track
+//! names its image by the image's id.
 //!
 //! The ArtworkDB is chunks like the iTunesDB's: a `mhfd`, then three
 //! sections: the images (`mhli`, an `mhii` each, with an `mhni` per size),

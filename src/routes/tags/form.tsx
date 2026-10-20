@@ -24,7 +24,7 @@ export function TagForm() {
   const { type, id } = useParams()
   const editing = id !== undefined
   const tagId = idParam(id)
-  // A form starts from fresh data (design §7.2)
+  // A form starts from fresh data (frontend.md, "Commands")
   const { data: tag, error } = useCommand(
     "tag",
     { type: isTagType(type) ? type : "text", id: tagId ?? 0 },

@@ -1,6 +1,7 @@
 //! Node's `path.posix` functions that slunk's media context used, ported
-//! lexically: nothing here touches the disk (design §10). Paths are strings
-//! with forward slashes, so they match what slunk stored to the character.
+//! lexically: nothing here touches the disk (backend.md, "The media context").
+//! Paths are strings with forward slashes, so they match what slunk stored to
+//! the character.
 
 /// An absolute path, like `path.resolve(base, path)`: `path` if it's
 /// absolute, else `path` from `base`, with `.`, `..`, repeated slashes and a

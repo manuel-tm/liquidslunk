@@ -1,7 +1,7 @@
-//! The plan (4_external_libraries.md §8.2): what a sync would do, worked out
-//! from what should be on a destination and what is, before anything is
-//! written. It's plain functions, one for a folder library and one for an
-//! iPod, so their rules are tested without files.
+//! The plan (backend.md, "Syncing a folder library"): what a sync would do,
+//! worked out from what should be on a destination and what is, before
+//! anything is written. It's plain functions, one for a folder library and
+//! one for an iPod, so their rules are tested without files.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
@@ -43,7 +43,7 @@ pub struct PresentFile {
 }
 
 /// A track on an iPod that liquidslunk didn't write, which its first sync
-/// erases once the user agrees (§7.8).
+/// erases once the user agrees (backend.md, "Syncing an iPod").
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OtherTrack {
     /// Relative to the iPod
@@ -437,12 +437,12 @@ pub fn label_of(tags: &BTreeMap<String, Vec<String>>, path: &str) -> Label {
     }
 }
 
-/// Works out an iPod's plan (§8.2). The iPod names its own files, so a
-/// track's file keeps its path, and a file written again gets a new one
-/// from `new_path`, given its extension; the old one is removed once the
-/// database no longer lists it. A retag changes only the database, and so
-/// does a file the database doesn't list yet. There are no moves, no
-/// `cover.jpg`s, and nothing else at a path a track could want.
+/// Works out an iPod's plan (backend.md, "Syncing an iPod"). The iPod names
+/// its own files, so a track's file keeps its path, and a file written again
+/// gets a new one from `new_path`, given its extension; the old one is
+/// removed once the database no longer lists it. A retag changes only the
+/// database, and so does a file the database doesn't list yet. There are no
+/// moves, no `cover.jpg`s, and nothing else at a path a track could want.
 pub fn plan_ipod(inputs: Inputs, new_path: &mut dyn FnMut(&str) -> String) -> Plan {
     let Inputs {
         wanted,

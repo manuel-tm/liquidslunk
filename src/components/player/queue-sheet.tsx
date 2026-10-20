@@ -43,10 +43,10 @@ import type { Entry } from "@/lib/queue"
 import { cn } from "@/lib/utils"
 
 /**
- * The whole queue, in the order it plays (2_player.md §5.5). The entries that
- * have played are muted, and the current one is marked. Clicking a row plays
- * it. A row is dragged anywhere on it to another place, or moved a place at a
- * time with the arrow keys on its handle (Appendix D), and its button removes
+ * The whole queue, in the order it plays (frontend.md, "The player"). The
+ * entries that have played are muted, and the current one is marked. Clicking
+ * a row plays it. A row is dragged anywhere on it to another place, or moved a
+ * place at a time with the arrow keys on its handle, and its button removes
  * it. It opens scrolled to the current entry.
  */
 export function QueueSheet({

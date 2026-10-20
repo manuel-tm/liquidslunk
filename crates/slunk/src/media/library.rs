@@ -246,7 +246,7 @@ fn read_folder(folder: &str, shown: &str) -> Result<Vec<String>> {
 
 /// Like a file browser sorts: "2 Song" before "10 Song". It's what
 /// JavaScript's `localeCompare(…, { numeric: true })` does, with ICU's root
-/// collation (design §10).
+/// collation (backend.md, "The media context").
 pub fn compare(a: &str, b: &str) -> Ordering {
     static COLLATOR: LazyLock<CollatorBorrowed<'static>> = LazyLock::new(|| {
         let mut preferences = CollatorPreferences::default();
@@ -264,7 +264,7 @@ fn size_of(info: &Metadata) -> i64 {
 /// The mtime in whole seconds, as slunk read it: Node's `mtimeMs` is
 /// `seconds * 1000 + nanoseconds / 1e6` in floating point, then
 /// `Math.floor(mtimeMs / 1000)`. So a time a few nanoseconds before a second
-/// rounds up to it (design §10).
+/// rounds up to it (backend.md, "The media context").
 #[cfg(unix)]
 fn mtime_of(info: &Metadata) -> i64 {
     use std::os::unix::fs::MetadataExt;

@@ -38,7 +38,7 @@ export function DeleteButton({
   then: string
   /**
    * Runs once it has gone there, to remove the deleted entity's queries
-   * (design §7.2)
+   * (frontend.md, "Commands")
    */
   afterDelete?: () => void
   /** More about what deleting does */

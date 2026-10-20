@@ -117,7 +117,7 @@ pub struct TrackView {
     pub files: Vec<FileLink>,
 }
 
-/// What the player shows of a track (2_player.md §6.1).
+/// What the player shows of a track (backend.md, "Commands").
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PlayerTrack {
@@ -679,8 +679,8 @@ pub fn for_player(
 }
 
 /// A release's tracks' ids, by disc, then by number, as its tracklist orders
-/// them, for the release table's Play (2_player.md §6.2). A release with no
-/// tracks, or one that isn't there, has none.
+/// them, for the release table's Play (frontend.md, "The player"). A release
+/// with no tracks, or one that isn't there, has none.
 #[tauri::command]
 #[specta::specta]
 pub async fn release_track_ids(app: AppHandle, args: IdArgs) -> Result<Vec<i64>, CommandError> {

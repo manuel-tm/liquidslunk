@@ -1,6 +1,6 @@
-//! Covers as external libraries write them (4_external_libraries.md §4.4):
-//! a release's cover, read with the `image` crate, at most the profile's
-//! size, never enlarged, as a JPEG.
+//! Covers as external libraries write them (backend.md, "Syncing a folder
+//! library"): a release's cover, read with the `image` crate, at most the
+//! profile's size, never enlarged, as a JPEG.
 
 use std::io::Cursor;
 use std::path::Path;

@@ -34,7 +34,7 @@ export function ReleaseFilesForm({
   onSaved: () => void
 }) {
   const id = idParam(releaseId)
-  // A form starts from fresh data (design §7.2)
+  // A form starts from fresh data (frontend.md, "Commands")
   const { data: release, error } = useCommand(
     "releaseFiles",
     { id: id ?? 0 },

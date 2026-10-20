@@ -1,5 +1,5 @@
-//! The volume a destination is on: its free space, and ejecting it
-//! (4_external_libraries.md §7.2), with `diskutil`, so it can be unplugged.
+//! The volume a destination is on: its free space, and ejecting it with
+//! `diskutil`, so it can be unplugged (backend.md, "Syncing a folder library").
 
 use std::ffi::{CStr, CString};
 use std::os::unix::ffi::OsStrExt;

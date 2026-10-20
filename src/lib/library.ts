@@ -9,9 +9,9 @@ type OnProgress = (progress: OpenProgress) => void
 
 /**
  * Forgets everything cached from the library that was open, so nothing from it
- * shows in the next one (design §6.4). Resetting the queries fetches the
- * mounted ones again, like the library's status, which `AppLayout` remounts the
- * pages by.
+ * shows in the next one (frontend.md, "Routes and pages"). Resetting the
+ * queries fetches the mounted ones again, like the library's status, which
+ * `AppLayout` remounts the pages by.
  */
 async function forgetCaches() {
   await queryClient.resetQueries()
@@ -75,8 +75,8 @@ function reportMigration(name: string, migration: MigrationReport) {
 }
 
 /**
- * The launch (design §6.1): the library the settings remember opens once per
- * run, without asking. Welcome shows it as it goes.
+ * The launch (frontend.md, "Routes and pages"): the library the settings
+ * remember opens once per run, without asking. Welcome shows it as it goes.
  */
 export type Launch =
   | { state: "waiting" }

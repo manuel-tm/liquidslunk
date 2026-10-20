@@ -4,6 +4,8 @@ Each design doc plans one topic, numbered in the order it's written: `N_topic.md
 
 **A design doc is archival unless it's being worked on.** Only the doc whose topic is being designed or built right now is edited, and only as its status allows (below). Every other design doc is read-only: read it for context, but never edit it, not even to fix a typo, a stale name or a broken link. What's actually built is documented in the rest of `docs/` ([docs/README.md](../README.md)), which is kept up to date with the code.
 
+**A design doc records a decision, not what the code does.** It says what was planned and why, as it stood when it was written. Once it's built, the code and the rest of `docs/` say what liquidslunk does, and neither cites a design doc ([Design docs and these docs](../README.md#design-docs-and-these-docs)). Read a design to learn why something was decided, and the rest of `docs/` to learn what it does.
+
 ## Index
 
 | Document | Covers | Status |

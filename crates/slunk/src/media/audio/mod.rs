@@ -1,10 +1,10 @@
 //! An audio file's duration and embedded tags, as suggestions only. It only
 //! reads the file. A file it can't read has no duration and no tags.
 //!
-//! slunk read them with music-metadata, and liquidslunk with lofty (design
-//! §5.3). lofty reads each format's own tags, and `Collector` picks the
-//! values from them as music-metadata did: which keys map to what, which tag
-//! wins when a file has several, and how lists and numbers are read.
+//! slunk read them with music-metadata, and liquidslunk with lofty
+//! (backend.md, "Audio"). lofty reads each format's own tags, and `Collector`
+//! picks the values from them as music-metadata did: which keys map to what,
+//! which tag wins when a file has several, and how lists and numbers are read.
 //!
 //! Durations are lofty's, in whole milliseconds, except where lofty works
 //! them out differently from music-metadata: `durations` does those as

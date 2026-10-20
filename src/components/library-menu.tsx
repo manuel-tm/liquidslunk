@@ -25,8 +25,9 @@ import { closeLibrary, openLibrary } from "@/lib/library"
 import { call, useCommand } from "@/lib/query"
 
 /**
- * The sidebar's header (design §6.4): the open library's folder name, with a
- * menu to switch libraries, show it in Finder, or open a recent one.
+ * The sidebar's header (frontend.md, "Routes and pages"): the open library's
+ * folder name, with a menu to switch libraries, show it in Finder, or open a
+ * recent one.
  */
 export function LibraryMenu() {
   const navigate = useNavigate()

@@ -1,5 +1,6 @@
-//! External libraries and their rules (4_external_libraries.md §9), and the
-//! tracks the rules come to.
+//! External libraries and their rules (database.md, "External libraries"),
+//! and the tracks the rules come to (backend.md, "Rules and what they come
+//! to").
 
 use std::collections::{HashMap, HashSet};
 

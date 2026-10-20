@@ -1,6 +1,7 @@
 //! Language tags, checked against what Node's `Intl.getCanonicalLocales`
-//! gave, which slunk saved them with (design §10). expected.json comes from
-//! `fixtures/languages/generate.ts`, which says how to make it again.
+//! gave, which slunk saved them with (backend.md, "Languages").
+//! expected.json comes from `fixtures/languages/generate.ts`, which says how
+//! to make it again.
 
 use std::collections::BTreeMap;
 use std::fs;

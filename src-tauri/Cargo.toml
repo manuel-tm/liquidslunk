@@ -31,7 +31,7 @@ tauri = { version = "2.12.4", features = ["specta"] }
 tauri-plugin-dialog = "2.8.3"
 tauri-plugin-opener = "2.7.2"
 tauri-plugin-single-instance = "2.5.4"
-# Still release candidates, so pinned exactly (design §10)
+# Still release candidates, so pinned exactly (backend.md, "Stack")
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 specta-typescript = "=0.0.12"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }

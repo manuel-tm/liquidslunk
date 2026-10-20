@@ -202,7 +202,10 @@ export function TrackRead() {
   )
 }
 
-/** Plays the track alone, or pauses it while it plays (2_player.md §5.2). */
+/**
+ * Plays the track alone, or pauses it while it plays (frontend.md, "The
+ * player").
+ */
 function PlayButton({ id }: { id: number }) {
   const player = usePlayer()
   const playing = player.current?.trackId === id && player.playing

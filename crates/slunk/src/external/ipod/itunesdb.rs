@@ -1,6 +1,6 @@
-//! The iTunesDB (4_external_libraries.md §7.4): every track on the iPod, and
-//! its master playlist, which the iPod reads to show its music. It never
-//! looks at the music folders themselves.
+//! The iTunesDB (ipod.md, "The iTunesDB"): every track on the iPod, and its
+//! master playlist, which the iPod reads to show its music. It never looks at
+//! the music folders themselves.
 //!
 //! It's little-endian chunks, each a four-letter tag, its header's length
 //! and its whole length; strings are UTF-16LE, and times are seconds since
@@ -129,7 +129,7 @@ impl FileKind {
 }
 
 /// What the iPod counts for a track as it's played: kept from one sync to
-/// the next (§7.7).
+/// the next (ipod.md, "Play Counts").
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Stats {
     pub play_count: u32,
@@ -141,8 +141,9 @@ pub struct Stats {
     pub rating: u8,
 }
 
-/// What gapless playback needs (§7.6), in samples, and for an MP3 the bytes
-/// from its first frame to the 8th before its last.
+/// What gapless playback needs (ipod.md, "Gapless and Sound Check"), in
+/// samples, and for an MP3 the bytes from its first frame to the 8th before
+/// its last.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Gapless {
     pub pregap: u32,

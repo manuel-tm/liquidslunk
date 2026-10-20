@@ -1,6 +1,6 @@
-//! liquidslunk's domain and its database (design §5.2), with no Tauri
-//! dependency, so its tests run with a plain `cargo test` and the CLI uses it
-//! directly.
+//! liquidslunk's domain and its database, with no Tauri dependency, so its
+//! tests run with a plain `cargo test` and the CLI uses it directly
+//! (backend.md, "Structure").
 //!
 //! - `repo`: the repository layer: the connection, the migration runner, its
 //!   backups, the migrations, and the repositories.

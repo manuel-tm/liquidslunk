@@ -1,7 +1,7 @@
 //! Where a sync makes its files before they're copied to the destination: a
-//! folder of its own in the system's temporary folder (4_external_libraries.md
-//! §8.3). It's removed when the sync ends, and whatever an earlier run left
-//! there is removed at launch.
+//! folder of its own in the system's temporary folder (backend.md, "Syncing a
+//! folder library"). It's removed when the sync ends, and whatever an earlier
+//! run left there is removed at launch.
 //!
 //! Each folder holds a lock while its sync runs, so the leftovers removed at
 //! launch are never those of a sync still running in another copy of the

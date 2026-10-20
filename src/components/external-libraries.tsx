@@ -37,9 +37,9 @@ export function ExternalKindIcon({
 }
 
 /**
- * "Add to external library", with a menu of them (4_external_libraries.md
- * §11), on the release, artist and track pages and in the release list's
- * bulk edits. A release comes in whole. A toast says where it went.
+ * "Add to external library", with a menu of them (frontend.md, "External
+ * libraries"), on the release, artist and track pages and in the release
+ * list's bulk edits. A release comes in whole. A toast says where it went.
  */
 export function AddToExternalLibrary({
   releases,

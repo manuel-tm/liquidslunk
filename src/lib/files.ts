@@ -2,7 +2,7 @@ import { toast } from "sonner"
 
 import { call } from "@/lib/query"
 
-/** Opens a registered file in its default app (design §5.5). */
+/** Opens a registered file in its default app (frontend.md, "Files"). */
 export async function openFile(id: number | string) {
   try {
     await call("openFile", { id: Number(id) })

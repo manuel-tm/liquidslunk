@@ -1,7 +1,7 @@
-//! The migrations, one module each, `m<timestamp>_<name>.rs` (design §5.6).
-//! Their SQL is the statements slunk's Kysely migrations ran, so they build
-//! the same schema slunk did. The schema they build is described in
-//! `docs/reference/database.md`.
+//! The migrations, one module each, `m<timestamp>_<name>.rs` (backend.md,
+//! "The migrations"). Their SQL is the statements slunk's Kysely migrations
+//! ran, so they build the same schema slunk did. The schema they build is
+//! described in `docs/reference/database.md`.
 //!
 //! - Never edit a migration once it has been committed. Write a new one, with
 //!   `slunk-cli gen <name>`, which adds it at the end of [`MIGRATIONS`].

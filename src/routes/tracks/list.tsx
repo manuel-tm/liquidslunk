@@ -23,7 +23,7 @@ import { formatDateTime, formatDuration } from "@/lib/format"
 /**
  * `/tracks`, with tag filters like the release list's. A row's play button
  * plays the page's rows from it, so a filtered list plays like a playlist
- * (2_player.md §5.2).
+ * (frontend.md, "The player").
  */
 export function TrackList() {
   const list = useListParams()

@@ -128,7 +128,7 @@ function count(n: number, noun: string): string {
 
 /**
  * What a sync's plan does, in short, counting tracks: "Add 42 tracks
- * (1.8 GB), update 7, remove 3." (4_external_libraries.md §8.2).
+ * (1.8 GB), update 7, remove 3." (frontend.md, "External libraries").
  */
 export function describePlan(plan: SyncPlan): string {
   const tracks = plan.steps.filter((step) => step.trackId !== null)
@@ -199,8 +199,8 @@ export const STAGE_LABELS: Record<SyncStage, string> = {
 
 /**
  * What an iPod's first sync asks before it erases the tracks liquidslunk
- * didn't write (4_external_libraries.md §7.8): "This iPod has 1,234 tracks
- * from somewhere else. Erase them, then sync?"
+ * didn't write (frontend.md, "External libraries"): "This iPod has 1,234
+ * tracks from somewhere else. Erase them, then sync?"
  */
 export function describeOther(tracks: number): string {
   return `This iPod has ${count(tracks, "track")} from somewhere else. Erase ${tracks === 1 ? "it" : "them"}, then sync?`

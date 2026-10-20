@@ -1,9 +1,9 @@
-//! A track's tags, worked out from the catalog (4_external_libraries.md §4).
+//! A track's tags, worked out from the catalog (backend.md, "A track's tags").
 //! It's the one mapping every external library writes, whatever its format,
 //! and path templates name files from it, so a file's name and its tags
 //! always agree. It writes only what the catalog's own structure says: tag
 //! values and credit lines are the user's own vocabulary, so nothing here
-//! reads them (§4.3).
+//! reads them.
 
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
@@ -64,7 +64,7 @@ pub struct Tags {
 }
 
 /// What players sort by instead of a name or title that isn't in Latin
-/// script: its Latin-script form (§4.2). `None`: they sort by the name
+/// script: its Latin-script form. `None`: they sort by the name
 /// itself.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SortFields {
@@ -75,10 +75,10 @@ pub struct SortFields {
 }
 
 impl Tags {
-    /// The fields as they're written, by name, in the order §4.1 lists
-    /// them, each with its values: the manifest keeps them, so a sync can
-    /// say what changed. A field with no value is left out, and so is the
-    /// cover, which the manifest keeps apart.
+    /// The fields as they're written, by name, in the order backend.md's
+    /// table lists them, each with its values: the manifest keeps them, so a
+    /// sync can say what changed. A field with no value is left out, and so
+    /// is the cover, which the manifest keeps apart.
     pub fn fields(&self) -> Vec<(&'static str, Vec<String>)> {
         let one = |value: &Option<String>| value.iter().cloned().collect::<Vec<_>>();
         let fields = vec![

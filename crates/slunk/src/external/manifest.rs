@@ -1,5 +1,5 @@
-//! The manifest (4_external_libraries.md §8.1): what liquidslunk wrote on a
-//! destination, kept on the destination itself, at
+//! The manifest (backend.md, "Syncing a folder library"): what liquidslunk
+//! wrote on a destination, kept on the destination itself, at
 //! `.liquidslunk/manifest.json` in a folder library, and at
 //! `iPod_Control/iTunes/liquidslunk.json` on an iPod. The database says what
 //! should be there, and the manifest what is.
@@ -72,8 +72,8 @@ pub enum Written {
     Cover { release: i64, cover: CoverKey },
 }
 
-/// What an iPod's database says of a track's file (§7.4, §7.6), kept so
-/// the database can be written again without reading the file.
+/// What an iPod's database says of a track's file (ipod.md, "The iTunesDB"),
+/// kept so the database can be written again without reading the file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IpodFile {

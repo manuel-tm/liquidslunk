@@ -48,7 +48,7 @@ import { NotFound } from "@/routes/not-found"
 export function ArtistForm() {
   const { id } = useParams()
   const artistId = idParam(id)
-  // A form starts from fresh data (design §7.2)
+  // A form starts from fresh data (frontend.md, "Commands")
   const { data: artist, error } = useCommand(
     "artist",
     { id: artistId ?? 0 },

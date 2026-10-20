@@ -1,4 +1,4 @@
-//! The Controls menu's command (2_player.md §8.2). The menu is in
+//! The Controls menu's command (backend.md, "The menu bar"). The menu is in
 //! `crate::menu`.
 
 use tauri::{AppHandle, Manager};

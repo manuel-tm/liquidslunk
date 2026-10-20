@@ -2,16 +2,9 @@
 
 > Keep this page up to date: any change to the backend's stack, structure, commands or conventions updates it in the same change.
 
-The backend is Rust, built into the app. It was ported from slunk's Node backend one context at a time ([design §8](../design/1_introduction.md#8-the-transition)):
-- **Phase 0:** the database connection, the migration runner with its backups, slunk's eight migrations, and their parity tests; the database commands, in `crates/slunk-cli`; the app: commands typed by tauri-specta, their error, the settings, opening, creating, switching and closing libraries, the file protocol, and opening files. While the port ran, slunk's backend served the routes not ported yet, beside the app in debug builds.
-- **Phase 1:** the media context: registered files, the library on disk, file links, and reading audio files; and lists' paging. Until phase 6, a script checked that the commands wrote what slunk's backend wrote, step by step.
-- **Phase 2:** the catalog context's artists and labels, with their alternate names, pictures and logos, and an artist's file links; release formats and release media; and language tags.
-- **Phase 3:** the tagging context: tag definitions, their values on releases and tracks, list filters and bulk edits; and dates.
-- **Phase 4:** the catalog context's releases: their details, alternate titles, artists as credited, labels, formats and media, cover and file links, and credit lines, theirs and their tracks'; the release list's filters; what the release, artist and label pages read, a release's tracks among it; and the catalog's totals.
-- **Phase 5:** the catalog context's tracks: the track list, a track with everything saved with it, and a release's whole track list with its disc titles; what a folder suggests for importing it; and adding one alternate name to an artist.
-- **Phase 6:** the library check and its fixes, and the sample data. slunk's backend was removed, with what ran it.
+The backend is Rust, built into the app. It was ported from slunk's Node backend one context at a time: first the database, its migrations and the database commands, and the app around them, then the media context, the catalog, the tagging context and the library check. While the port ran, slunk's backend served the routes not ported yet, beside the app in debug builds, and a script checked that the commands wrote what slunk's backend wrote, step by step. Once every page ran on Rust commands, slunk's backend was removed, with what ran it.
 
-Since the port, later designs add to it: phase 0 of [2_player.md](../design/2_player.md) added `player_tracks`, what the music player shows of the tracks it queues, phase 1 added `release_track_ids`, a release's tracks for the release table's play button ([Commands](#commands)), and phase 2 added the menu bar's Controls menu, with `set_controls_menu` and the `PlayerControl` event ([The menu bar](#the-menu-bar)). Phase 0 of [4_external_libraries.md](../design/4_external_libraries.md) added the external libraries context, with a track's tags as an external library writes them and path templates, and `exported_tags`; phase 1 added external libraries themselves, their rules, what they come to and what that takes, in liquidslunk's first migration of its own, with their commands, and `track_options` for the track picker; phase 2 added syncing a folder library: converting with `afconvert`, covers, writing tags, the manifest, the plan, the sync with its progress and cancelling, ejecting, and Locate; phase 3 added syncing an iPod: finding it, its iTunesDB, its artwork, gapless data and Sound Check, Play Counts, and erasing other music, with `mounted_ipods` ([The external libraries context](#the-external-libraries-context)).
+Since the port, the backend has added the music player's commands, `player_tracks` and `release_track_ids` ([Commands](#commands)), and the menu bar's Controls menu ([The menu bar](#the-menu-bar)); and the external libraries context, with liquidslunk's first migration of its own ([The external libraries context](#the-external-libraries-context)).
 
 Each rule on this page has a test.
 
@@ -181,7 +174,7 @@ src-tauri/
 
 ## The media context
 
-`crates/slunk/src/media/` registers files and reads the library. It never writes to the user's files: `media/library.rs` only reads them. Each rule here has a test in `tests/media.rs`, or next to its code. Until phase 6, a script also checked them against slunk's backend.
+`crates/slunk/src/media/` registers files and reads the library. It never writes to the user's files: `media/library.rs` only reads them. Each rule here has a test in `tests/media.rs`, or next to its code. While the port ran, a script also checked them against slunk's backend.
 
 - **Paths** are relative to the database's folder, and resolved: `""` is the folder itself, and paths above it start with `../`. They're worked out as Node's `path` works them out (`media/paths.rs`), lexically, without touching the disk, with forward slashes, and with `..` stopping at `/`. A path given absolute is made relative. They aren't text: they're kept as they are on disk, in whatever Unicode form the disk has.
 - **Browsing** (`folder`) lists a folder's subfolders and the files directly inside, following symlinks: a symlinked folder is listed as a folder, a symlinked file as a file, and a broken symlink is left out. Each subfolder says whether it, or a folder inside it, holds registered files. That's a range on the index of `files.path`, and it works for the folders above the database's folder too: `..` holds everything but the paths that start with `../../`. The parent is `None` at the top of the disk.
@@ -202,7 +195,7 @@ src-tauri/
 - **Deleting** removes only the record, and fails while anything uses the file: a track's audio, a release's cover, an artist's picture, a label's logo, or a file link. The error says what uses it: `The file is still used: the picture of "Alika"`. An unknown id deletes nothing, as in slunk.
 - **Uses** (`file_uses`) list everything that uses a file, with the id and name of what uses it, and a file link's note. **Counts** (`file_counts`) are the files, and those nothing uses.
 - **Listing** (`files`) pages, sorts by `id` or `path`, searches the path ignoring ASCII case (`like`, with `%` and `_` escaped), and filters by type, files nothing uses (`unused`), and files that aren't a track's audio (`withoutTrack`). Each row has the track it's the audio of.
-- **File links** (`repo/file_links.rs`) connect images and other files to releases, artists and tracks, each with an optional note, in the order they were added. Saving an owner's links replaces them all. The catalog uses them from phase 2.
+- **File links** (`repo/file_links.rs`) connect images and other files to releases, artists and tracks, each with an optional note, in the order they were added. Saving an owner's links replaces them all.
 - **Many ids or paths** are read in chunks of 500 (`repo/helpers.rs`), well under SQLite's limit on bound parameters.
 
 ### Audio
@@ -219,7 +212,7 @@ slunk read them with music-metadata. liquidslunk reads each format's own tags wi
 Known differences, which no file in `dev-library/music/` has:
 - lofty keeps one of two ID3v2 frames with the same ID, which the standard doesn't allow, and music-metadata read both.
 - lofty doesn't read AAC in ADTS (`.aac`) at 8 kHz, which music-metadata did, so it has no duration and no tags. At 44.1 kHz it does.
-- Ogg Vorbis, Opus, APE, WavPack and Musepack use the same tables, but their durations are lofty's, and none of it has been checked against music-metadata ([design Appendix D](../design/1_introduction.md#appendix-d-no-dsf-reader-and-audio-checks-on-the-formats-this-mac-makes)). DSF, DFF and WMA have no duration and no tags: lofty doesn't read them.
+- Ogg Vorbis, Opus, APE, WavPack and Musepack use the same tables, but their durations are lofty's, and none of it has been checked against music-metadata: this Mac can't make files in those formats without ffmpeg, so there are no fixtures for them. DSF, DFF and WMA have no duration and no tags: lofty doesn't read them.
 
 `tests/audio.rs` checks every fixture in `tests/fixtures/audio/` against `expected.json`, what slunk's reader, with music-metadata, read from it: FLAC, M4A (AAC and Apple Lossless), MP3 (ID3v2.3, ID3v2.4, ID3v1, with and without an Info header), AAC in ADTS, WAV and AIFF, a second or so of silence each, with tags written byte by byte, so they don't come from lofty. `tests/fixtures/audio/generate.ts` makes the files, on macOS, with afconvert:
 
@@ -231,7 +224,7 @@ node crates/slunk/tests/fixtures/audio/generate.ts
 
 ## The catalog context
 
-`crates/slunk/src/catalog/` holds what the user catalogs: artists and labels, the two lists the user manages, release formats and release media, releases ([Releases](#releases)) and tracks ([Tracks](#tracks)), and what a folder suggests for importing it ([Import suggestions](#import-suggestions)). Each rule here has a test in `tests/catalog.rs`, `tests/releases.rs` or `tests/tracks.rs`, or next to its code. Until phase 6, a script also checked them against slunk's backend.
+`crates/slunk/src/catalog/` holds what the user catalogs: artists and labels, the two lists the user manages, release formats and release media, releases ([Releases](#releases)) and tracks ([Tracks](#tracks)), and what a folder suggests for importing it ([Import suggestions](#import-suggestions)). Each rule here has a test in `tests/catalog.rs`, `tests/releases.rs` or `tests/tracks.rs`, or next to its code. While the port ran, a script also checked them against slunk's backend.
 
 - **Lists** share one repository (`repo/lists.rs`) and one set of functions, with a `ListKind`. Names are cleaned like other text, and unique in their list ignoring case, which the database enforces: "There's already one with that name, ignoring case". Renaming an unknown one is `NotFound`: "There's no format 12".
 - **Listing** sorts by `name`, ignoring case, or by `id`, and searches the name ignoring ASCII case. Artists and labels then sort by id, and their search matches an alternate name too, so "福居" finds Ryo Fukui. Lists of each have their own sort error: "Artists can't be sorted by picture".
@@ -319,7 +312,7 @@ node crates/slunk/tests/fixtures/languages/generate.ts
 
 ## The tagging context
 
-`crates/slunk/src/tagging/` holds tag definitions and their values on releases and tracks. Each type, `text`, `number` or `date`, has its own definition table, so the same id exists once per type, and every function takes the type with the id. Each type also has a value table per owner, release or track (`release_text_tags`, `track_text_tags`, …). Releases and tracks share the definitions, so one Genre tag works on both. `repo/tags.rs` serves all of them. Each rule here has a test in `tests/tagging.rs`, or next to its code. Until phase 6, a script also checked them against slunk's backend.
+`crates/slunk/src/tagging/` holds tag definitions and their values on releases and tracks. Each type, `text`, `number` or `date`, has its own definition table, so the same id exists once per type, and every function takes the type with the id. Each type also has a value table per owner, release or track (`release_text_tags`, `track_text_tags`, …). Releases and tracks share the definitions, so one Genre tag works on both. `repo/tags.rs` serves all of them. Each rule here has a test in `tests/tagging.rs`, or next to its code. While the port ran, a script also checked them against slunk's backend.
 
 - **Listing** shows one type's tags, or every type's together. It sorts by `name`, ignoring case, or by `id`, and ties go text, number, date. The search matches part of the name. Another sort is refused: "Tags can't be sorted by multiple".
 - **Names** are cleaned like other text, and unique across types, ignoring case. Each type's table enforces its own names ("There's already one with that name, ignoring case"), and the context checks the other two types when a tag is created or renamed: "There's already a number tag named Score". A blank name is the database's CHECK.
@@ -345,7 +338,7 @@ node crates/slunk/tests/fixtures/languages/generate.ts
   - numbers and dates: `equals`, or `min` and `max`, both included: "A number tag filter takes a value, or a range";
   - a date covers its whole year, month or day, so `equals: "2024"` is all of 2024, and `max: "2024-03"` runs through March 31.
 
-  `repo::tags::tag_matches()` makes each one a sea-query condition, `releases.id in (select release_id …)` (or `tracks.id`) over the value table, which uses its `(tag_id, value)` index. Several filters must all match, even on the same tag. The release list uses them; the track list still filters through slunk's backend.
+  `repo::tags::tag_matches()` makes each one a sea-query condition, `releases.id in (select release_id …)` (or `tracks.id`) over the value table, which uses its `(tag_id, value)` index. Several filters must all match, even on the same tag. The release list and the track list use them.
 - **Bulk edits** change one tag on many releases at once, in one transaction, and return how many releases changed.
   - `set_tag_on_releases()`: a single-value tag gets the value instead of its old one, and a multi-value tag gets it added. Releases that have it already, ignoring case, are left alone. A blank value: "Type a value to set".
   - `remove_tag_from_releases()`: removes one value, or every value of the tag when none is given.
@@ -373,16 +366,16 @@ node crates/slunk/tests/fixtures/languages/generate.ts
 
 ## The external libraries context
 
-`crates/slunk/src/external/` is the external libraries context ([4_external_libraries.md](../design/4_external_libraries.md)): a selection of the library, for a folder or an iPod. It has the mapping, from phase 0, a track's tags as every external library writes them and its path in a folder library; from phase 1, external libraries, their rules, what they come to, and what that will take; from phase 2, syncing a folder library; and from phase 3, syncing an iPod. Each rule here has a test in `tests/external.rs`, `tests/external_libraries.rs` or `tests/external_sync.rs`, or next to its code.
+`crates/slunk/src/external/` is the external libraries context: a selection of the library, for a folder or an iPod. It has the mapping, a track's tags as every external library writes them and its path in a folder library; external libraries, their rules, what they come to, and what that will take; syncing a folder library; and syncing an iPod. Each rule here has a test in `tests/external.rs`, `tests/external_libraries.rs` or `tests/external_sync.rs`, or next to its code.
 
-It reads the catalog's and the tags' tables itself, through their repositories, with one connection ([4_external_libraries.md Appendix E](../design/4_external_libraries.md#appendix-e-the-context-reads-the-catalog-itself)).
+It reads the catalog's and the tags' tables itself, through their repositories, with one connection, so a sync's plan reads everything it needs in one read transaction, which the catalog's methods, each taking the connection on its own, can't give.
 
 ### External libraries
 
 An external library is a destination, a selection and a profile (`external/repository.rs`; [reference/database.md](../reference/database.md#external-libraries)).
 - **Creating** one gives it a UUID, version 4, from `/dev/urandom`, which its destination's manifest will name it by. Names are cleaned like other text, and unique ignoring case, which the database enforces: "There's already one with that name, ignoring case".
 - **Its kind** is a folder or an iPod, and can't change: "An external library can't change from a folder to an iPod, or back". An unknown id is `NotFound`: "There's no external library 12".
-- **A folder library's folder** is an absolute path, resolved lexically, and never where the user's own files are ([4_external_libraries.md §3.1](../design/4_external_libraries.md#31-its-destination)). Refused: none ("A folder library needs a folder"), a relative one, the library's own folder, one inside it, one that holds it, and one that holds a registered file, which is a range on the path index, as for browsing. A folder belongs to one external library, which the database enforces: "Another external library uses that folder".
+- **A folder library's folder** is an absolute path, resolved lexically, and never where the user's own files are, since a sync writes there ([What liquidslunk writes](../README.md#what-liquidslunk-writes)). Refused: none ("A folder library needs a folder"), a relative one, the library's own folder, one inside it, one that holds it, and one that holds a registered file, which is a range on the path index, as for browsing. A folder belongs to one external library, which the database enforces: "Another external library uses that folder".
 - **Its profile:** the format lossless files become, `original`, `flac`, `alac` or `aac`; AAC's bitrate, 128 to 320 kbps; CD resolution; a path template, checked, and the default when it's blank; and covers: embedded or not, their size, 100 to 3000 pixels, and a `cover.jpg` or not.
 - **An iPod's** profile is what it plays: Apple Lossless or AAC ("An iPod plays Apple Lossless or AAC"), at CD resolution, with no folder, template, embedded covers or `cover.jpg`, whatever's given. Its iPod is the one connected at its first sync ([Syncing an iPod](#syncing-an-ipod)).
 - **Its destination** (`destination()`) is connected when a folder library's folder is there and its manifest names this external library, or it has none yet; missing when the folder isn't there; and elsewhere when its manifest names another external library, which a sync refuses: "This folder belongs to another external library, Car." An iPod library's is the mounted iPod whose manifest names it, or else the only one with no manifest that liquidslunk syncs; with several of those, it's `Several`, and a sync is refused until all but one are ejected. The manifest's identity is read again only when its size or mtime changes, so the sidebar's dots don't read it each time.
@@ -408,11 +401,11 @@ A track is in an external library when a rule includes it and no rule leaves it 
 - a release: its own rule or an artist's, even with no tracks yet, unless it's left out; or else a tag value's that brings in all its tracks; or else only some of its tracks, through their own rules;
 - an artist: the external libraries with a rule for it.
 
-**What it will take** (`contents()`): its releases, its tracks, and an estimate of their size (`estimated_size()`, `external/estimate.rs`), by what each source becomes ([4_external_libraries.md §5.2](../design/4_external_libraries.md#52-what-each-source-becomes)): a lossless file that becomes AAC takes its duration at the bitrate; anything else, copied or lossless, its own size. An `.m4a` counts at its own size, since its extension doesn't say whether it's AAC or Apple Lossless, and covers aren't counted. Tracks a sync will leave out are counted apart: APE, WavPack and Musepack except in a folder library that keeps the originals, and DSF, DFF and WMA always. `sample_track()` gives a track to show the path template with: the first one in it, or else the catalog's newest.
+**What it will take** (`contents()`): its releases, its tracks, and an estimate of their size (`estimated_size()`, `external/estimate.rs`), by what each source becomes ([Syncing a folder library](#syncing-a-folder-library)): a lossless file that becomes AAC takes its duration at the bitrate; anything else, copied or lossless, its own size. An `.m4a` counts at its own size, since its extension doesn't say whether it's AAC or Apple Lossless, and covers aren't counted. Tracks a sync will leave out are counted apart: APE, WavPack and Musepack except in a folder library that keeps the originals, and DSF, DFF and WMA always. `sample_track()` gives a track to show the path template with: the first one in it, or else the catalog's newest.
 
 ### Syncing a folder library
 
-A sync works out a plan, shows it, then carries it out ([4_external_libraries.md §8](../design/4_external_libraries.md#8-syncing)). `plan_sync()` keeps the plan it works out, and `sync()` runs that plan, by its id: a plan that isn't the last one shown is refused ("The plan is out of date. Look at it again."), and so is one whose folder's manifest changed since.
+A sync works out a plan, shows it, then carries it out. `plan_sync()` keeps the plan it works out, and `sync()` runs that plan, by its id: a plan that isn't the last one shown is refused ("The plan is out of date. Look at it again."), and so is one whose folder's manifest changed since.
 
 **What each source becomes** (`convert.rs`), read from the file's headers with lofty, not from its extension, since an `.m4a` may be AAC or Apple Lossless:
 
@@ -429,7 +422,7 @@ A sync works out a plan, shows it, then carries it out ([4_external_libraries.md
 **Converting** runs `/usr/bin/afconvert` directly, never through a shell, reading the source and writing into the sync's temporary folder:
 - **AAC** is `-d aac -b <bitrate> -s 2 -q 127`: constrained VBR, at the encoder's best quality, in an M4A, at 44.1 or 48 kHz when the source is above 48 kHz. Apple's encoder takes at most some bitrate for a sample rate and channels (8 kHz mono, 24 kbps; 44.1 kHz mono, 256 kbps), so when it refuses the profile's, the next lower of 320, 256, 192, 160, 128, 96, 64, 48, 32, 24, 16 and 8 kbps is tried.
 - **Apple Lossless and FLAC** always name their bit depth (`-d alac/1` is 16-bit, `/2` 20-bit, `/3` 24-bit): otherwise `afconvert` makes 32-bit Apple Lossless from a 16-bit FLAC. Lossless transcodes are bit-exact.
-- **Dither:** `afconvert` only rounds when it cuts bits, unless it's asked, so a conversion that cuts bits or changes the sample rate of lossless audio passes `--dither 1`, TPDF ([4_external_libraries.md Appendix F](../design/4_external_libraries.md#appendix-f-afconvert-dithers-only-when-asked)).
+- **Dither:** `afconvert` only rounds when it cuts bits, unless it's asked, so a conversion that cuts bits or changes the sample rate of lossless audio passes `--dither 1`, TPDF. Without it, a 1 kHz tone at 0.4 of a 16-bit step, in a 24-bit file, came out as digital silence; with it, at 0.404 of a step, in ±1 of noise.
 - A file `afconvert` can't convert is a failure of that file, with what it said, and the rest of the sync goes on.
 
 **Covers** (`covers.rs`): a release's cover, at most the profile's size on its longest side, never enlarged, as a JPEG at quality 90, transparent pixels on white. A JPEG already within the size is written as it is. A plan checks a cover from its headers only, and lists one it can't read, or in another format than JPEG, PNG, GIF, BMP, TIFF or WebP, as left out, with its reason. The tracks are written without it.
@@ -445,7 +438,7 @@ A sync works out a plan, shows it, then carries it out ([4_external_libraries.md
 - a track's file: its track, its audio key (the source's SHA-256, what it became, like "aac 256 kbps", and liquidslunk's way of converting, `CONVERSION_VERSION`; the encoder, macOS's version, is recorded but not compared, so an update doesn't convert everything again), its tags as written (`Tags::fields()`), and its cover's key (the cover's SHA-256 and its size);
 - a `cover.jpg`: its release and its cover's key.
 
-A sync appends each change to `.liquidslunk/journal.jsonl` before it renames a file into place, or after it removes one, and waits until the line is on the disk. The manifest is read with its journal replayed, a last line cut short left out, and rewritten atomically, a temporary file then a rename, when a sync ends, which removes the journal. So a sync interrupted by a card pulled out carries on from its last file ([4_external_libraries.md Appendix I](../design/4_external_libraries.md#appendix-i-a-journal-between-checkpoints)). A file is as written when its size and mtime are: FAT32 keeps local time, so a shift of whole quarter-hours, up to a day, from a change of time zone or of daylight saving time, doesn't count.
+A sync appends each change to `.liquidslunk/journal.jsonl` before it renames a file into place, or after it removes one, and waits until the line is on the disk. The manifest is read with its journal replayed, a last line cut short left out, and rewritten atomically, a temporary file then a rename, when a sync ends, which removes the journal. So a sync interrupted by a card pulled out carries on from its last file. Rewriting the whole manifest after each file instead would cost too much on a slow card: it's a few hundred kilobytes for a few hundred tracks. A file is as written when its size and mtime are: FAT32 keeps local time, so a shift of whole quarter-hours, up to a day, from a change of time zone or of daylight saving time, doesn't count.
 
 **The plan** (`plan.rs`, a plain function of what should be there and what is):
 - **What should be there** is read in one read transaction (`Store::read()`): the tracks the rules come to, their tags, their files and their releases' covers. Then the connection is let go, and the sources' headers are read, several at once.
@@ -470,14 +463,14 @@ A sync appends each change to `.liquidslunk/journal.jsonl` before it renames a f
 - **One sync at a time:** another is refused while one runs. The library can be browsed and edited meanwhile: the sync works from the plan.
 - **Failures:** a file that can't be converted or tagged is listed, and the sync goes on. A folder that can't be written ends the sync with its error, keeping what's done. A folder that's gone, a card pulled out, says so: "/Volumes/CARD/Music isn't there any more: its disk may have been ejected or unplugged. Connect it again, and the next sync carries on from there."
 - **Never outside the folder:** a sync makes folders only inside its destination's folder, never the folder itself or anything above it, so a card that's gone isn't made again on the Mac's own disk.
-- **No AppleDouble files** (`folder.rs`). macOS gives every file and folder a process creates an extended attribute, `com.apple.provenance`, which can't be removed, and FAT32 and exFAT keep extended attributes in a `._` file beside the file, which some players list as a broken track. Opening an existing file for writing makes one too, while a rename doesn't. So every file is written new, never rewritten in place, and the `._` file of each file or folder liquidslunk makes, and of the journal at each append, is deleted as soon as it's made ([4_external_libraries.md Appendix H](../design/4_external_libraries.md#appendix-h-appledouble-files)).
+- **No AppleDouble files** (`folder.rs`). macOS gives every file and folder a process creates an extended attribute, `com.apple.provenance`, which can't be removed, and FAT32 and exFAT keep extended attributes in a `._` file beside the file, which some players list as a broken track. Opening an existing file for writing makes one too, while a rename doesn't. So every file is written new, never rewritten in place, and the `._` file of each file or folder liquidslunk makes, and of the journal at each append, is deleted as soon as it's made. After a sync of 283 tracks to an exFAT card image, it had no `._` files.
 - **Temporary files:** each sync has its own folder in the system's temporary folder, `liquidslunk-sync-<pid>-<n>`, with a lock held while it runs, and removed when it ends. At launch, those whose lock no sync holds are removed (`scratch::remove_leftovers()`).
 
 **Ejecting** (`eject()`): a folder on a volume other than the Mac's own disk, `/` and the volumes in `/System/Volumes`, or an iPod, is ejected with `diskutil eject`, so it can be unplugged. Not while a sync runs.
 
 ### Syncing an iPod
 
-An iPod library syncs the iPod with video, 5th and 5.5th generations ([4_external_libraries.md §7](../design/4_external_libraries.md#7-the-ipod)). What liquidslunk reads and writes on it, byte by byte, is in [reference/ipod.md](../reference/ipod.md).
+An iPod library syncs the iPod with video, 5th and 5.5th generations. What liquidslunk reads and writes on it, byte by byte, is in [reference/ipod.md](../reference/ipod.md).
 
 **Finding it** (`ipod/mod.rs`): an iPod is a volume in `/Volumes` with an `iPod_Control/iTunes` folder, which it has when its disk use is on. Its model is read from `iPod_Control/Device/SysInfo`: another model is refused ("liquidslunk syncs only the iPod with video (5th and 5.5th generations). This one is model MB029."), and an iPod without one is synced with a warning. `mounted_ipods()` lists them, each with the external library its manifest names. An iPod library's iPod is found as [External libraries](#external-libraries) says; it gets its manifest, `iPod_Control/iTunes/liquidslunk.json`, at its first sync, and is recognized by it wherever it mounts. Tests look in another folder than `/Volumes` (`External::with_volumes()`).
 
@@ -485,7 +478,7 @@ An iPod library syncs the iPod with video, 5th and 5.5th generations ([4_externa
 - **Paths:** the iPod names its own files. A new file goes in one of the `F00` to `F49` music folders already there, at random, as `LSK` and four random letters and digits, with its extension in lowercase. A file written again, converted or restored, gets a new path, and the old file goes once the database no longer lists it. There are no moves, no `cover.jpg`s, and no paths of someone else's to leave alone.
 - **What is there** is the manifest checked against the disk, and against the iTunesDB: a file it lists but the database doesn't, as after an iPod unplugged midway, is retagged with "Listed on the iPod: No → Yes". A sync cut short can leave two files for a track: the one that's best kept stays, and the other is removed.
 - **A retag** changes only the database. **Covers** are the iPod's artwork, made at 200 pixels, so a cover's key is its SHA-256 and 200.
-- **Tracks from somewhere else,** those the iTunesDB lists at paths the manifest doesn't, are the plan's `other`. A sync is refused unless the user agrees to erase them ("This iPod has 1,234 tracks from somewhere else. Agree to erase them to sync it."), with `sync`'s `erase` ([4_external_libraries.md §7.8](../design/4_external_libraries.md#78-an-ipod-with-other-music)).
+- **Tracks from somewhere else,** those the iTunesDB lists at paths the manifest doesn't, are the plan's `other`. A sync is refused unless the user agrees to erase them ("This iPod has 1,234 tracks from somewhere else. Agree to erase them to sync it."), with `sync`'s `erase`.
 - **What each source becomes** is as in a folder library with the iPod's format, and Ogg Vorbis and Opus become AAC. Every conversion passes `--soundcheck-generate`.
 
 **Running it** (`ipod/sync.rs`). The iPod reads only its database, which is written last, so an iPod unplugged midway still plays what it played before:
@@ -527,9 +520,9 @@ An iPod library syncs the iPod with video, 5th and 5.5th generations ([4_externa
 
 - **Artists are named as credited:** the name printed on each link. An "&" is only ever part of a name.
 - **A field with no value isn't written:** a list is empty, and anything else `None`.
-- **Tag values and credit lines aren't read.** Which tags exist and what roles say is up to the user, so no rule turns them into fields (4_external_libraries.md §4.3).
+- **Tag values and credit lines aren't read.** Which tags exist and what roles say is up to the user, so no rule turns them into fields: a rule from a tag's name or a role's spelling to a field would guess. So the genre, grouping, comment, rating and composer fields stay empty, and so do the iPod's Genres and Composers menus and its stars. Formats and media are part of the schema, so they're written as they're named.
 
-**Sort fields**, for the artist, the album artist, the album and the title, are what players sort by instead of a name or title that isn't in Latin script ([4_external_libraries.md Appendix A](../design/4_external_libraries.md#appendix-a-sort-fields-when-a-language-isnt-known)):
+**Sort fields**, for the artist, the album artist, the album and the title, are what players sort by instead of a name or title that isn't in Latin script, so a Japanese release sorts by its transliteration, not after Z:
 - **Latin script:** a text is in Latin script when none of its characters belongs to another script, by ICU's script property. Digits, punctuation and spaces belong to none (`is_latin()`).
 - **A title** sorts as its first alternate title that's a Latin-script form of it: in Latin script, with a language tagged with the Latin script, in the title's own language, like `ja-Latn` for `ja`, or in any language when the title's own isn't known. A track's title without a language has its release's. So "初夏" sorts as "Shoka", in `ja-Latn`, and not as its translation, "Early Summer", in `en`.
 - **A name an artist is credited with** sorts as the artist's main name when that's in Latin script, whatever its language, or else as the first of the artist's alternate names that's a form of it. A real name isn't one.
@@ -606,7 +599,7 @@ The first eight are slunk's: its Kysely migrations' statements, copied from what
 
 The rules:
 - Never edit a migration once it has been committed. Write a new one.
-- A new migration is a one-way door: slunk refuses a library with a migration it doesn't have, so it can't open that library again, apart from its backups (design §8).
+- A new migration is a one-way door: slunk refuses a library with a migration it doesn't have, so it can't open that library again, apart from its backups.
 - Every `down` undoes its `up`, or fails with an explicit "irreversible" error.
 - A migration runs inside the runner's transaction, so it never starts its own.
 - Migrations don't use app code, which changes over time while a migration must not. The exception is `rebuild_table`, which is part of the migration system.
@@ -704,7 +697,7 @@ Their conventions:
 - **DTOs** derive `Serialize` (or `Deserialize`) and `specta::Type`, with `#[serde(rename_all = "camelCase")]`. Enums are tagged: `{ type: "created", … }`. A DTO has the fields and names the GraphQL query it replaced asked for, so components changed little in the port: a file's `type`, `sizeBytes` and `uses[].entityId`. A shared one is flattened in with `#[serde(flatten)]`, as `FileDetails` holds a `File`, and an update's arguments hold its input: `UpdateArtistArgs` is `{ id, ...ArtistInput }`.
   - No serde attribute that makes a type's two directions differ, like `skip_serializing_if` or `deserialize_with`: specta then splits it into `…_Serialize` and `…_Deserialize` types. Where a field is there on one page and not another, there are two DTOs, like `CreditedArtist` and `NamedCreditedArtist`, with the artist's alternate names.
   - A field an update can leave out, rather than set to null, is a `Given<T>`, which has its own `Deserialize`: left out, `Given(None)`, and given, even as null, `Given(Some(…))`. A release's `titleLanguage` is one.
-- **Related rows** are loaded the way slunk's DataLoaders loaded them (design §5.4): a page's rows first, then one query per kind of row they refer to. `Related` (`commands/catalog/mod.rs`) loads artists, the names they're credited with, labels, formats and media for a page, and builds their DTOs.
+- **Related rows** are loaded the way slunk's DataLoaders loaded them: a page's rows first, then one query per kind of row they refer to. `Related` (`commands/catalog/mod.rs`) loads artists, the names they're credited with, labels, formats and media for a page, and builds their DTOs.
 - **Pickers** have their own small commands, like `artist_options`, which return the first 20 matches by name.
 - **Optional arguments** are `Option`s with `#[serde(default)]` and `#[specta(optional)]`, so the frontend leaves them out: `useCommand("files", { sort: "path" })`.
 - **Ids** are `i64`, exported to TypeScript as `number` (`dangerously_cast_bigints_to_number()`): SQLite's ids stay far below 2^53.
@@ -761,7 +754,7 @@ The app's CSP allows `slunk:` and `http://slunk.localhost` in `img-src` and `med
 
 ### The menu bar
 
-`menu.rs` builds the menu bar ([2_player.md §8.2](../design/2_player.md#82-the-controls-menu)): Tauri's default menu, with a Controls menu between View and Window, as in Music. The player is in the webview, so the menu only passes clicks to it, and shows what it's told.
+`menu.rs` builds the menu bar: Tauri's default menu, with a Controls menu between View and Window, as in Music. The player is in the webview, so the menu only passes clicks to it, and shows what it's told.
 - **Its items:** Play, or Pause while the player plays; Next and Previous; Shuffle, checked while it's on; Repeat, a submenu of Off, All and One, the current one checked; and Volume Up and Volume Down. They're all off while nothing is queued, and at launch, until the player says otherwise.
 - **Key equivalents:** ⌘→ for Next, ⌘← for Previous, ⌘↑ and ⌘↓ for the volume. Play has none, since Space would take it from every field. WebKit gives the page a key first, and the menu gets it only if the page leaves it: a field moves its caret, and the player handles the rest itself ([The player](frontend.md#the-player)).
 - **A click** emits `PlayerControl`, a typed event, to the webview: `{ type: "toggle" }`, `next`, `previous`, `shuffle`, `{ type: "repeat", mode }`, `volumeUp` or `volumeDown`. It's tauri-specta's, so it's in the bindings, as `events.playerControl`. A check item checks or unchecks itself when it's clicked, so the click handler puts it back as it was, and the player then says what's changed.
@@ -775,4 +768,4 @@ The app's CSP allows `slunk:` and `http://slunk.localhost` in `img-src` and `med
 
 - **Formatting and linting:** `cargo fmt`, and `cargo clippy --workspace --all-targets` with no warnings.
 - **Tests:** `cargo test --workspace`. Tests make their own temporary databases and files, and never read `dev-library/`. Audio and language tag tests use the committed fixtures in `crates/slunk/tests/fixtures/`.
-- **Comments** cite the base design as "design §5.6", and a later design by its file name, as "4_external_libraries.md §4". slunk's docs aren't in the repository, so they aren't cited.
+- **Comments** never cite a design doc. One that needs more than it says points to the section of `docs/` that describes it, by the doc's file name and the section's heading: `(backend.md, "Running migrations")`. A module's comment points once, and what's in the module points again only to another section ([Design docs and these docs](../README.md#design-docs-and-these-docs)). slunk's docs aren't in the repository, so they aren't cited either.

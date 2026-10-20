@@ -23,7 +23,7 @@ import { textProps } from "@/lib/languages"
 import { useCommand } from "@/lib/query"
 
 /**
- * "Tags as exported", on the track page (phase 0 of 4_external_libraries.md):
+ * "Tags as exported", on the track page (frontend.md, "Tags as exported"):
  * the track's tags as every external library writes them, and the path the
  * default template gives it. Closed by default, and read only once opened.
  */

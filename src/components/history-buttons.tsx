@@ -14,9 +14,9 @@ function position() {
 }
 
 /**
- * Back and forward (design §7.1): a desktop window has no browser buttons,
- * and going back is how a list is found again with its page, sort and
- * filters.
+ * Back and forward (frontend.md, "Routes and pages"): a desktop window has no
+ * browser buttons, and going back is how a list is found again with its page,
+ * sort and filters.
  */
 export function HistoryButtons() {
   const navigate = useNavigate()

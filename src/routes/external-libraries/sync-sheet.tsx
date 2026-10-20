@@ -53,11 +53,11 @@ const SECTIONS: [SyncAction, string][] = [
 ]
 
 /**
- * Sync, in a sheet (4_external_libraries.md §11): the plan first, with
+ * Sync, in a sheet (frontend.md, "External libraries"): the plan first, with
  * what it adds, updates and removes, what it leaves out and whether it fits,
- * and on an iPod, the tracks from somewhere else its first sync erases
- * (§7.8); then its progress, which can be cancelled; then how it went. The
- * sheet can be closed while it runs, and the sync goes on.
+ * and on an iPod, the tracks from somewhere else its first sync erases; then
+ * its progress, which can be cancelled; then how it went. The sheet can be
+ * closed while it runs, and the sync goes on.
  */
 export function SyncSheet({
   library,

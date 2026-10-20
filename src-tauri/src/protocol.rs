@@ -1,7 +1,7 @@
-//! `slunk://localhost/files/:id` (design §5.5): a registered file's bytes,
-//! read-only, for `<img>` and `<audio>`, as slunk's `GET /raw/files/:id` served
-//! them. An unknown id, or a file missing on disk, gets a 404. Range requests
-//! get a 206, so audio can seek.
+//! `slunk://localhost/files/:id` (backend.md, "Serving files"): a registered
+//! file's bytes, read-only, for `<img>` and `<audio>`, as slunk's
+//! `GET /raw/files/:id` served them. An unknown id, or a file missing on disk,
+//! gets a 404. Range requests get a 206, so audio can seek.
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};

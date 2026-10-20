@@ -1,5 +1,5 @@
 // Generates the audio fixtures: a second or so of silence in each format this
-// Mac makes without ffmpeg, with tags set (design §6.5, Appendix D).
+// Mac makes without ffmpeg, with tags set (backend.md, "Audio").
 //
 // expected.json is what slunk's reader, with music-metadata, read from each
 // file, which tests/audio.rs checks lofty's reading against. It was written by

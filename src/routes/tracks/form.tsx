@@ -74,7 +74,7 @@ export function TrackForm() {
   const { id } = useParams()
   const [params] = useSearchParams()
   const trackId = id === undefined ? undefined : idParam(id)
-  // A form starts from fresh data (design §7.2)
+  // A form starts from fresh data (frontend.md, "Commands")
   const { data, error } = useCommand(
     "trackForm",
     trackId === undefined

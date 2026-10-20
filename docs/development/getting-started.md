@@ -44,7 +44,7 @@ npm run tauri dev -- -- -- --library /absolute/path/to/slunk.db
 npm run tauri build
 ```
 
-This builds the app in release mode, then bundles it: `target/release/bundle/macos/liquidslunk.app`, and a disk image of it in `target/release/bundle/dmg/`. Both are signed ad hoc, which is enough to run them on this Mac (design §12). The disk image's script asks Finder to lay out its window, which needs the terminal allowed to control Finder (System Settings › Privacy & Security › Automation). Without that, `CI=true npm run tauri build` makes the image without the layout. Sharing the app needs a Developer ID and notarization, which aren't set up. To install it, drag `liquidslunk.app` to Applications, from the disk image or from Finder.
+This builds the app in release mode, then bundles it: `target/release/bundle/macos/liquidslunk.app`, and a disk image of it in `target/release/bundle/dmg/`. Both are signed ad hoc, which is enough to run them on this Mac. The disk image's script asks Finder to lay out its window, which needs the terminal allowed to control Finder (System Settings › Privacy & Security › Automation). Without that, `CI=true npm run tauri build` makes the image without the layout. Sharing the app needs a Developer ID and notarization, which aren't set up. To install it, drag `liquidslunk.app` to Applications, from the disk image or from Finder.
 
 A release build keeps its settings in `settings.json`, in `~/Library/Application Support/com.liquidslunk.desktop/`, and asks for a library at its first launch. It doesn't take `--library`: that's for debug builds. `npm run tauri build -- --no-bundle` builds only `target/release/liquidslunk`, to check something only a release build does.
 

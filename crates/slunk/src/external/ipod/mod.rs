@@ -1,17 +1,17 @@
-//! The iPod (4_external_libraries.md §7): the iPod with video, 5th and 5.5th
-//! generations, with Apple's firmware. It's found as a mounted volume with an
-//! `iPod_Control/iTunes` folder, and written as iTunes wrote it: its music
-//! files under names of liquidslunk's own in `iPod_Control/Music`, its
-//! iTunesDB, and its artwork. `docs/reference/ipod.md` describes the
-//! formats as they're written here.
+//! The iPod (backend.md, "Syncing an iPod"): the iPod with video, 5th and
+//! 5.5th generations, with Apple's firmware. It's found as a mounted volume
+//! with an `iPod_Control/iTunes` folder, and written as iTunes wrote it: its
+//! music files under names of liquidslunk's own in `iPod_Control/Music`, its
+//! iTunesDB, and its artwork. `docs/reference/ipod.md` describes the formats
+//! as they're written here.
 //!
-//! - `itunesdb`: the iTunesDB, read and written (§7.4).
-//! - `artwork`: the ArtworkDB and its thumbnails (§7.5).
+//! - `itunesdb`: the iTunesDB, read and written.
+//! - `artwork`: the ArtworkDB and its thumbnails.
 //! - `audio`: what the database needs of each file: Sound Check, and
-//!   gapless playback's data (§7.6).
-//! - `play_counts`: what the iPod counted since the last sync (§7.7).
-//! - `sysinfo`: which iPod it is (§7.1).
-//! - `sync`: running a plan on an iPod (§8.3).
+//!   gapless playback's data.
+//! - `play_counts`: what the iPod counted since the last sync.
+//! - `sysinfo`: which iPod it is.
+//! - `sync`: running a plan on an iPod.
 
 use std::collections::HashSet;
 use std::fs::File;

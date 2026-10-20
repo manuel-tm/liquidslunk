@@ -11,7 +11,8 @@ publish.workspace = true
 icu_collator = "2.3.1"
 icu_locale = "2.3.1"
 icu_properties = "2.3.0"
-# Covers: the formats 4_external_libraries.md §4.4 reads, without AVIF
+# Covers: the formats a sync reads, without AVIF (backend.md, "Syncing a folder
+# library")
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "tiff", "webp"] }
 lofty = "0.25.4"
 rusqlite.workspace = true

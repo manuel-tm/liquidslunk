@@ -28,7 +28,8 @@ impl ExternalKind {
     }
 }
 
-/// What lossless sources become. Lossy ones are copied (§5.2).
+/// What lossless sources become. Lossy ones are copied (backend.md, "Syncing
+/// a folder library").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OutputFormat {
     /// Kept as they are: a folder library only
@@ -62,7 +63,7 @@ impl OutputFormat {
     }
 }
 
-/// What an external library's files are (§3.3).
+/// What an external library's files are (backend.md, "External libraries").
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Profile {
     pub format: OutputFormat,

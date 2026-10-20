@@ -1,6 +1,6 @@
-//! The app (design §5.2): the Tauri builder, with its plugins, the open
-//! library in its state, the file protocol, the commands and the menu bar. The domain is in
-//! `crates/slunk`, which doesn't depend on Tauri.
+//! The app (backend.md, "Structure"): the Tauri builder, with its plugins,
+//! the open library in its state, the file protocol, the commands and the
+//! menu bar. The domain is in `crates/slunk`, which doesn't depend on Tauri.
 
 use tauri::{Manager, RunEvent};
 
@@ -24,7 +24,8 @@ pub fn run() {
         )
         .expect("failed to write the TypeScript bindings");
 
-    // One window: a second launch focuses it instead (design §6.4)
+    // One window: a second launch focuses it instead (backend.md, "Choosing
+    // the library")
     let builder = tauri::Builder::default().plugin(tauri_plugin_single_instance::init(
         |app, _arguments, _folder| {
             if let Some(window) = app.get_webview_window("main") {
@@ -65,7 +66,8 @@ pub fn run() {
 }
 
 /// `--library <path>`, in debug builds only, opens a library without touching
-/// the settings, for scripts and screenshots (design §6.5).
+/// the settings, for scripts and screenshots (backend.md, "Choosing the
+/// library").
 #[cfg(debug_assertions)]
 fn open_library_argument(libraries: &Libraries) {
     let mut arguments = std::env::args().skip_while(|argument| argument != "--library");

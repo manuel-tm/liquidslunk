@@ -1,7 +1,7 @@
-//! `iPod_Control/iTunes/Play Counts` (4_external_libraries.md §7.7): what the
-//! iPod counted since the database was last written, an entry per track in
-//! the database's order. liquidslunk adds them to the database's counts when
-//! it writes it again, and then removes the file, as iTunes did.
+//! `iPod_Control/iTunes/Play Counts` (ipod.md, "Play Counts"): what the iPod
+//! counted since the database was last written, an entry per track in the
+//! database's order. liquidslunk adds them to the database's counts when it
+//! writes it again, and then removes the file, as iTunes did.
 
 use super::bytes::Reader;
 use super::itunesdb::Stats;

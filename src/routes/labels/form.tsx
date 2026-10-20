@@ -32,7 +32,7 @@ import { NotFound } from "@/routes/not-found"
 export function LabelForm() {
   const { id } = useParams()
   const labelId = idParam(id)
-  // A form starts from fresh data (design §7.2)
+  // A form starts from fresh data (frontend.md, "Commands")
   const { data: label, error } = useCommand(
     "label",
     { id: labelId ?? 0 },

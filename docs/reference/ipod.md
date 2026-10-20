@@ -2,7 +2,7 @@
 
 > Keep this page up to date: any change to what liquidslunk reads or writes on an iPod updates it in the same change.
 
-This is what liquidslunk reads and writes on an iPod with video, 5th and 5.5th generations, as it's built in `crates/slunk/src/external/ipod/` ([4_external_libraries.md §7](../design/4_external_libraries.md#7-the-ipod)). It's written down here so nothing depends on libgpod's source or the iPodLinux wiki staying online, which were the references for the formats. liquidslunk's code is its own: libgpod's isn't copied.
+This is what liquidslunk reads and writes on an iPod with video, 5th and 5.5th generations, as it's built in `crates/slunk/src/external/ipod/`. It's written down here so nothing depends on libgpod's source or the iPodLinux wiki staying online, which were the references for the formats. liquidslunk's code is its own: libgpod's isn't copied.
 
 How a sync uses all this: [development/backend.md](../development/backend.md#syncing-an-ipod).
 
@@ -163,7 +163,7 @@ Its type at 0x0c. Then, after the header: its encoding (1 for UTF-16, 2 for UTF-
 | 28 | Album's sort form |
 | 29 | Album artist's sort form |
 
-They're 4_external_libraries.md §4.1's mapping: Title, Artist, Album, Album artist, and the sort fields, with the year from Date, Compilation, and the track and disc numbers with their totals. No genre, composer or comment is written ([§4.3](../design/4_external_libraries.md#43-what-isnt-written)).
+They're the mapping every external library writes ([A track's tags](../development/backend.md#a-tracks-tags)): Title, Artist, Album, Album artist, and the sort fields, with the year from Date, Compilation, and the track and disc numbers with their totals. No genre, composer or comment is written, since tag values and credit lines aren't read.
 
 ### The master playlist
 

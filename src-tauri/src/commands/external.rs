@@ -1,4 +1,4 @@
-//! The external libraries context's commands (4_external_libraries.md §10):
+//! The external libraries context's commands (backend.md, "Commands"):
 //! external libraries, their rules, what they come to and what that will
 //! take, and where the catalog's releases, artists and tracks are in them;
 //! a track's tags as an external library writes them, with the path a
@@ -519,7 +519,7 @@ pub struct ExportedTagsArgs {
 }
 
 /// A track's tags, as every external library writes them, whatever its
-/// format (4_external_libraries.md §4.1). A field with no value isn't
+/// format (backend.md, "A track's tags"). A field with no value isn't
 /// written: it's null or empty.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -730,7 +730,7 @@ pub async fn eject_external_library(app: AppHandle, args: IdArgs) -> Result<(), 
 }
 
 /// The iPods mounted now, each with its free space and the external library
-/// it belongs to, for a new iPod library (4_external_libraries.md §7.2).
+/// it belongs to, for a new iPod library (backend.md, "Syncing an iPod").
 #[tauri::command]
 #[specta::specta]
 pub async fn mounted_ipods(app: AppHandle) -> Result<Vec<MountedIpod>, CommandError> {

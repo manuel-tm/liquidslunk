@@ -1,5 +1,5 @@
-//! Choosing the library (design §6): its status, opening, creating, closing,
-//! and the recent ones.
+//! Choosing the library (backend.md, "Choosing the library"): its status,
+//! opening, creating, closing, and the recent ones.
 
 use std::path::PathBuf;
 

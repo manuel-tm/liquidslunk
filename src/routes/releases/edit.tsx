@@ -90,7 +90,7 @@ export function DetailsTab({
   onSaved: () => void
 }) {
   const releaseId = idParam(id)
-  // A form starts from fresh data (design §7.2)
+  // A form starts from fresh data (frontend.md, "Commands")
   const { data: release, error } = useCommand(
     "release",
     { id: releaseId ?? 0 },

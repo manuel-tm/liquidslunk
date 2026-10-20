@@ -1,6 +1,6 @@
 //! Languages of names and titles: BCP 47 tags, in the canonical form slunk
 //! saved them in, which is what Node 26's `Intl.getCanonicalLocales` gives,
-//! with ICU 78 and CLDR 48 (design §10).
+//! with ICU 78 and CLDR 48 (backend.md, "Languages").
 //!
 //! ICU4X's canonicalizer does most of it. V8 and ICU4C do a few things it
 //! doesn't, which `canonical_locale()` adds: `tests/languages.rs` checks the

@@ -76,7 +76,8 @@ const LIBRARY_QUERIES = [
 
 /**
  * The frame of every tab of an external library: the header with Delete, the
- * tabs, then the tab, once the library is there (4_external_libraries.md §11).
+ * tabs, then the tab, once the library is there (frontend.md, "External
+ * libraries").
  */
 function ExternalLibraryFrame({
   children,
@@ -193,7 +194,7 @@ function Overview({ library }: { library: ExternalLibraryDetails }) {
   const { contents, destination, ipod } = library
   const onIpod = library.kind === "ipod"
   // An iPod is looked for again when the window comes to the front
-  // (4_external_libraries.md §7.2)
+  // (frontend.md, "External libraries")
   useEffect(() => {
     if (!onIpod) return
     const lookAgain = () =>

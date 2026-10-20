@@ -1,5 +1,5 @@
 //! What the iPod's database needs to know of a file it gets
-//! (4_external_libraries.md §7.6), read from the file liquidslunk wrote:
+//! (ipod.md, "Gapless and Sound Check"), read from the file liquidslunk wrote:
 //! its kind, length, bitrate and sample rate; its Sound Check, which
 //! `afconvert` adds to what it makes; and what gapless playback needs, which
 //! iTunes worked out as it copied a file.

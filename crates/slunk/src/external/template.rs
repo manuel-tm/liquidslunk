@@ -1,6 +1,6 @@
-//! Path templates, and names on disk (4_external_libraries.md §6): where a
-//! folder library puts each track, worked out from its tags (§4), so a file's
-//! name and its tags always agree.
+//! Path templates, and names on disk (backend.md, "Path templates"): where a
+//! folder library puts each track, worked out from its tags, so a file's name
+//! and its tags always agree.
 
 use std::collections::{HashMap, HashSet};
 

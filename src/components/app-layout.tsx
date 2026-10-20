@@ -9,9 +9,9 @@ import { useCommand } from "@/lib/query"
 
 /**
  * The app shell: the sidebar, and the page beside it, inside the player
- * (2_player.md §4.1). Without an open library, it sends the user to Welcome
- * (design §6.1). It's keyed by the library, so switching libraries mounts
- * every page and the player again.
+ * (frontend.md, "The player"). Without an open library, it sends the user to
+ * Welcome (frontend.md, "Routes and pages"). It's keyed by the library, so
+ * switching libraries mounts every page and the player again.
  */
 export function AppLayout() {
   const status = useCommand("libraryStatus")

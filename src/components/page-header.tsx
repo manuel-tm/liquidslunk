@@ -18,8 +18,9 @@ import { textProps } from "@/lib/languages"
 export type Crumb = { label: string; to?: string; lang?: string | null }
 
 /**
- * A page's header: back and forward (design §7.1) and its breadcrumb title on
- * the left, and its buttons and tabs (`children`) on the right.
+ * A page's header: back and forward and its breadcrumb title on the left, and
+ * its buttons and tabs (`children`) on the right (frontend.md, "Routes and
+ * pages").
  */
 export function PageHeader({
   crumbs,

@@ -229,7 +229,8 @@ function Heading({ release }: { release: Release }) {
  * Grouped by disc. On a various-artists release, each row starts with the
  * track's artists; a regular release only shows features. Play plays the
  * release, from a random track when shuffled, and a track's button plays it
- * from that track (2_player.md §5.2). Each has a menu that queues them (§5.3).
+ * from that track. Each has a menu that queues them (frontend.md, "The
+ * player").
  */
 function Tracklist({ release }: { release: Release }) {
   const [hideCredits, toggleCredits] = useRemembered(HIDE_CREDITS)

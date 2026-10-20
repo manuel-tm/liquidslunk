@@ -1,6 +1,7 @@
-//! Opening, creating, switching and closing libraries (design §6). A library
-//! is a folder holding a `slunk.db`. The open one is kept in Tauri's state,
-//! with the app's one connection to it and the contexts wired to it.
+//! Opening, creating, switching and closing libraries (backend.md, "Choosing
+//! the library"). A library is a folder holding a `slunk.db`. The open one is
+//! kept in Tauri's state, with the app's one connection to it and the contexts
+//! wired to it.
 
 use std::fs::File;
 use std::io::Read;
@@ -28,7 +29,8 @@ pub struct Library {
     pub db: PathBuf,
     /// The database's folder, which file paths are relative to.
     pub folder: PathBuf,
-    /// The app's one connection (design §5.4), which the contexts share.
+    /// The app's one connection, which the contexts share (backend.md,
+    /// "Structure").
     pub store: Arc<Store>,
     pub media: Arc<Media>,
     pub catalog: Arc<Catalog>,
@@ -90,7 +92,7 @@ pub struct LibraryStatus {
     /// The library the settings open at launch, if any.
     pub saved: Option<SavedLibrary>,
     /// In debug builds, the scratch libraries' folder, `dev-library/`, where
-    /// development libraries belong (design §6.5).
+    /// development libraries belong (getting-started.md, "Running the app").
     pub dev_library: Option<String>,
 }
 
@@ -208,7 +210,7 @@ impl Libraries {
             .collect()
     }
 
-    /// Opens an existing library (design §6.3), closing the open one once the
+    /// Opens an existing library, closing the open one once the
     /// new one is ready. With `remember`, the settings open it at launch.
     pub fn open(
         &self,
@@ -293,7 +295,7 @@ impl Libraries {
 }
 
 /// An existing library: an SQLite database with the migration runner's
-/// table, or an empty one (design §6.3, step 2).
+/// table, or an empty one.
 fn check_library(db: &Path) -> Result<(), CommandError> {
     if !db.exists() {
         return Err(CommandError::invalid(format!(
@@ -331,8 +333,7 @@ fn check_library(db: &Path) -> Result<(), CommandError> {
     Ok(())
 }
 
-/// A folder to create a library in: it exists, and can be written (design
-/// §6.3, step 1).
+/// A folder to create a library in: it exists, and can be written.
 fn check_folder(folder: &Path) -> Result<(), CommandError> {
     if !folder.is_dir() {
         return Err(CommandError::invalid(format!(
@@ -369,7 +370,7 @@ fn writable(folder: &Path) -> bool {
 
 /// A failure while opening, in words Welcome shows. SQLite's WAL doesn't work
 /// on network file systems, so a library there fails with an I/O or locking
-/// error (design §10).
+/// error.
 fn opening_error(error: slunk::Error) -> CommandError {
     let network = matches!(
         &error,

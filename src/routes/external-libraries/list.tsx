@@ -26,7 +26,7 @@ import { useCommand } from "@/lib/query"
 
 /**
  * `/external-libraries`: every external library, by name, with where it goes
- * and whether that's there (4_external_libraries.md §11).
+ * and whether that's there (frontend.md, "External libraries").
  */
 export function ExternalLibraryList() {
   const { data: libraries, error } = useCommand("externalLibraries")

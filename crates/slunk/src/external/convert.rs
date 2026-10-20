@@ -1,7 +1,7 @@
-//! Converting audio (4_external_libraries.md §5): what each source becomes on
-//! a destination, and Core Audio's `afconvert`, which does every conversion.
-//! Everything liquidslunk encodes goes through Apple's encoders, and the
-//! source file is only read.
+//! Converting audio (backend.md, "Syncing a folder library"): what each
+//! source becomes on a destination, and Core Audio's `afconvert`, which does
+//! every conversion. Everything liquidslunk encodes goes through Apple's
+//! encoders, and the source file is only read.
 
 use std::fs;
 use std::path::Path;
@@ -144,7 +144,7 @@ fn read_with_lofty(path: &Path) -> Option<SourceAudio> {
     })
 }
 
-/// What a source becomes on a destination (§5.2).
+/// What a source becomes on a destination.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Becomes {
     /// Copied as it is, then tagged
@@ -166,7 +166,7 @@ pub struct Encoding {
     /// Dithered, since it cuts bits or changes the sample rate of lossless
     /// audio: `afconvert` only rounds unless it's asked to dither
     pub dither: bool,
-    /// With Sound Check data, for an iPod (§7.6)
+    /// With Sound Check data, for an iPod (ipod.md, "Gapless and Sound Check")
     pub sound_check: bool,
 }
 
@@ -254,8 +254,8 @@ impl Becomes {
     }
 }
 
-/// What a source becomes on a destination of this kind, with this profile
-/// (§5.2), or why it's left out.
+/// What a source becomes on a destination of this kind, with this profile,
+/// or why it's left out.
 /// - Lossless sources become the profile's format, and a file already in it
 ///   is copied. At CD resolution, which an iPod always has, a file above 16
 ///   bits or 48 kHz is converted even when its format stays the same.

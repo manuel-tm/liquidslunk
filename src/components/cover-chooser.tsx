@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils"
 /**
  * The browser remembers the folder of the last image chosen, to start there.
  * The folder is relative to the library, so each library has its own
- * (design §6.4).
+ * (frontend.md, "Choosing an image").
  */
 function imageFolderKey(library: string | undefined) {
   return `slunk.imageFolder:${library ?? ""}`

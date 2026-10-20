@@ -1,8 +1,8 @@
 //! Rebuilds a table with a new definition, for the schema changes SQLite's
 //! `ALTER TABLE` can't make: a column's type, CHECK, default or foreign key
-//! (design §5.6). It's part of the migration system, ported from slunk's
-//! `rebuildTable()`. Committed migrations call it, so its behavior must never
-//! change: extend it with new options instead.
+//! (backend.md, "Changing an existing table"). It's part of the migration
+//! system, ported from slunk's `rebuildTable()`. Committed migrations call it,
+//! so its behavior must never change: extend it with new options instead.
 
 use rusqlite::{Connection, OptionalExtension};
 

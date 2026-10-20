@@ -7,10 +7,10 @@ import type { SyncOutcome, SyncProgress } from "@/bindings"
 import { call, queryClient } from "@/lib/query"
 
 /**
- * The sync running, or the last one, for one external library
- * (4_external_libraries.md §8.3). It's kept outside the pages, so leaving
- * the page doesn't lose it: the sync goes on in the backend, and its page
- * shows it again.
+ * The sync running, or the last one, for one external library (frontend.md,
+ * "External libraries"). It's kept outside the pages, so leaving the page
+ * doesn't lose it: the sync goes on in the backend, and its page shows it
+ * again.
  */
 export type SyncRun = {
   libraryId: number

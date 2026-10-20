@@ -1,6 +1,7 @@
 //! Backups of a library, in `slunk-backups/` next to its database
-//! (design §5.6). The migration runner backs up before it changes anything,
-//! then removes the oldest backups beyond the number to keep.
+//! (backend.md, "Running migrations"). The migration runner backs up before
+//! it changes anything, then removes the oldest backups beyond the number to
+//! keep.
 
 use std::fs;
 use std::path::{Path, PathBuf};

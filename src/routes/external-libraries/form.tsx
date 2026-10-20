@@ -77,9 +77,9 @@ export function ExternalLibraryCreate() {
 }
 
 /**
- * An external library's name, destination and profile (4_external_libraries.md
- * §3.3): a new one's, or `library`'s, for its Settings tab. An iPod's profile
- * is what it plays.
+ * An external library's name, destination and profile (frontend.md, "External
+ * libraries"): a new one's, or `library`'s, for its Settings tab. An iPod's
+ * profile is what it plays.
  */
 export function ProfileForm({
   library,
@@ -350,7 +350,7 @@ export function ProfileForm({
 }
 
 /**
- * A folder library's path template (4_external_libraries.md §6.1), with the
+ * A folder library's path template (backend.md, "Path templates"), with the
  * path it gives a sample track, or why it can't be used.
  */
 function TemplateField({
@@ -405,7 +405,10 @@ function TemplateField({
   )
 }
 
-/** The iPods connected now, for a new iPod library (4_external_libraries.md §7.2). */
+/**
+ * The iPods connected now, for a new iPod library (frontend.md, "External
+ * libraries").
+ */
 function MountedIpods() {
   const {
     data: ipods,

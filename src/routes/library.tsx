@@ -54,9 +54,10 @@ import { useCommand } from "@/lib/query"
 type Busy = { name: string; migrating: boolean }
 
 /**
- * `/library`, Welcome (design §6.1): choose a library, open an existing one or
- * create one in a folder. At launch, it opens the one the settings remember
- * without asking. It's outside the app's layout, so it has no sidebar.
+ * `/library`, Welcome (frontend.md, "Routes and pages"): choose a library,
+ * open an existing one or create one in a folder. At launch, it opens the one
+ * the settings remember without asking. It's outside the app's layout, so it
+ * has no sidebar.
  */
 export function Welcome() {
   const navigate = useNavigate()
@@ -235,7 +236,7 @@ export function Welcome() {
   )
 }
 
-/** The saved library, when it isn't there right now (design §6.1). */
+/** The saved library, when it isn't there right now. */
 function Missing({
   status,
   onRetry,
@@ -263,7 +264,10 @@ function Missing({
   )
 }
 
-/** Debug builds keep their libraries in `dev-library/` (design §6.5). */
+/**
+ * Debug builds keep their libraries in `dev-library/` (getting-started.md,
+ * "Running the app").
+ */
 function DevelopmentNote({ folder }: { folder: string }) {
   return (
     <Alert>

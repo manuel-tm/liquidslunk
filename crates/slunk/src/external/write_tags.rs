@@ -1,8 +1,8 @@
-//! Tags written into files, with lofty (4_external_libraries.md §4.1): each
-//! format's own fields, from the one mapping, and the cover as the front
-//! cover. A file's tags are all replaced, whatever it had: only the
-//! encoder's gapless data and Sound Check, which `afconvert` keeps among an
-//! M4A's tags, are carried over. It only ever writes to a file liquidslunk
+//! Tags written into files, with lofty (backend.md, "Syncing a folder
+//! library"): each format's own fields, from the one mapping, and the cover
+//! as the front cover. A file's tags are all replaced, whatever it had: only
+//! the encoder's gapless data and Sound Check, which `afconvert` keeps among
+//! an M4A's tags, are carried over. It only ever writes to a file liquidslunk
 //! made: a copy or a conversion in the temporary folder.
 
 use std::borrow::Cow;

@@ -1,7 +1,7 @@
-//! The repository layer: the connection, the migration runner with its backups,
-//! the migrations (design §5.6), the repositories, and the sample data
-//! (`seeds`). Repositories are plain functions over a `&Connection`, and a
-//! `Transaction` is one (design §12.2).
+//! The repository layer (backend.md, "The database"): the connection, the
+//! migration runner with its backups, the migrations, the repositories, and
+//! the sample data (`seeds`). Repositories are plain functions over a
+//! `&Connection`, and a `Transaction` is one (backend.md, "Structure").
 
 pub mod artists;
 pub mod backups;

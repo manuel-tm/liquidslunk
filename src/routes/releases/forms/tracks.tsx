@@ -183,7 +183,8 @@ export function ReleaseTracksForm({
   onSaved: () => void
 }) {
   const id = idParam(releaseId)
-  // Rows start from what's on disk and in the database now (design §7.2)
+  // Rows start from what's on disk and in the database now (frontend.md,
+  // "Commands")
   const { data, error } = useCommand(
     "releaseTracks",
     { id: id ?? 0, folder },

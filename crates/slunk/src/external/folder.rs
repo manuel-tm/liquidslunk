@@ -1,7 +1,7 @@
-//! A destination's files (4_external_libraries.md §6.3): a folder library's
-//! folder, or an iPod's disk. Files reach their final path whole, written
-//! under a temporary name in liquidslunk's temporary folder there and then
-//! renamed, which is atomic on one volume; folders are made as they're
+//! A destination's files (backend.md, "Syncing a folder library"): a folder
+//! library's folder, or an iPod's disk. Files reach their final path whole,
+//! written under a temporary name in liquidslunk's temporary folder there and
+//! then renamed, which is atomic on one volume; folders are made as they're
 //! needed and removed when a sync leaves them empty; and there are no
 //! AppleDouble files.
 //!

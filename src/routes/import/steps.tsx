@@ -167,7 +167,7 @@ export function ImportNewRelease() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const folder = params.get("folder") ?? ""
-  // What's on disk now (design §7.2)
+  // What's on disk now (frontend.md, "Commands")
   const { data: suggestion, error } = useCommand(
     "releaseSuggestion",
     { folder },
@@ -295,7 +295,7 @@ export function ImportFiles() {
   const [params] = useSearchParams()
   const folder = params.get("folder")
   const releaseId = idParam(id)
-  // What's on disk and in the database now (design §7.2)
+  // What's on disk and in the database now (frontend.md, "Commands")
   const { data, error } = useCommand(
     "importFiles",
     { id: releaseId ?? 0, folder: folder ?? "" },

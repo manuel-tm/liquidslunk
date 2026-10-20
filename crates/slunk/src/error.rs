@@ -14,7 +14,7 @@ pub enum Error {
     NotFound(String),
 
     /// The library has applied migrations this version doesn't know
-    /// (design §5.6).
+    /// (backend.md, "Running migrations").
     #[error(
         "This library was upgraded by a newer version of liquidslunk. It has migrations this version doesn't know: {}",
         .0.join(", ")

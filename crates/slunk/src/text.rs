@@ -1,7 +1,8 @@
-//! Text as it's saved: in Unicode NFC, then trimmed as JavaScript trims (design
-//! §10). The same characters can come in two forms, like "é" as one code point
-//! or as "e" and an accent, which don't compare equal. NFC makes them one. NFKC
-//! isn't used: it would rewrite what's printed, turning "E=MC²" into "E=MC2".
+//! Text as it's saved: in Unicode NFC, then trimmed as JavaScript trims
+//! (backend.md, "Structure"). The same characters can come in two forms, like
+//! "é" as one code point or as "e" and an accent, which don't compare equal.
+//! NFC makes them one. NFKC isn't used: it would rewrite what's printed,
+//! turning "E=MC²" into "E=MC2".
 //! Paths aren't text: they have to match the disk.
 
 use unicode_normalization::UnicodeNormalization;

@@ -36,7 +36,7 @@ import { useSyncRun } from "@/lib/sync"
 
 type Section = { title: string; to: string; icon: LucideIcon }
 
-// A section appears once its phase is built
+// The sidebar's sections, in order (frontend.md, "Routes and pages")
 const sections: Section[] = [
   { title: "Dashboard", to: "/", icon: LayoutDashboardIcon },
   { title: "Artists", to: "/artists", icon: UsersIcon },
@@ -93,7 +93,7 @@ export function AppSidebar() {
 
 /**
  * The external libraries, each with whether it's connected, and a link to
- * them all (4_external_libraries.md §11).
+ * them all (frontend.md, "External libraries").
  */
 function ExternalLibraries() {
   const { data: libraries } = useCommand("externalLibraries")

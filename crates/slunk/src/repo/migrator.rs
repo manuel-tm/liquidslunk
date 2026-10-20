@@ -1,6 +1,7 @@
-//! The migration runner, ported from slunk's (design §5.6). It applies every
-//! pending migration in a single `BEGIN IMMEDIATE … COMMIT`, after backing the
-//! database up, and checks foreign keys before committing.
+//! The migration runner, ported from slunk's (backend.md, "Running
+//! migrations"). It applies every pending migration in a single
+//! `BEGIN IMMEDIATE … COMMIT`, after backing the database up, and checks
+//! foreign keys before committing.
 
 use std::path::{Path, PathBuf};
 
@@ -177,8 +178,9 @@ fn run(
     pick: impl Fn(&[String], &[&str]) -> Vec<String>,
 ) -> Result<Outcome> {
     let is_new = !db_path.exists();
-    // Foreign keys stay off while the schema changes (design §5.6). The pragma
-    // can't change inside a transaction, so it's set when the connection opens.
+    // Foreign keys stay off while the schema changes, so a table rebuild can't
+    // cascade deletes. The pragma can't change inside a transaction, so it's
+    // set when the connection opens.
     let mut conn = connection::open_sqlite(
         db_path,
         connection::Options {

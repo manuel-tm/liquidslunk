@@ -84,7 +84,7 @@ export type Selection = {
  * title cell says when a release credits the artist under another name: "ALIKA
  * – virmalised". Under each title is an alternate title, the one `q` matched or
  * the first. A cover shows a play button on hover or focus, which plays the
- * release (2_player.md §5.2).
+ * release (frontend.md, "The player").
  */
 export function ReleaseTable({
   releases,

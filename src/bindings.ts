@@ -381,8 +381,8 @@ export const commands = {
 	playerTracks: (args: PlayerTracksArgs) => typedError<PlayerTrack[], CommandError>(__TAURI_INVOKE("player_tracks", { args })),
 	/**
 	 *  A release's tracks' ids, by disc, then by number, as its tracklist orders
-	 *  them, for the release table's Play (2_player.md §6.2). A release with no
-	 *  tracks, or one that isn't there, has none.
+	 *  them, for the release table's Play (frontend.md, "The player"). A release
+	 *  with no tracks, or one that isn't there, has none.
 	 */
 	releaseTrackIds: (args: IdArgs) => typedError<number[], CommandError>(__TAURI_INVOKE("release_track_ids", { args })),
 	/**
@@ -539,7 +539,7 @@ export const commands = {
 	ejectExternalLibrary: (args: IdArgs) => typedError<null, CommandError>(__TAURI_INVOKE("eject_external_library", { args })),
 	/**
 	 *  The iPods mounted now, each with its free space and the external library
-	 *  it belongs to, for a new iPod library (4_external_libraries.md §7.2).
+	 *  it belongs to, for a new iPod library (backend.md, "Syncing an iPod").
 	 */
 	mountedIpods: () => typedError<MountedIpod[], CommandError>(__TAURI_INVOKE("mounted_ipods")),
 	/**
@@ -1083,7 +1083,7 @@ export type ErrorKind =
 
 /**
  *  A track's tags, as every external library writes them, whatever its
- *  format (4_external_libraries.md §4.1). A field with no value isn't
+ *  format (backend.md, "A track's tags"). A field with no value isn't
  *  written: it's null or empty.
  */
 export type ExportedTags = {
@@ -1582,7 +1582,7 @@ export type LibraryStatus = {
 	saved: SavedLibrary | null,
 	/**
 	 *  In debug builds, the scratch libraries' folder, `dev-library/`, where
-	 *  development libraries belong (design §6.5).
+	 *  development libraries belong (getting-started.md, "Running the app").
 	 */
 	devLibrary: string | null,
 };
@@ -1810,7 +1810,7 @@ export type PlayerControl =
 /**  By 10%, as ⌘↑ does */
 { type: "volumeUp" } | { type: "volumeDown" };
 
-/**  What the player shows of a track (2_player.md §6.1). */
+/**  What the player shows of a track (backend.md, "Commands"). */
 export type PlayerTrack = {
 	id: number,
 	title: string,

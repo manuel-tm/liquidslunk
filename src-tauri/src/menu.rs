@@ -1,8 +1,8 @@
 //! The menu bar: Tauri's default menu, with a Controls menu between View and
-//! Window, as in Music (2_player.md §8.2). Its items do what the player's
-//! buttons do: a click is a `PlayerControl` event, which the player in the
-//! webview acts on. The queue lives there too, so what the items show comes
-//! from the player, through `set_controls_menu`.
+//! Window, as in Music (backend.md, "The menu bar"). Its items do what the
+//! player's buttons do: a click is a `PlayerControl` event, which the player
+//! in the webview acts on. The queue lives there too, so what the items show
+//! comes from the player, through `set_controls_menu`.
 
 use std::sync::{Mutex, PoisonError};
 
@@ -153,7 +153,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         MenuItem::with_id(app, control.id(), text, false, keys)
     };
     // Space can't be Play's: it would take Space from every field. The
-    // player handles it in the webview (2_player.md §4.4).
+    // player handles it in the webview (frontend.md, "The player").
     let toggle = item(PlayerControl::Toggle, "Play", None)?;
     let next = item(PlayerControl::Next, "Next", Some("CmdOrCtrl+Right"))?;
     let previous = item(PlayerControl::Previous, "Previous", Some("CmdOrCtrl+Left"))?;

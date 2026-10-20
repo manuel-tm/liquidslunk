@@ -1,4 +1,5 @@
-//! The one error every command returns (design §5.4): `{ kind, message }`.
+//! The one error every command returns (backend.md, "Commands"):
+//! `{ kind, message }`.
 
 use std::sync::LazyLock;
 

@@ -9,8 +9,9 @@ import {
 import { type CommandError, commands } from "@/bindings"
 
 /**
- * A command's error (design §5.4), thrown by `useCommand()` and `call()`. Its
- * `message` is what `QueryError` shows, and `kind` says what went wrong.
+ * A command's error (frontend.md, "Commands"), thrown by `useCommand()` and
+ * `call()`. Its `message` is what `QueryError` shows, and `kind` says what
+ * went wrong.
  */
 export class BackendError extends Error {
   kind: CommandError["kind"]
@@ -69,7 +70,7 @@ export async function call<N extends Name>(
 }
 
 /**
- * The one way to read from the backend (design §7.2): calls
+ * The one way to read from the backend (frontend.md, "Commands"): calls
  * `commands[name](args)` through TanStack Query. Its key is `[name, args]`,
  * with the name as a string, which minification can't rename.
  */
@@ -107,7 +108,7 @@ function noLibrary(error: Error) {
 export const queryClient: QueryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // A page shows what's cached, and fetches again (design §7.2)
+      // A page shows what's cached, and fetches again (frontend.md, "Commands")
       staleTime: 0,
       // A local call that fails will fail the same way again
       retry: false,
@@ -123,8 +124,8 @@ export const queryClient: QueryClient = new QueryClient({
 })
 
 /**
- * An id from the URL, parsed with `Number()` (design §5.4), or null when it
- * isn't one, so the page shows `NotFound`.
+ * An id from the URL, parsed with `Number()`, or null when it isn't one, so
+ * the page shows `NotFound` (frontend.md, "Routes and pages").
  */
 export function idParam(id: string | undefined): number | null {
   const number = Number(id)
@@ -133,7 +134,10 @@ export function idParam(id: string | undefined): number | null {
 
 const WINDOWS = navigator.userAgent.includes("Windows")
 
-/** A registered file's bytes, from the app's file protocol (design §5.5). */
+/**
+ * A registered file's bytes, from the app's file protocol (frontend.md,
+ * "Files").
+ */
 export function fileUrl(id: number | string): string {
   return WINDOWS
     ? `http://slunk.localhost/files/${id}`

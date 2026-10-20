@@ -1,5 +1,5 @@
-//! The open library's one connection, behind a mutex (design §5.4), as slunk
-//! had one better-sqlite3 connection.
+//! The open library's one connection, behind a mutex, as slunk had one
+//! better-sqlite3 connection (backend.md, "Structure").
 
 use std::sync::{Mutex, MutexGuard};
 

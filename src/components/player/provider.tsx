@@ -37,7 +37,6 @@ import { playerElements } from "./elements"
 
 // The browser remembers the volume, shuffle and repeat, for every library, as
 // it does the theme, and the queue per library, since ids belong to one
-// (2_player.md §5.7)
 const VOLUME = "slunk.player.volume"
 const SHUFFLE = "slunk.player.shuffle"
 const REPEAT = "slunk.player.repeat"
@@ -48,7 +47,7 @@ const VOLUME_STEP = 0.1
 
 type Volume = { volume: number; muted: boolean }
 
-/** The player (2_player.md §4.1): what's queued, and what to do with it. */
+/** The player: what's queued, and what to do with it. */
 export type Player = {
   entries: Entry[]
   current: Entry | null
@@ -188,9 +187,9 @@ function within(target: EventTarget | null, selector: string) {
 }
 
 /**
- * The app's one player (2_player.md §4.1): the queue, and the two `<audio>`
- * elements that play it, one ahead of the other so tracks follow each other
- * with nearly no gap (3_gapless.md). It's inside `AppLayout`'s keyed
+ * The app's one player (frontend.md, "The player"): the queue, and the two
+ * `<audio>` elements that play it, one ahead of the other so tracks follow
+ * each other with nearly no gap. It's inside `AppLayout`'s keyed
  * `SidebarProvider`, so it keeps playing from page to page, and stops when
  * the library closes or switches. The sidebar only shows its controls, so a
  * hidden sidebar doesn't stop the music. It starts with the library's
@@ -261,8 +260,8 @@ export function PlayerProvider({
     )
   }, [elements, currentKey, currentSrc, queue.playing])
 
-  // The other one loads what's up next (3_gapless.md §3), and loads again
-  // whenever the queue changes what that is, or the elements swap
+  // The other one loads what's up next (frontend.md, "Nearly gapless"), and
+  // loads again whenever the queue changes what that is, or the elements swap
   const ahead = upNext(queue)
   const nextKey = ahead?.key ?? null
   const nextTrack = ahead && tracks.get(ahead.trackId)
@@ -272,7 +271,7 @@ export function PlayerProvider({
   }, [elements, nextKey, nextSrc, swaps])
   useEffect(() => () => elements.dispose(), [elements])
 
-  // Remembered as it changes (2_player.md §5.7)
+  // Remembered as it changes
   const saved = JSON.stringify(savedQueue(queue))
   useEffect(() => {
     remember(`${QUEUE}:${library}`, saved === "null" ? null : saved)
@@ -359,9 +358,9 @@ export function PlayerProvider({
     []
   )
 
-  // Space, ⌘→, ⌘←, ⌘↑ and ⌘↓, as in Music (2_player.md §4.4). The Controls
-  // menu shows the ⌘ ones, but only gets a key the page leaves: these take it
-  // first, before WebKit scrolls to the end of a page for ⌘↓ (Appendix E).
+  // Space, ⌘→, ⌘←, ⌘↑ and ⌘↓, as in Music. The Controls menu shows the ⌘
+  // ones, but only gets a key the page leaves: these take it first, before
+  // WebKit scrolls to the end of a page for ⌘↓.
   const queued = current !== null
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -391,7 +390,7 @@ export function PlayerProvider({
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [queued, toggle, next, previous, setVolume, volume])
 
-  // One sound at a time (2_player.md §7.2): the file page's preview pauses
+  // One sound at a time: the file page's preview pauses
   // the player, and the player pauses it. Both of the player's elements are
   // the player's. Media events don't bubble, so this listens in the capture
   // phase.
@@ -411,7 +410,7 @@ export function PlayerProvider({
     return () => document.removeEventListener("play", onPlay, true)
   }, [elements])
 
-  // Now Playing and the media keys (2_player.md §8.1)
+  // Now Playing and the media keys
   const title = track?.title
   const artist = track?.performers
     .map((performer) => shownName(performer).name)
@@ -439,11 +438,10 @@ export function PlayerProvider({
         : "paused"
   }, [queued, queue.playing])
   // Now Playing offers exactly the actions with handlers: previous and next,
-  // and no seeking (2_player.md Appendix B). WebKit drops a handler set before
-  // a media element has registered with its Now Playing, and offers its own
-  // actions instead: a scrubber and 15-second skips. So the handlers are set
-  // again whenever an element starts playing (Appendix C): either one, since
-  // they take turns (3_gapless.md §3).
+  // and no seeking. WebKit drops a handler set before a media element has
+  // registered with its Now Playing, and offers its own actions instead: a
+  // scrubber and 15-second skips. So the handlers are set again whenever an
+  // element starts playing: either one, since they take turns.
   const setActions = useCallback(() => {
     if (!("mediaSession" in navigator)) return
     const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
@@ -474,8 +472,9 @@ export function PlayerProvider({
     }
   }, [setActions])
 
-  // The Controls menu (2_player.md §8.2) shows the player as it is. It's off
-  // with nothing queued, and so at Welcome, when the provider unmounts.
+  // The Controls menu (backend.md, "The menu bar") shows the player as it is.
+  // It's off with nothing queued, and so at Welcome, when the provider
+  // unmounts.
   useEffect(() => {
     void commands.setControlsMenu({
       playing: queue.playing,
@@ -521,11 +520,11 @@ export function PlayerProvider({
   }, [])
 
   // Only the current element's events count. The other one loads ahead, and
-  // starts the next track just before the current one ends (3_gapless.md §3).
+  // starts the next track just before the current one ends.
   const isCurrent = (event: SyntheticEvent<HTMLAudioElement>) =>
     elements.isCurrent(event.currentTarget)
 
-  // A track that can't play is skipped (2_player.md §7.1). One that fails to
+  // A track that can't play is skipped. One that fails to
   // load ahead is, once it would play.
   function onError(event: SyntheticEvent<HTMLAudioElement>) {
     if (!isCurrent(event)) return elements.failed(event.currentTarget)

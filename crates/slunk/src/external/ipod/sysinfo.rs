@@ -1,6 +1,6 @@
-//! `iPod_Control/Device/SysInfo` (4_external_libraries.md §7.1): the iPod's
-//! own description of itself, as `Key: value` lines, which liquidslunk only
-//! reads. Its model number says which iPod it is.
+//! `iPod_Control/Device/SysInfo` (ipod.md, "Which iPod"): the iPod's own
+//! description of itself, as `Key: value` lines, which liquidslunk only reads.
+//! Its model number says which iPod it is.
 
 use std::collections::HashMap;
 

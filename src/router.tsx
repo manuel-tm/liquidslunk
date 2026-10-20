@@ -51,7 +51,8 @@ import { TrackForm } from "@/routes/tracks/form"
 import { TrackList } from "@/routes/tracks/list"
 import { TrackRead } from "@/routes/tracks/read"
 
-// The app's routes, and Welcome (design §6.1), outside the app's layout
+// The app's routes, and Welcome, outside the app's layout (frontend.md,
+// "Routes and pages")
 export const router = createBrowserRouter([
   { path: "library", element: <Welcome /> },
   {

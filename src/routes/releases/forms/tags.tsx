@@ -25,7 +25,7 @@ export function ReleaseTagsForm({
   onSaved: () => void
 }) {
   const id = idParam(releaseId)
-  // A form starts from fresh data (design §7.2)
+  // A form starts from fresh data (frontend.md, "Commands")
   const { data: tags, error } = useCommand(
     "releaseTags",
     { id: id ?? 0 },

@@ -1,8 +1,7 @@
-//! Running a plan on an iPod (4_external_libraries.md §8.3). The iPod reads
+//! Running a plan on an iPod (backend.md, "Syncing an iPod"). The iPod reads
 //! only its database, which is the last thing written, so an iPod unplugged
 //! midway still plays what it played before, and the next sync carries on:
-//! 1. once the user agrees, the tracks liquidslunk didn't write are erased
-//!    (§7.8);
+//! 1. once the user agrees, the tracks liquidslunk didn't write are erased;
 //! 2. when the new files wouldn't fit before the removed ones are gone, the
 //!    database is first written without them, and they're removed;
 //! 3. the new files are copied in: converted several at once, written one at
@@ -39,7 +38,7 @@ use crate::external::sync::{Covers, Failure, Outcome, Prepared, Progress, Stage,
 use crate::{Error, Result};
 
 /// Whether a release's tracks share their thumbnails' pixels, each cover
-/// stored once (§7.5)
+/// stored once (ipod.md, "The ArtworkDB and thumbnails")
 const SHARE_THUMBNAILS: bool = true;
 
 /// A retag's tags as written, and its cover

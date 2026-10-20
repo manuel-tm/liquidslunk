@@ -268,7 +268,7 @@ pub struct LabelRef {
 
 /// What a page's rows refer to: artists, the names they're credited with,
 /// labels, formats and media, each loaded once, with one query per kind,
-/// as slunk's DataLoaders did (design §5.4).
+/// as slunk's DataLoaders did (backend.md, "Commands").
 #[derive(Default)]
 pub(crate) struct Related {
     artists: HashMap<i64, domain::Artist>,

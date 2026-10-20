@@ -1,4 +1,4 @@
-//! Running a plan on a folder library (4_external_libraries.md §8.3).
+//! Running a plan on a folder library (backend.md, "Syncing a folder library").
 //! - Removals and moves go first, to make room, then additions,
 //!   conversions and retags, then covers.
 //! - Converting runs several files at once, one per core but one, in the

@@ -1,5 +1,5 @@
 //! The media context's commands: registered files, the library on disk, and
-//! opening files (design §5.5).
+//! opening files (backend.md, "Opening files").
 //!
 //! Each command is a thin async wrapper over a function that takes the open
 //! library.

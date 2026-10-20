@@ -1,10 +1,11 @@
-// The player's queue (2_player.md §5): the tracks it plays, in order, and the
-// one that's current. Plain functions from a queue and an action to the next
-// queue, with no React and no audio element, so they're tested on their own.
-// `PlayerProvider` keeps the queue with `useReducer`, and makes the element
-// follow it. Shuffling takes a seed from the action, so the reducer stays pure.
-// `upNext()` says what plays when the current track ends, which the provider
-// loads ahead, for the handoff (3_gapless.md §3).
+// The player's queue (frontend.md, "The player"): the tracks it plays, in
+// order, and the one that's current. Plain functions from a queue and an
+// action to the next queue, with no React and no audio element, so they're
+// tested on their own. `PlayerProvider` keeps the queue with `useReducer`, and
+// makes the element follow it. Shuffling takes a seed from the action, so the
+// reducer stays pure. `upNext()` says what plays when the current track ends,
+// which the provider loads ahead, for the handoff (frontend.md, "Nearly
+// gapless").
 
 /** A queued track. Its key is its own, so a track queued twice is two. */
 export type Entry = { key: number; trackId: number }
@@ -51,7 +52,7 @@ export type QueueAction =
   | { type: "ended" }
   /**
    * What was up next started in the other element, just before the current
-   * track ended (3_gapless.md §3)
+   * track ended
    */
   | { type: "handoff" }
   /** The current track can't play: missing, or a format that can't */
@@ -378,10 +379,10 @@ function generator(seed: number): () => number {
 }
 
 /**
- * What's remembered of a library's queue (2_player.md §5.7): its tracks in
- * the order they play, the current one, and while shuffled, their order
- * before, as indexes into `trackIds`. It comes back paused at the current
- * track's start, since there's no seeking (Appendix B).
+ * What's remembered of a library's queue: its tracks in the order they play,
+ * the current one, and while shuffled, their order before, as indexes into
+ * `trackIds`. It comes back paused at the current track's start, since
+ * there's no seeking.
  */
 export type SavedQueue = {
   trackIds: number[]

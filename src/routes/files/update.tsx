@@ -30,7 +30,7 @@ import { NotFound } from "@/routes/not-found"
 export function FileUpdate() {
   const { id = "" } = useParams()
   const fileId = idParam(id)
-  // A form starts from fresh data (design §7.2)
+  // A form starts from fresh data (frontend.md, "Commands")
   const { data: file, error } = useCommand(
     "file",
     { id: fileId ?? 0 },

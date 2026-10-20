@@ -1,6 +1,6 @@
-//! The settings file (design §6.2): the library to open at launch, the
-//! recent ones, and how many backups to keep. Rust owns it: the webview never
-//! reads it, it only calls commands.
+//! The settings file (backend.md, "Choosing the library"): the library to
+//! open at launch, the recent ones, and how many backups to keep. Rust owns
+//! it: the webview never reads it, it only calls commands.
 
 use std::fs;
 use std::io;
@@ -11,7 +11,7 @@ use slunk::repo::backups;
 
 /// The file's name in the app's config folder. Debug builds keep their own,
 /// so `npm run tauri dev` never opens the library the installed app uses
-/// (design §6.5).
+/// (getting-started.md, "Running the app").
 pub const FILE: &str = if cfg!(debug_assertions) {
     "settings.dev.json"
 } else {

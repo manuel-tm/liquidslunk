@@ -19,7 +19,7 @@ import { call } from "@/lib/query"
 
 /**
  * A track's play button, in a list of tracks: it plays the list from that
- * track, or pauses it while it's the one playing (2_player.md §5.2).
+ * track, or pauses it while it's the one playing (frontend.md, "The player").
  */
 export function TrackPlayButton({
   trackIds,
@@ -50,9 +50,9 @@ export function TrackPlayButton({
 }
 
 /**
- * Play next and Add to queue, for a track or a release's tracks (2_player.md
- * §5.3), with a toast that says what was added. `name` names the one track,
- * or the release.
+ * Play next and Add to queue, for a track or a release's tracks (frontend.md,
+ * "The player"), with a toast that says what was added. `name` names the one
+ * track, or the release.
  */
 export function QueueMenu({
   trackIds,
@@ -109,8 +109,8 @@ export function QueueMenu({
 
 /**
  * Plays a release from its first track, or from a random one when shuffled,
- * for the release table's covers (2_player.md §5.2). It asks for the
- * release's tracks when it's pressed.
+ * for the release table's covers (frontend.md, "The player"). It asks for
+ * the release's tracks when it's pressed.
  */
 export function ReleasePlayButton({
   id,

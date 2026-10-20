@@ -1,6 +1,7 @@
 // Generates expected.json: what Node's Intl.getCanonicalLocales gives for
-// language tags, which slunk saved names' and titles' languages with (design
-// §10). tests/languages.rs checks languages.rs against it:
+// language tags, which slunk saved names' and titles' languages with
+// (backend.md, "Languages"). It's what tests/languages.rs checks
+// languages.rs against:
 // - `aliases`: every 2- and 3-letter lowercase code that it changes, with
 //   what it gives. Every other one stays as it is.
 // - `cases`: tags around them, with scripts, regions, variants, extensions

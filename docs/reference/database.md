@@ -14,9 +14,9 @@ This is the schema as built, by these migrations in `crates/slunk/src/repo/migra
 | `20261016144030_add_alternate_names` | Alternate names: `artist_alternate_names` and `label_alternate_names`, and `name_language` on `artists` and `labels` |
 | `20261016151144_add_credited_names` | Credited names: `credited_name_id` on the four artist link tables, which it rebuilds |
 | `20261016180957_add_alternate_titles` | Alternate titles: `release_alternate_titles`, `track_alternate_titles` and `release_disc_alternate_titles`, and the main titles' languages |
-| `20261020045756_add_external_libraries` | External libraries: `external_libraries` and their rules, `external_library_rules` ([4_external_libraries.md](../design/4_external_libraries.md)) |
+| `20261020045756_add_external_libraries` | External libraries: `external_libraries` and their rules, `external_library_rules` ([External libraries](#external-libraries)) |
 
-The schema is slunk's, carried over unchanged ([design §2.1](../design/1_introduction.md#21-what-the-port-keeps)), with external libraries added. This page describes what it holds and the rules it enforces, with the reasons where they aren't plain, as for [disc titles](#disc-titles) and [credited names](#credited-names). Every column's type is in its migration's `create table`, and `sqlite3 slunk.db .schema` shows them all.
+The schema is slunk's, carried over unchanged, with external libraries added. This page describes what it holds and the rules it enforces, with the reasons where they aren't plain, as for [disc titles](#disc-titles) and [credited names](#credited-names). Every column's type is in its migration's `create table`, and `sqlite3 slunk.db .schema` shows them all.
 
 How to connect and migrate: [development/backend.md](../development/backend.md#the-database).
 
@@ -124,7 +124,7 @@ Each trigger aborts the statement with the error shown.
 
 ### External libraries
 
-An external library is a selection of the library, for a folder or an iPod ([4_external_libraries.md](../design/4_external_libraries.md)). What's on each destination isn't in the database: it's the destination's own manifest.
+An external library is a selection of the library, for a folder or an iPod ([backend.md](../development/backend.md#the-external-libraries-context)). What's on each destination isn't in the database: it's the destination's own manifest.
 - **`external_libraries`** has `INTEGER PRIMARY KEY AUTOINCREMENT`, `inserted_at` and `updated_at`, as the main tables do.
   - `uuid` is unique, in lowercase hex with its four hyphens, as UUIDs are written, and `name` is unique ignoring case, non-empty and trimmed.
   - `kind` is `folder` or `ipod`, and `format` is `original`, `flac`, `alac` or `aac`. `aac_kbps` is 128 to 320 (256 by default), and `cover_px` 100 to 3000 (600 by default). `cd_resolution`, `embed_covers` and `cover_file` are 0 or 1.

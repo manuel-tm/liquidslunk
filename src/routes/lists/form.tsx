@@ -19,7 +19,7 @@ export function ListItemForm({ kind }: { kind: ListKind }) {
   const { id } = useParams()
   const itemId = idParam(id)
   const { path, title } = LISTS[kind]
-  // A form starts from fresh data (design §7.2)
+  // A form starts from fresh data (frontend.md, "Commands")
   const { data: item, error } = useCommand(
     "listItem",
     { kind, id: itemId ?? 0 },

@@ -2,8 +2,8 @@
 
 > Keep this page up to date: any change to the frontend's stack, structure or conventions updates it in the same change.
 
-The frontend is slunk's, moved into the app in phase 0, in `src/`. It does everything slunk's did. It has:
-- Welcome, which chooses the library ([design §6.1](../design/1_introduction.md#61-what-happens-at-launch));
+The frontend is slunk's, moved into the app when the port began, in `src/`. It does everything slunk's did. It has:
+- Welcome, which chooses the library ([Routes and pages](#routes-and-pages));
 - the app shell (sidebar with the library menu, the player and the Import button, page header with back and forward) and a "not found" page;
 - the dashboard: the library's status, the catalog's totals, and the newest releases;
 - the files pages: list, register, read and update;
@@ -19,7 +19,7 @@ The frontend is slunk's, moved into the app in phase 0, in `src/`. It does every
 - tags as exported, on the track page: the track's tags as an external library will write them, and where a folder library will put it ([Tags as exported](#tags-as-exported));
 - external libraries: their list and their section in the sidebar, each one's page with its Overview, Contents and Settings, "Add to external library" on the release, artist and track pages and in the bulk edits, where each release, artist and track is in one, and syncing a folder library or an iPod, with its plan, its progress and Eject ([External libraries](#external-libraries)).
 
-Its data comes from Tauri commands, through TanStack Query ([Data](#data)). slunk's frontend read it through GraphQL, and the port moved each page to commands as the context behind it was ported ([design §7.3](../design/1_introduction.md#73-converting-a-route)).
+Its data comes from Tauri commands, through TanStack Query ([Data](#data)). slunk's frontend read it through GraphQL, and the port moved each page to commands as the context behind it was ported.
 
 ## Stack
 
@@ -195,13 +195,13 @@ src/
 ### Routes and pages
 
 - **Welcome** (`/library`, `routes/library.tsx`) is outside `AppLayout`, so it has no sidebar. It opens a library with a file dialog, filtered to `.db` files, creates one in a folder with a folder dialog, or opens a recent one. One that isn't there right now is dimmed. A folder that has a library already offers to open it instead. While a library opens, it shows "Opening …", or "Backing up and upgrading the library…" when it has migrations pending, and a toast says what the upgrade did. In debug builds, it says to keep libraries in `dev-library/`, where the dialogs start.
-- **The launch** ([design §6.1](../design/1_introduction.md#61-what-happens-at-launch)): `AppLayout` sends the user to Welcome while no library is open. The first time Welcome sees the status, it opens the library the settings remember, without asking (`launchLibrary()` in `lib/library.ts`). If that library isn't there, Welcome says so, with "Try again". Choosing or closing a library ends the launch, so it happens once per run.
+- **The launch:** `AppLayout` sends the user to Welcome while no library is open. The first time Welcome sees the status, it opens the library the settings remember, without asking (`launchLibrary()` in `lib/library.ts`). If that library isn't there, Welcome says so, with "Try again". Choosing or closing a library ends the launch, so it happens once per run.
 - **Routes** are defined in `src/router.tsx`, as children of the `AppLayout` route, which renders the sidebar beside the current page. They're slunk's routes, as its frontend had them. The last one, `*`, shows `NotFound`.
 - **Pages** live in `src/routes/`, one component per route. Each one starts with a `PageHeader`: its breadcrumb title (`crumbs`), then its buttons and tabs as `children`, which go on the right. Every crumb but the last links to its `to`.
 - **The sidebar's header** is the library menu (`LibraryMenu`): the open library's folder name, with "Switch library…", which closes it and goes to Welcome, "Show in Finder", and the recent libraries, which open in its place. Under it are the player's controls ([The player](#the-player)), then Import.
 - **Switching libraries** clears TanStack Query's cache, so nothing from the old library shows. `AppLayout` is keyed by the library's path, so every page mounts again.
 - **Back and forward** (`HistoryButtons`) are in every page's header, before the title, and ⌘[ and ⌘] do the same: a desktop window has no browser buttons. They use the index React Router keeps in `history.state`.
-- **The sidebar** lists each section that's built, in `sections` in `app-sidebar.tsx`, then the external libraries in their own group, each with a dot that's filled while it's connected, or a spinner while it syncs, and the lists the user manages in theirs, `lists`. The external libraries' label links to their list. A section's link stays active on its pages below it (`/artists/12` keeps Artists active).
+- **The sidebar** lists the sections, in `sections` in `app-sidebar.tsx`, then the external libraries in their own group, each with a dot that's filled while it's connected, or a spinner while it syncs, and the lists the user manages in theirs, `lists`. The external libraries' label links to their list. A section's link stays active on its pages below it (`/artists/12` keeps Artists active).
 - **Tabs** that are routes, like an artist's or a release's edit tabs, use `TabLinks`, so each tab is a route.
 - **Wide tables** scroll inside the page: `SidebarInset` has `min-w-0`, so a table can't widen the page past the window.
 - **Unknown ids:** a read or update page whose command returns null renders `NotFound`. A page reads its id with `idParam()` from `@/lib/query`, which parses it with `Number()`, and renders `NotFound` without asking when it isn't an id (`/files/abc`).
@@ -221,7 +221,7 @@ src/
 
 ### Data
 
-Data comes from Tauri commands, through TanStack Query (design §7.2).
+Data comes from Tauri commands, through TanStack Query.
 
 #### Commands
 
@@ -387,14 +387,14 @@ A disc can have its own title, as printed: "Live At Madison Square Garden - Febr
 
 ### Tags as exported
 
-The track page ends with "Tags as exported" (`ExportedTags`), closed by default ([4_external_libraries.md §11](../design/4_external_libraries.md#11-the-frontend)). It's a table of the track's tags as every external library will write them, whatever its format, and the path a folder library that keeps the original files will give it, by the default template ([backend.md](backend.md#the-external-libraries-context)). It's how the mapping is checked against real releases.
+The track page ends with "Tags as exported" (`ExportedTags`), closed by default. It's a table of the track's tags as every external library will write them, whatever its format, and the path a folder library that keeps the original files will give it, by the default template ([backend.md](backend.md#the-external-libraries-context)). It's how the mapping is checked against real releases.
 - It reads `exportedTags` only once it's opened.
 - A field with no value isn't written, so it has no row. A field written as several values, like Artists or Label, shows each one as a badge.
 - The title and the album have their languages' `lang`, and every value has `dir="auto"`.
 
 ### External libraries
 
-An external library is a selection of the library, for a folder or an iPod ([4_external_libraries.md](../design/4_external_libraries.md); [backend.md](backend.md#the-external-libraries-context)). Both kinds sync.
+An external library is a selection of the library, for a folder or an iPod ([backend.md](backend.md#the-external-libraries-context)). Both kinds sync.
 - **`/external-libraries`** lists them, with their kind, destination, whether it's connected and when it was last synced, and has New folder library… and New iPod library….
 - **Creating one** (`/external-libraries/create?kind=folder` or `?kind=ipod`) asks for its name and profile, and a folder library's folder, chosen with a folder dialog. A new iPod library lists the iPods connected (`MountedIpods`), each with its model, what's free on it, and the external library it belongs to, or why liquidslunk won't sync it, with Look again; its first sync goes to the one connected then. It then goes to its Contents. The template field shows the path it gives the catalog's newest track, or why it can't be used. A folder library keeps the original files by default, and an iPod library makes AAC.
 - **Its page** (`/external-libraries/:id`) has three tabs, each a route, under a header with Delete. While its destination is connected, Delete's dialog has "Also remove the files liquidslunk wrote in …", or for an iPod, "Also remove the tracks liquidslunk put on IPOD"; while it syncs, it can't be deleted.
@@ -428,7 +428,7 @@ The release list's rows have checkboxes (`bulk-edit.tsx`). The selection is kept
 
 ### The player
 
-The player plays a queue of tracks from the sidebar ([2_player.md](../design/2_player.md)).
+The player plays a queue of tracks from the sidebar.
 - **Where it is.** `PlayerProvider` (`components/player/provider.tsx`) is inside `AppLayout`'s `SidebarProvider`, around the sidebar and the page. It renders the app's two `<audio>` elements, hidden, one ahead of the other ([Nearly gapless](#nearly-gapless)). So the music keeps playing from page to page, and since `SidebarProvider` is keyed by the library, it stops when the library switches or closes. The sidebar's header shows the controls (`SidebarPlayer`), between the library menu and Import. When the sidebar is hidden, collapsed or in its sheet below 768 px, so is the player, and the music plays on.
 - **The controls:** the release's cover, the track's title, who performs it and the release, each linking to its page; a bar of how far the track has played, with the time played and the track's length; shuffle, previous, play/pause, next, and repeat; mute, the volume, and the queue's button. Shuffle and repeat are in the accent color while they're on. With nothing queued, the player is one line: "Nothing playing".
 - **Playing** replaces the queue. Pages call `usePlayer()`, and never touch the element.
@@ -449,10 +449,10 @@ The player plays a queue of tracks from the sidebar ([2_player.md](../design/2_p
 - **Remembering.** The queue is remembered per library, in `localStorage` under `slunk.player.queue:<the library's path>`, since its ids belong to the library: its tracks in the order they play, the current one, and while shuffled, their order before. It's written as it changes, and `PlayerProvider`, which `AppLayout` gives the library's path, starts from it, paused at the current track's start (`restoredQueue()`). Shuffle and repeat are remembered for every library (`slunk.player.shuffle`, `slunk.player.repeat`). What isn't a queue, like something an older version wrote, is ignored.
 - **What it shows** comes from `playerTracks`, with the queue's ids. It's mounted, so every save fetches it again, and it reads with `{ keepPrevious: true }`, so it doesn't flicker when the queue changes. A track that's deleted leaves the queue. When it's the current one, the next one plays.
 - **The time** comes from `usePlayerTime()`, a store the current element's events update, which only the progress bar reads, so nothing else renders again on each `timeupdate`. The track's length is the element's once it has read the file, and the catalog's `durationMs` until then.
-- **No seeking.** WebKit seeks a FLAC file by estimate, not with its seek table, so a seek can play from several seconds away from the time it shows: on a live track 4:28 long, a seek to 4:18 played from about 4:08. So nothing in the player seeks ([2_player.md](../design/2_player.md) Appendices A and B): the bar only shows how far the track has played, and Now Playing has no seek action, so it shows no scrubber or skips. Previous still goes back to a track's start, which is exact. The file page's preview is the browser's own player, so it can still seek, by estimate.
+- **No seeking.** WebKit seeks a FLAC file by estimate, not with its seek table, so a seek can play from several seconds away from the time it shows: on a live track 4:28 long, a seek to 4:18 played from about 4:08. So nothing in the player seeks: the bar only shows how far the track has played, and Now Playing has no seek action, so it shows no scrubber or skips. Previous still goes back to a track's start, which is exact. The file page's preview is the browser's own player, so it can still seek, by estimate.
 - **One sound at a time:** when the file page's preview starts, the player pauses, and when the player starts, the preview pauses. Both of the player's elements are the player's. The provider listens for `play` on the document, in the capture phase, since media events don't bubble.
 - **Shortcuts,** while something is queued: Space plays or pauses, ⌘→ and ⌘← go to the next and the previous track, and ⌘↑ and ⌘↓ change the volume by 10%. Space is ignored while a field or another control has focus, since Space presses that. The ⌘ arrows are ignored in a field, where they move the caret.
-  - The Controls menu shows the ⌘ arrows as its items' key equivalents, but the provider still handles them. WebKit gives the page a key first, and the menu gets only what the page leaves: without the provider's handler, ⌘↓ on a long page scrolls it to its end, and the menu never sees it ([2_player.md](../design/2_player.md) Appendix E). In a field, WebKit moves the caret, so the menu doesn't get them there either.
+  - The Controls menu shows the ⌘ arrows as its items' key equivalents, but the provider still handles them. WebKit gives the page a key first, and the menu gets only what the page leaves: without the provider's handler, ⌘↓ on a long page scrolls it to its end, and the menu never sees it. In a field, WebKit moves the caret, so the menu doesn't get them there either.
 - **The volume,** and whether it's muted, apply to both elements, and are remembered in `localStorage` (`slunk.player.volume`), for every library, as the theme is. Changing the volume unmutes. It's kept in hundredths, so steps of 10% don't drift: 0.8 - 0.1 would be 0.7000000000000001.
 - **Now Playing.** The provider sets `navigator.mediaSession`'s metadata (the title, who performs it, the release, and the cover as `fileUrl()`), its state, and handlers for play, pause, previous and next. So Control Center, the media keys and headphones' controls work the player. Now Playing offers exactly the actions with handlers: previous and next, and no seeking. WebKit drops a handler set before a media element has registered with its Now Playing, and offers its own actions instead (a scrubber and 15-second skips), so the provider sets the handlers again whenever either element starts playing.
 - **The Controls menu** in the menu bar ([backend.md](backend.md#the-menu-bar)) does what the player's buttons do, with the sidebar hidden too. Whenever the player plays or pauses, the queue empties or fills, or shuffle or repeat changes, the provider calls `setControlsMenu({ playing, queued, shuffle, repeat })`, and the menu shows Play or Pause, the checks, and every item off with nothing queued. As the provider unmounts, at Welcome, it calls it with nothing queued. It listens for `events.playerControl`, a click on an item, and calls its own actions, through `useEffectEvent`, so it listens once.
@@ -460,7 +460,7 @@ The player plays a queue of tracks from the sidebar ([2_player.md](../design/2_p
 
 #### Nearly gapless
 
-WebKit takes about a quarter of a second to start an element's clock, loaded or not, so a track started at the last one's `ended` follows a silence of a quarter to half a second. So the player starts the next track in a second element, just before the current one ends ([3_gapless.md](../design/3_gapless.md)). `playerElements()` (`components/player/elements.ts`) runs the two elements, and the provider passes it their events.
+WebKit takes about a quarter of a second to start an element's clock, loaded or not, so a track started at the last one's `ended` follows a silence of a quarter to half a second. So the player starts the next track in a second element, just before the current one ends. `playerElements()` (`components/player/elements.ts`) runs the two elements, and the provider passes it their events.
 - **The current element** plays the current entry. Only its events count: play and pause, `waiting`, an error, and the time.
 - **The other one loads what's up next,** once the current one has started: `upNext()` in `lib/queue.ts`, the entry a track that ends goes on to, by the queue's rules. That's the same entry again with repeat one, and nothing after the last track without repeat all. Whenever the queue changes what's up next, by Play next, Add to queue, a move, a removal, Clear, shuffle or repeat, the other element loads the new one, or empties. After each swap, the provider says what's up next again.
 - **The handoff comes in two steps.** When the current track has `LEAD` left, 240 ms, by its `currentTime` and `duration`, the other element plays, and nothing else happens: work on the main thread right after `play()`, like a render, delays the start by as long as it lasts. When the current track ends, the elements swap, and the queue goes on with the `handoff` action: `ended`, without a restart, since what's up next already plays from its start. So the player shows the next track when it's heard.
@@ -514,6 +514,10 @@ Pressing `d` toggles between light and dark. It's ignored while typing in a fiel
 - **`verbatimModuleSyntax`:** use `import type` for types.
 - **Imports:** `@/` resolves to `src/`.
 
+### Comments
+
+- **Comments** never cite a design doc. One that needs more than it says points to the section of `docs/` that describes it, by the doc's file name and the section's heading: `(frontend.md, "The player")`. A component's comment points once, and what's in it points again only to another section ([Design docs and these docs](../README.md#design-docs-and-these-docs)).
+
 ### Formatting and linting
 
 - **Prettier:** no semicolons, double quotes, 2-space indent, ES5 trailing commas, 80 columns. `prettier-plugin-tailwindcss` sorts classes, including inside `cn()` and `cva()`. Run `npm run format` instead of formatting by hand.
@@ -527,7 +531,7 @@ Pressing `d` toggles between light and dark. It's ignored while typing in a fiel
 
 ### Screenshots
 
-A change that shows in the UI is looked at in a screenshot of the running app. A browser tab can't show it, since a page there has no IPC, so screenshots go through WebDriver (design §10): with the `webdriver` feature, `tauri-plugin-wdio-webdriver` embeds a W3C WebDriver server in the app, on `127.0.0.1:4445`. Never ship a build with it.
+A change that shows in the UI is looked at in a screenshot of the running app. A browser tab can't show it, since a page there has no IPC, so screenshots go through WebDriver: with the `webdriver` feature, `tauri-plugin-wdio-webdriver` embeds a W3C WebDriver server in the app, on `127.0.0.1:4445`. Never ship a build with it.
 
 ```sh
 npm run tauri dev -- --features webdriver

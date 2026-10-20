@@ -11,14 +11,15 @@ pub const DATABASE_FILE: &str = "slunk.db";
 /// How to open SQLite.
 #[derive(Debug, Clone, Copy)]
 pub struct Options {
-    /// The migration runner turns foreign keys off (design §5.6).
+    /// The migration runner turns foreign keys off (backend.md, "Running
+    /// migrations").
     pub foreign_keys: bool,
     /// Fail instead of creating a new database.
     pub must_exist: bool,
 }
 
-/// Opens SQLite with the connection settings of design §6.3: foreign keys as
-/// asked, WAL, and a 5 second busy timeout.
+/// Opens SQLite with the app's connection settings (backend.md,
+/// "Connection"): foreign keys as asked, WAL, and a 5 second busy timeout.
 pub fn open_sqlite(path: &Path, options: Options) -> Result<Connection> {
     let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
     if !options.must_exist {

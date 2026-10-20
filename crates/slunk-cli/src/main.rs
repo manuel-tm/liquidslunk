@@ -1,6 +1,7 @@
-//! The database commands (design §5.6), Ecto-style: `migrate`, `rollback [n]`,
-//! `status`, `gen <name>`, `seed` and `reset`. The root `package.json` wraps
-//! them as `npm run db:*`, which run from the repository's root.
+//! The database commands, Ecto-style: `migrate`, `rollback [n]`, `status`,
+//! `gen <name>`, `seed` and `reset` (backend.md, "The database commands").
+//! The root `package.json` wraps them as `npm run db:*`, which run from the
+//! repository's root.
 
 use std::fs;
 use std::path::{self, Path, PathBuf};

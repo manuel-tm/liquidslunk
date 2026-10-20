@@ -1,6 +1,6 @@
 //! What a track's file will take on a destination, estimated before
-//! anything is converted (4_external_libraries.md §8.2), by what each source
-//! becomes (§5.2).
+//! anything is converted, by what each source becomes (backend.md, "Rules and
+//! what they come to").
 
 use super::{ExternalKind, OutputFormat, Profile};
 

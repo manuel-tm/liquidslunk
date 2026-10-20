@@ -1,21 +1,21 @@
-//! The external libraries context (4_external_libraries.md): a selection of
-//! the library, converted, tagged and given covers from the catalog, for a
-//! folder or an iPod. It has the mapping (phase 0); external libraries with
-//! their rules, what they come to, and what that will take (phase 1);
-//! syncing a folder library (phase 2); and syncing an iPod (phase 3).
+//! The external libraries context (backend.md, "The external libraries
+//! context"): a selection of the library, converted, tagged and given covers
+//! from the catalog, for a folder or an iPod. It has the mapping; external
+//! libraries with their rules, what they come to, and what that will take;
+//! syncing a folder library; and syncing an iPod.
 //!
 //! - `repository`: the records the context stores.
-//! - `tags`: a track's tags, worked out from the catalog (§4).
-//! - `template`: path templates, and names on disk (§6).
+//! - `tags`: a track's tags, worked out from the catalog.
+//! - `template`: path templates, and names on disk.
 //! - `estimate`: what a track's file will take on a destination.
-//! - `convert`: what each source becomes, and `afconvert` (§5).
-//! - `covers`: covers, read, resized, as JPEG (§4.4).
-//! - `write_tags`: tags into files, with lofty (§4.1).
-//! - `manifest`: what's on a destination, and its journal (§8.1).
-//! - `plan`: what a sync would do (§8.2).
-//! - `sync`: running a plan (§8.3).
-//! - `folder`: a destination's files: a folder's, or an iPod's (§6.3).
-//! - `ipod`: the iPod: finding it, its database, its artwork (§7).
+//! - `convert`: what each source becomes, and `afconvert`.
+//! - `covers`: covers, read, resized, as JPEG.
+//! - `write_tags`: tags into files, with lofty.
+//! - `manifest`: what's on a destination, and its journal.
+//! - `plan`: what a sync would do.
+//! - `sync`: running a plan.
+//! - `folder`: a destination's files: a folder's, or an iPod's.
+//! - `ipod`: the iPod: finding it, its database, its artwork.
 //! - `scratch`: a sync's temporary folder.
 //! - `volume`: a destination's volume: its free space, and ejecting it.
 
@@ -70,7 +70,7 @@ const IPOD_COVER_PX: u32 = 200;
 pub const DEFAULT_COVER_PX: i64 = 600;
 
 /// A track's tags, and its path in a folder library that keeps the original
-/// files: what the track page shows of it (phase 0).
+/// files: what the track page shows of it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exported {
     pub tags: Tags,
@@ -104,7 +104,7 @@ pub struct Contents {
     pub tracks: i64,
     /// An estimate (`estimated_size()`)
     pub size_bytes: i64,
-    /// Tracks in it whose files can't be converted or tagged (§5.2)
+    /// Tracks in it whose files can't be converted or tagged
     pub left_out: i64,
 }
 
@@ -146,7 +146,8 @@ pub struct Membership {
     pub total: i64,
 }
 
-/// Whether an external library's destination is there to sync (§3.1).
+/// Whether an external library's destination is there to sync (backend.md,
+/// "External libraries").
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Destination {
     /// It's there, and its manifest names this external library, or it has
@@ -386,7 +387,7 @@ impl External {
         self.destination(library) == Destination::Connected
     }
 
-    /// Whether its destination is there, and whose it is (§3.1).
+    /// Whether its destination is there, and whose it is.
     pub fn destination(&self, library: &ExternalLibrary) -> Destination {
         if library.kind == ExternalKind::Ipod {
             return self.find_ipod(library).0;
@@ -403,9 +404,10 @@ impl External {
         }
     }
 
-    /// An iPod library's iPod, among those mounted (§7.2): the one whose
-    /// manifest names it, or else the only one without a manifest that
-    /// liquidslunk syncs. It takes its manifest at its first sync.
+    /// An iPod library's iPod, among those mounted (backend.md, "External
+    /// libraries"): the one whose manifest names it, or else the only one
+    /// without a manifest that liquidslunk syncs. It takes its manifest at its
+    /// first sync.
     pub fn find_ipod(&self, library: &ExternalLibrary) -> (Destination, Option<Ipod>) {
         let mut free = Vec::new();
         let mut elsewhere = None;
@@ -798,7 +800,7 @@ impl External {
 
     // Syncing
 
-    /// Works out what a sync would do (§8.2), and keeps it, for `sync()` to
+    /// Works out what a sync would do, and keeps it, for `sync()` to
     /// run. What should be there is read in one read transaction, then the
     /// connection is let go before any file is read: each source's format,
     /// its cover, the manifest, and the destination: a folder library's
@@ -1012,7 +1014,7 @@ impl External {
             .filter_map(|(release, key)| Some((key.clone(), cover_paths.get(release)?.clone())))
             .collect();
         let plan = if on_ipod {
-            // Tracks on the iPod that liquidslunk didn't write (§7.8)
+            // Tracks on the iPod that liquidslunk didn't write
             let ours: HashSet<String> = inputs
                 .present
                 .iter()
@@ -1069,12 +1071,12 @@ impl External {
         Ok(planned)
     }
 
-    /// Runs the plan last shown (§8.3), with its progress. One sync runs at
+    /// Runs the plan last shown, with its progress. One sync runs at
     /// a time, and the library can be browsed and edited meanwhile: it works
     /// from the plan's snapshot. Refused: a plan that isn't the one last
     /// shown, one that doesn't fit, a destination that changed since, and on
     /// an iPod with tracks from somewhere else, a sync the user didn't agree
-    /// to erase them for (§7.8).
+    /// to erase them for.
     pub fn sync(
         &self,
         id: i64,
@@ -1257,7 +1259,7 @@ impl External {
 
     /// A folder library's folder, resolved, once it's checked: absolute,
     /// and never inside the library's folder, holding it, or holding a
-    /// registered file, since that's where the user's own files are (§3.1).
+    /// registered file, since that's where the user's own files are.
     fn folder_of(&self, conn: &Connection, folder: Option<&str>) -> Result<String> {
         let typed = folder
             .map(trim)

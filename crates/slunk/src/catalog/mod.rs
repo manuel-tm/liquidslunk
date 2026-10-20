@@ -1,8 +1,9 @@
 //! The catalog context, what the user catalogs: artists and labels, with their
 //! alternate names, pictures and logos, and an artist's file links; the two
 //! lists the user manages, release formats and release media; the languages in
-//! use (phase 2); releases, with their credits (phase 4); and tracks, with
-//! their disc titles, and what a folder suggests for importing it (phase 5).
+//! use; releases, with their credits; and tracks, with their disc titles, and
+//! what a folder suggests for importing it (backend.md, "The catalog
+//! context").
 //!
 //! - `names`: saving alternate names, and the links credited with them.
 //! - `releases`: releases, their links, cover, file links and credits.

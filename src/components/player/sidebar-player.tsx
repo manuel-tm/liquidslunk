@@ -40,9 +40,9 @@ function clock(seconds: number) {
 
 /**
  * The player's controls, in the sidebar's header, between the library menu
- * and Import (2_player.md §4.2): what's playing, how far it is, shuffle,
- * previous, play/pause, next and repeat, the volume, and the queue. With
- * nothing queued, one line.
+ * and Import (frontend.md, "The player"): what's playing, how far it is,
+ * shuffle, previous, play/pause, next and repeat, the volume, and the queue.
+ * With nothing queued, one line.
  */
 export function SidebarPlayer() {
   const { current, track } = usePlayer()
@@ -124,7 +124,7 @@ function NowPlaying({ track }: { track: PlayerTrack | null }) {
 
 /**
  * The time played and the track's length, with a bar between them. It doesn't
- * seek: WebKit seeks FLAC files by estimate (2_player.md Appendix B). The
+ * seek: WebKit seeks FLAC files by estimate (frontend.md, "The player"). The
  * length is the element's once it has read the file, and the catalog's until
  * then.
  */

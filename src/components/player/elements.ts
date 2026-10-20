@@ -1,8 +1,8 @@
 // The player's two `<audio>` elements, for nearly gapless playback
-// (3_gapless.md). WebKit takes about a quarter of a second to start an
-// element's clock, loaded or not, so the next track starts in a second element
-// that long before the current one ends, and its start-up overlaps the current
-// track's last moments.
+// (frontend.md, "Nearly gapless"). WebKit takes about a quarter of a second to
+// start an element's clock, loaded or not, so the next track starts in a
+// second element that long before the current one ends, and its start-up
+// overlaps the current track's last moments.
 
 import Ticks from "./ticks.worker?worker"
 
@@ -28,7 +28,7 @@ const OVERRUN = 0.25
 export type Source = { key: number; src: string | null }
 
 /**
- * The player's two elements (3_gapless.md §3). The current one plays the
+ * The player's two elements. The current one plays the
  * current entry. The other holds what's up next, loaded ahead.
  *
  * The handoff comes in two steps. When the current track has `LEAD` left, the
@@ -313,7 +313,7 @@ export function playerElements(
     /**
      * The other element's file failed to load. Its track is skipped when it
      * would play: the current element tries it then, and fails as it would
-     * have (2_player.md §7.1).
+     * have.
      */
     failed(element: HTMLAudioElement) {
       const index = elements.indexOf(element)
