@@ -421,6 +421,80 @@ fn rules_include_and_exclusions_win() {
 }
 
 #[test]
+fn an_everything_rule_brings_in_the_whole_library() {
+    let f = Fixture::new();
+    f.catalog();
+    let car = f.folder_library("Car").id;
+    let tracks = || f.external.track_ids(car).unwrap();
+
+    // Every track, Sampler's too
+    f.rules(car, &[(false, RuleTarget::Everything)]);
+    assert_eq!(tracks(), [3, 4, 7, 8, 5, 6, 1, 2]);
+    // "Everything, but not The Wall", and a track left out
+    f.rules(
+        car,
+        &[
+            (false, RuleTarget::Everything),
+            (true, release(1)),
+            (true, track(7)),
+        ],
+    );
+    assert_eq!(tracks(), [3, 4, 8, 5, 6]);
+
+    // A release added later is in the next sync
+    f.sql(&format!(
+        "insert into files (id, path, type, size_bytes, mtime, sha256)
+            values (9, 'music/9.flac', 'music', 1, 0, '{HASH}');
+        insert into releases (id, title, various_artists) values (5, 'Meddle', 0);
+        insert into tracks (id, title, track_number, cd_number, release_id, file_id)
+            values (9, 'Echoes', 1, 1, 5, 9);"
+    ));
+    assert_eq!(tracks(), [3, 4, 9, 8, 5, 6]);
+
+    // It can't be left out, and it's kept once
+    let set = |rules: &[(bool, RuleTarget)]| {
+        let rules: Vec<RuleValues> = rules
+            .iter()
+            .map(|(exclude, target)| RuleValues {
+                exclude: *exclude,
+                target: target.clone(),
+            })
+            .collect();
+        f.external.set_rules(car, &rules)
+    };
+    assert_eq!(
+        invalid(set(&[(true, RuleTarget::Everything)])),
+        "Only a release or a track can be left out"
+    );
+    set(&[
+        (false, RuleTarget::Everything),
+        (false, release(3)),
+        (false, RuleTarget::Everything),
+    ])
+    .unwrap();
+    assert_eq!(
+        f.rules_of(car),
+        [(false, RuleTarget::Everything), (false, release(3))]
+    );
+
+    // From the catalog's pages, what it brings in is left out, and the rule
+    // itself just goes
+    f.external.remove(car, &release(3)).unwrap();
+    f.external.remove(car, &track(1)).unwrap();
+    assert_eq!(
+        f.rules_of(car),
+        [
+            (false, RuleTarget::Everything),
+            (true, release(3)),
+            (true, track(1)),
+        ]
+    );
+    f.external.remove(car, &RuleTarget::Everything).unwrap();
+    assert_eq!(f.rules_of(car), [(true, release(3)), (true, track(1))]);
+    assert!(tracks().is_empty());
+}
+
+#[test]
 fn rules_are_checked_and_kept_once() {
     let f = Fixture::new();
     f.catalog();
@@ -681,6 +755,34 @@ fn memberships_say_why_something_is_in() {
     // An artist is in those with a rule for it
     assert_eq!(of(Subject::Artist(1)), [row("Car", "own", 3, 4)]);
     assert!(of(Subject::Artist(2)).is_empty());
+
+    // An everything rule brings in what nothing narrower does, and a release
+    // with no tracks yet, unless it's left out. An artist still needs a rule
+    // of its own.
+    f.sql("insert into releases (id, title, various_artists) values (5, 'Meddle', 0)");
+    f.rules(
+        car,
+        &[
+            (false, RuleTarget::Everything),
+            (false, artist(1)),
+            (true, release(3)),
+        ],
+    );
+    let through_everything = format!("through {:?}", RuleTarget::Everything);
+    assert_eq!(
+        of(Subject::Track(7)),
+        [
+            row("Car", &through_everything, 1, 1),
+            row("iPod", &through_jazz, 1, 1)
+        ]
+    );
+    assert_eq!(of(Subject::Track(1)), [row("Car", &through_artist, 1, 1)]);
+    assert_eq!(
+        of(Subject::Release(5)),
+        [row("Car", &through_everything, 0, 0)]
+    );
+    assert_eq!(of(Subject::Release(3)), [row("iPod", &through_jazz, 2, 2)]);
+    assert!(of(Subject::Artist(2)).is_empty());
 }
 
 #[test]
@@ -802,4 +904,47 @@ fn the_database_checks_kinds_and_rules() {
     f.sql(&rule("real_number_tag_id, tag_min", "1, '8'"));
     fails(&rule("real_number_tag_id, tag_min", "1, '8'"));
     f.sql(&rule("real_number_tag_id, tag_equals", "1, '8'"));
+    // An everything rule names nothing else, isn't left out, and is there
+    // once
+    fails(&rule("everything", "2"));
+    fails(&rule("everything, artist_id", "1, 1"));
+    fails(&rule("everything, tag_equals", "1, 'x'"));
+    fails(&rule("exclude, everything", "1, 1"));
+    f.sql(&rule("everything", "1"));
+    fails(&rule("everything", "1"));
+}
+
+#[test]
+fn rolling_back_everything_rules_deletes_them() {
+    let f = Fixture::new();
+    f.catalog();
+    let car = f.folder_library("Car").id;
+    f.rules(
+        car,
+        &[
+            (false, RuleTarget::Everything),
+            (false, artist(1)),
+            (true, release(1)),
+        ],
+    );
+    let db = f.root().join("slunk.db");
+    migrator::rollback(&db, 1, 10).unwrap();
+    let left: Vec<(i64, Option<i64>, Option<i64>)> = {
+        let conn = f.store.conn();
+        let mut statement = conn
+            .prepare(
+                "select exclude, release_id, artist_id from external_library_rules order by id",
+            )
+            .unwrap();
+        statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    };
+    assert_eq!(left, [(0, None, Some(1)), (1, Some(1), None)]);
+    // And they can be made again
+    migrator::migrate(&db, 10).unwrap();
+    f.rules(car, &[(false, RuleTarget::Everything)]);
+    assert_eq!(f.external.track_ids(car).unwrap().len(), 8);
 }

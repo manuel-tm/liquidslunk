@@ -82,6 +82,7 @@ describe("describeRule", () => {
       })
     ).toBe("Dogs")
     expect(describeRule(genre)).toBe("Genre is Jazz")
+    expect(describeRule({ type: "everything" })).toBe("the whole library")
   })
 })
 
@@ -111,6 +112,9 @@ describe("ruleInput", () => {
     expect(
       sameTarget(ruleInput(left), ruleInput({ exclude: false, target: artist }))
     ).toBe(false)
+    expect(
+      ruleInput({ exclude: false, target: { type: "everything" } })
+    ).toEqual({ exclude: false, target: { type: "everything" } })
   })
 })
 
@@ -134,6 +138,14 @@ describe("describeMembership", () => {
         )
       )
     ).toBe("On Car, through Pink Floyd (11 of 12 tracks)")
+    expect(
+      describeMembership(
+        membership({
+          type: "through",
+          rule: { exclude: false, target: { type: "everything" } },
+        })
+      )
+    ).toBe("On Car, through the whole library")
     expect(describeMembership(membership({ type: "tracks" }, 3, 12))).toBe(
       "3 of 12 tracks on Car"
     )

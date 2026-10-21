@@ -339,6 +339,8 @@ pub enum RuleTarget {
         min: Option<String>,
         max: Option<String>,
     },
+    /// Every track in the library, now and later
+    Everything,
 }
 
 /// A rule of an external library's selection.
@@ -371,6 +373,8 @@ pub enum RuleTargetInput {
         min: Option<String>,
         max: Option<String>,
     },
+    /// The whole library, now and later
+    Everything,
 }
 
 impl From<RuleTargetInput> for domain::RuleTarget {
@@ -391,6 +395,7 @@ impl From<RuleTargetInput> for domain::RuleTarget {
                 min,
                 max,
             },
+            RuleTargetInput::Everything => domain::RuleTarget::Everything,
         }
     }
 }
@@ -467,7 +472,8 @@ pub struct ExternalLibraryRef {
 pub enum MembershipReason {
     /// A rule names it
     Own,
-    /// A broader rule brings it in: its release, an artist, a tag value
+    /// A broader rule brings it in: its release, an artist, a tag value,
+    /// the whole library
     Through { rule: ExternalRule },
     /// Only some of a release's tracks, through rules of their own
     Tracks,
@@ -1188,9 +1194,9 @@ pub fn add(library: &Library, args: AddArgs) -> Result<(), CommandError> {
     Ok(library.external.add(args.id, &additions)?)
 }
 
-/// Takes a release, an artist, a track or a tag value out of an external
-/// library: its own rule goes, and a release or track that a broader rule
-/// still brings in is left out.
+/// Takes a release, an artist, a track, a tag value or the whole library out
+/// of an external library: its own rule goes, and a release or track that a
+/// broader rule still brings in is left out.
 #[tauri::command]
 #[specta::specta]
 pub async fn remove_from_external_library(
@@ -1382,6 +1388,7 @@ impl Named {
                 domain::RuleTarget::Artist(id) => artist_ids.push(*id),
                 domain::RuleTarget::Track(id) => track_ids.push(*id),
                 domain::RuleTarget::Tag { kind, tag_id, .. } => tag_refs.push((*kind, *tag_id)),
+                domain::RuleTarget::Everything => {}
             }
         }
         let by_id = |releases: Vec<slunk::catalog::Release>| -> HashMap<i64, _> {
@@ -1478,6 +1485,7 @@ impl Named {
                 min: min.clone(),
                 max: max.clone(),
             },
+            domain::RuleTarget::Everything => RuleTarget::Everything,
         };
         Some(ExternalRule {
             exclude: rule.exclude,

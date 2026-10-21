@@ -124,6 +124,8 @@ pub enum RuleTarget {
         min: Option<String>,
         max: Option<String>,
     },
+    /// Every track in the library, now and later
+    Everything,
 }
 
 /// What a rule says: what it names, and whether that's in or left out.

@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query"
 import {
   FolderSearchIcon,
+  ListChecksIcon,
   ListFilterIcon,
   RefreshCwIcon,
   SearchIcon,
@@ -454,6 +455,7 @@ function Contents({ library }: { library: ExternalLibraryDetails }) {
     rules
       .map((rule, index) => ({ rule, index }))
       .filter(({ rule }) => rule.exclude === exclude)
+  const everything = rules.some((rule) => rule.target.type === "everything")
 
   return (
     <div className="flex flex-col gap-6">
@@ -463,16 +465,24 @@ function Contents({ library }: { library: ExternalLibraryDetails }) {
       <section className="flex max-w-4xl flex-col gap-2">
         <h2 className="font-heading text-base font-semibold">In it</h2>
         <p className="text-muted-foreground">
-          Releases, the releases of artists, now and later, tracks, and the
-          releases and tracks with a tag value. An artist&apos;s appearances on
-          other artists&apos; releases need a rule of their own.
+          Everything, or releases, the releases of artists, now and later,
+          tracks, and the releases and tracks with a tag value. An artist&apos;s
+          appearances on other artists&apos; releases need a rule of their own.
         </p>
         <RuleList
           rules={ruleList(false)}
           empty="Nothing yet."
           onRemove={remove}
         />
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+          <Button
+            variant="outline"
+            disabled={everything}
+            onClick={() => add({ target: { type: "everything" } })}
+          >
+            <ListChecksIcon data-icon="inline-start" />
+            Add everything
+          </Button>
           <ReleasePicker
             value={null}
             key={`Add a release:${picked}`}
@@ -514,7 +524,7 @@ function Contents({ library }: { library: ExternalLibraryDetails }) {
           Floyd, but not The Wall&quot;.
         </p>
         <RuleList rules={ruleList(true)} empty="Nothing." onRemove={remove} />
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
           <ReleasePicker
             value={null}
             key={`Leave out a release:${picked}`}
@@ -553,6 +563,7 @@ const RULE_TYPES = {
   artist: "Artist",
   track: "Track",
   tag: "Tag value",
+  everything: "Everything",
 }
 
 /** Rules, each with what it names, linking to it, and a button that removes it. */
@@ -627,6 +638,8 @@ function RuleList({
                   />
                 </span>
               </span>
+            ) : target.type === "everything" ? (
+              <span>The whole library, now and later</span>
             ) : (
               <Link
                 to={`/tags/${target.tag.type}/${target.tag.id}`}

@@ -2,7 +2,7 @@
 
 > Keep this page up to date: any migration that changes the schema updates it in the same change.
 
-This is the schema as built, by these migrations in `crates/slunk/src/repo/migrations/`, one module each (`m20261011141955_create_baseline.rs`, …). The first eight are slunk's, ported statement by statement, so a library slunk made opens as it is, and a new one gets slunk's schema exactly ([How it's checked](#how-its-checked)). The ninth is liquidslunk's own: slunk refuses a library once it has run, so slunk can open it again only from a backup made before.
+This is the schema as built, by these migrations in `crates/slunk/src/repo/migrations/`, one module each (`m20261011141955_create_baseline.rs`, …). The first eight are slunk's, ported statement by statement, so a library slunk made opens as it is, and a new one gets slunk's schema exactly ([How it's checked](#how-its-checked)). The ninth and tenth are liquidslunk's own: slunk refuses a library once the ninth has run, so slunk can open it again only from a backup made before.
 
 | Migration | Adds |
 |---|---|
@@ -15,6 +15,7 @@ This is the schema as built, by these migrations in `crates/slunk/src/repo/migra
 | `20261016151144_add_credited_names` | Credited names: `credited_name_id` on the four artist link tables, which it rebuilds |
 | `20261016180957_add_alternate_titles` | Alternate titles: `release_alternate_titles`, `track_alternate_titles` and `release_disc_alternate_titles`, and the main titles' languages |
 | `20261020045756_add_external_libraries` | External libraries: `external_libraries` and their rules, `external_library_rules` ([External libraries](#external-libraries)) |
+| `20261021031855_add_everything_rules` | Everything rules: `everything` on `external_library_rules`, which it rebuilds. Rolling it back deletes them. |
 
 The schema is slunk's, carried over unchanged, with external libraries added. This page describes what it holds and the rules it enforces, with the reasons where they aren't plain, as for [disc titles](#disc-titles) and [credited names](#credited-names). Every column's type is in its migration's `create table`, and `sqlite3 slunk.db .schema` shows them all.
 
@@ -55,7 +56,7 @@ How to connect and migrate: [development/backend.md](../development/backend.md#t
 | `release_text_tags`, `release_real_number_tags`, `release_date_tags` | A release's tag values. `value` is `TEXT`, `REAL` or `INTEGER` (epoch seconds) |
 | `track_text_tags`, `track_real_number_tags`, `track_date_tags` | A track's tag values, built like the release ones, and using the same tag definitions |
 | `external_libraries` | External libraries ([below](#external-libraries)): a `uuid` its destination's manifest names it by, a `name`, a `kind` (`folder` or `ipod`), a folder library's `folder` and `path_template`, its profile (`format`, `aac_kbps`, `cd_resolution`, `embed_covers`, `cover_px`, `cover_file`), and `last_synced_at` |
-| `external_library_rules` | What's in each: a rule names a release, an artist, a track or a tag value, and `exclude` leaves a release or a track out |
+| `external_library_rules` | What's in each: a rule names a release, an artist, a track, a tag value or, with `everything`, the whole library, and `exclude` leaves a release or a track out |
 | `migrations` | Applied migrations (`name`, `applied_at`), kept by the migration runner |
 | `sqlite_sequence` | SQLite's own: the `AUTOINCREMENT` counters |
 
@@ -131,10 +132,10 @@ An external library is a selection of the library, for a folder or an iPod ([bac
   - Each kind is checked (`external_libraries_kind_has_its_destination`): a folder library has a `folder`, an absolute path, and a `path_template`; an iPod has neither, and takes only what it plays: `alac` or `aac`, `cd_resolution` 1, and `embed_covers` and `cover_file` 0.
   - `folder` is unique, so a folder belongs to one external library.
 - **`external_library_rules`** belong to their external library (CASCADE), with `exclude` 0 or 1.
-  - A rule names exactly one thing (`external_library_rules_name_one_thing`): `release_id`, `artist_id`, `track_id`, or a tag value's tag, `text_tag_id`, `real_number_tag_id` or `date_tag_id`, one column per type, since each type has its own table.
+  - A rule names exactly one thing (`external_library_rules_name_one_thing`): `release_id`, `artist_id`, `track_id`, a tag value's tag, `text_tag_id`, `real_number_tag_id` or `date_tag_id`, one column per type, since each type has its own table, or the whole library, `everything` 1. `everything` is 0 or 1, and 0 by default.
   - A tag value rule has its filter, as typed, and only it has one (`external_library_rules_tag_value_has_its_filter`): a text tag's `tag_equals`, which compares ignoring case; a number or date tag's `tag_equals`, or a range, `tag_min` and `tag_max`, one of them or both. The app checks that they read as the tag's type.
   - Only a release or a track can be left out (`external_library_rules_exclude_a_release_or_track`).
-  - Partial unique indexes keep each thing named once per external library: a release, an artist or a track, whether it's in or left out; a text tag's value, ignoring case; and a number or date tag's filter.
+  - Partial unique indexes keep each thing named once per external library: a release, an artist or a track, whether it's in or left out; a text tag's value, ignoring case; a number or date tag's filter; and the whole library.
   - Deleting a release, an artist, a track or a tag deletes its rules (CASCADE).
 
 Two more triggers don't abort anything. `tracks_empty_disc_loses_title_delete` and `…_update` delete a disc's title when its last track leaves it: see [Disc titles](#disc-titles).
@@ -210,4 +211,4 @@ The migrations' tests, in `crates/slunk/`, check slunk's eight migrations agains
 - **Upgrades:** from each state between migrations, with rows in every table, the Rust runner ends where slunk's does, rows and `AUTOINCREMENT` counters included.
 - **Rollbacks** end where slunk's do, and every `down`, liquidslunk's own too, undoes its `up`. One `down` doesn't give back the exact text it found: `20261014052413_add_track_tags` recreates the `<type>_tags_multiple_off` triggers with the baseline's logic, but laid out differently, as slunk's did. So that check compares the SQL without its whitespace and parentheses.
 
-`20261020045756_add_external_libraries` has no slunk version to check against. Its rules are tested in `tests/external_libraries.rs`, and its `down` with the others.
+`20261020045756_add_external_libraries` and `20261021031855_add_everything_rules` have no slunk version to check against. Their rules are tested in `tests/external_libraries.rs`, with what rolling back the second deletes, and their `down`s with the others.

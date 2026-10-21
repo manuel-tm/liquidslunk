@@ -387,19 +387,20 @@ An external library is a destination, a selection and a profile (`external/repos
 A track is in an external library when a rule includes it and no rule leaves it out (`repo::external_libraries::members()`, one query):
 - **A release** brings in its tracks. **An artist** the tracks of every release it's a release artist of, now and later, but not its appearances on other artists' releases. **A track** brings in itself.
 - **A tag value** brings in the releases with it, whole, and the tracks with it. It's a list's tag filter (`tag_filters()`, [The tagging context](#the-tagging-context)) on releases or on tracks: a text tag's value, ignoring case, or a number or date tag's value or range, both ends included. A text rule has no "contains".
-- **Left out:** a release or a track, which wins over every rule.
+- **Everything** brings in every track, now and later: a "select all" that a static list of releases couldn't be, since it would miss what's imported after. The other rules stay as they are beside it, so removing it leaves what they bring in.
+- **Left out:** a release or a track, which wins over every rule, so "everything but The Wall" is an everything rule and The Wall left out.
 - **Order:** by release title, ignoring case, then release, disc and number.
 
 `set_rules()` replaces an external library's rules, in one transaction. A tag value rule's values are cleaned like text and have to read as the tag's type. Each thing is named once: a rule given twice is kept once, text values ignoring case. Refused: leaving out anything but a release or a track ("Only a release or a track can be left out"), including and leaving out the same thing ("A rule can't both include something and leave it out"), a text rule with a range ("A text tag value rule takes a value"), a number or date rule with neither a value nor a range, and something that isn't there ("There's no release 12", "There's no text tag 3"). Deleting a release, an artist, a track or a tag deletes its rules (CASCADE).
 
 **From the catalog's pages,** `add()` and `remove()` change one thing's rules, in one transaction:
 - Adding a release brings it in whole: its exclusion goes, and its tracks', and it gets a rule. An artist gets a rule. A track's exclusion goes and it gets a rule; when its release is left out, the release's other tracks are left out one by one instead, since the release's exclusion would still leave it out. Ids that aren't there are skipped, as in the bulk edits.
-- Removing something takes out its own rule, and when a broader rule still brings it in, leaves it out. A release's tracks' own rules go with it, those that leave them out too. An artist's or a tag value's rule just goes.
+- Removing something takes out its own rule, and when a broader rule still brings it in, leaves it out. A release's tracks' own rules go with it, those that leave them out too. An artist's, a tag value's or an everything rule just goes.
 
 **Memberships** (`memberships()`) say which external libraries a release, an artist or a track is in, by name, and why, with how many of its tracks are in:
-- a track: its own rule, or else its release's, an artist's or a tag value's;
-- a release: its own rule or an artist's, even with no tracks yet, unless it's left out; or else a tag value's that brings in all its tracks; or else only some of its tracks, through their own rules;
-- an artist: the external libraries with a rule for it.
+- a track: its own rule, or else its release's, an artist's, a tag value's or an everything rule;
+- a release: its own rule or an artist's, even with no tracks yet, unless it's left out; or else a tag value's that brings in all its tracks; or else an everything rule, even with no tracks yet, unless it's left out; or else only some of its tracks, through their own rules;
+- an artist: the external libraries with a rule for it. An everything rule doesn't count, since only an artist's own rule can be removed from its page.
 
 **What it will take** (`contents()`): its releases, its tracks, and an estimate of their size (`estimated_size()`, `external/estimate.rs`), by what each source becomes ([Syncing a folder library](#syncing-a-folder-library)): a lossless file that becomes AAC takes its duration at the bitrate; anything else, copied or lossless, its own size. An `.m4a` counts at its own size, since its extension doesn't say whether it's AAC or Apple Lossless, and covers aren't counted. Tracks a sync will leave out are counted apart: APE, WavPack and Musepack except in a folder library that keeps the originals, and DSF, DFF and WMA always. `sample_track()` gives a track to show the path template with: the first one in it, or else the catalog's newest.
 
@@ -595,7 +596,7 @@ The app runs `migrate` whenever it opens a library, so users never migrate by ha
 
 Each migration is a module in `repo/migrations/`, `m<timestamp>_<name>.rs`, with an `up` and a `down` that take a `&Transaction`. `migrations![…]` in `mod.rs` declares them and lists them in order, and a test checks that the list is sorted and lists every module in the folder.
 
-The first eight are slunk's: its Kysely migrations' statements, copied from what Kysely actually ran, so they build slunk's schema to the character. Each module runs its statements in order with `run()`, each prepared on its own, as Kysely ran them. Two have logic: `add_tag_value_rules` checks the rows already there before adding its triggers, and `add_credited_names` rebuilds four tables. The ninth, `add_external_libraries`, is liquidslunk's first of its own.
+The first eight are slunk's: its Kysely migrations' statements, copied from what Kysely actually ran, so they build slunk's schema to the character. Each module runs its statements in order with `run()`, each prepared on its own, as Kysely ran them. Two have logic: `add_tag_value_rules` checks the rows already there before adding its triggers, and `add_credited_names` rebuilds four tables. The ninth, `add_external_libraries`, is liquidslunk's first of its own, and the tenth, `add_everything_rules`, rebuilds its rules table to add everything rules.
 
 The rules:
 - Never edit a migration once it has been committed. Write a new one.

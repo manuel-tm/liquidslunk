@@ -464,9 +464,9 @@ export const commands = {
 	 */
 	addToExternalLibrary: (args: AddArgs) => typedError<null, CommandError>(__TAURI_INVOKE("add_to_external_library", { args })),
 	/**
-	 *  Takes a release, an artist, a track or a tag value out of an external
-	 *  library: its own rule goes, and a release or track that a broader rule
-	 *  still brings in is left out.
+	 *  Takes a release, an artist, a track, a tag value or the whole library out
+	 *  of an external library: its own rule goes, and a release or track that a
+	 *  broader rule still brings in is left out.
 	 */
 	removeFromExternalLibrary: (args: RemoveArgs) => typedError<null, CommandError>(__TAURI_INVOKE("remove_from_external_library", { args })),
 	/**
@@ -1648,7 +1648,10 @@ export type LocateArgs = {
 export type MembershipReason = 
 /**  A rule names it */
 { type: "own" } | 
-/**  A broader rule brings it in: its release, an artist, a tag value */
+/**
+ *  A broader rule brings it in: its release, an artist, a tag value,
+ *  the whole library
+ */
 { type: "through"; rule: ExternalRule } | 
 /**  Only some of a release's tracks, through rules of their own */
 { type: "tracks" };
@@ -2181,7 +2184,9 @@ export type RuleTarget =
  *  matches `equals`, ignoring case; numbers and dates `equals`, or the
  *  range from `min` to `max`, both included.
  */
-{ type: "tag"; tag: Tag; equals: string | null; min: string | null; max: string | null };
+{ type: "tag"; tag: Tag; equals: string | null; min: string | null; max: string | null } | 
+/**  Every track in the library, now and later */
+{ type: "everything" };
 
 /**  What a rule names, to save it. */
 export type RuleTargetInput = { type: "release"; id: number } | { type: "artist"; id: number } | { type: "track"; id: number } | 
@@ -2189,7 +2194,9 @@ export type RuleTargetInput = { type: "release"; id: number } | { type: "artist"
  *  A tag filter, as the lists take them: text `equals`, and numbers and
  *  dates `equals`, or a range from `min` to `max`
  */
-{ type: "tag"; tag: TagArgs; equals: string | null; min: string | null; max: string | null };
+{ type: "tag"; tag: TagArgs; equals: string | null; min: string | null; max: string | null } | 
+/**  The whole library, now and later */
+{ type: "everything" };
 
 /**  A track a rule names. */
 export type RuleTrack = {

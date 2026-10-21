@@ -52,7 +52,10 @@ export function describeTagRule(
   return `${name} ≤ ${shown(max ?? "")}`
 }
 
-/** What a rule names, in words: a release's title, an artist's name, a tag filter. */
+/**
+ * What a rule names, in words: a release's title, an artist's name, a tag
+ * filter, the whole library.
+ */
 export function describeRule(target: RuleTarget): string {
   switch (target.type) {
     case "release":
@@ -63,6 +66,8 @@ export function describeRule(target: RuleTarget): string {
       return target.track.title
     case "tag":
       return describeTagRule(target.tag.name, target.tag.type, target)
+    case "everything":
+      return "the whole library"
   }
 }
 
@@ -96,6 +101,8 @@ export function ruleInput(rule: ExternalRule): RuleInput {
           max: target.max,
         },
       }
+    case "everything":
+      return { exclude: false, target: { type: "everything" } }
   }
 }
 

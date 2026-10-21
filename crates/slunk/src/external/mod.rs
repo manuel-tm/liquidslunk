@@ -129,7 +129,8 @@ pub enum Subject {
 pub enum Reason {
     /// A rule names it
     Own,
-    /// A broader rule brings it in: its release, an artist, a tag value
+    /// A broader rule brings it in: its release, an artist, a tag value,
+    /// the whole library
     Through(Rule),
     /// Only some of a release's tracks, through rules of their own
     Tracks,
@@ -641,8 +642,8 @@ impl External {
     /// Takes something out of an external library, from the catalog's
     /// pages: its own rule goes, and when a broader rule still brings it
     /// in, it's left out. A release's tracks' own rules go with it, those
-    /// that leave them out too. An artist's rule, or a tag value's, just
-    /// goes.
+    /// that leave them out too. An artist's rule, a tag value's or an
+    /// everything rule just goes.
     pub fn remove(&self, id: i64, target: &RuleTarget) -> Result<()> {
         self.store.transaction(|tx| {
             require(tx, id)?;
@@ -671,7 +672,7 @@ impl External {
                         rules.insert(true, RuleTarget::Track(*track))?;
                     }
                 }
-                RuleTarget::Artist(_) | RuleTarget::Tag { .. } => {
+                RuleTarget::Artist(_) | RuleTarget::Tag { .. } | RuleTarget::Everything => {
                     rules.remove(false, target.clone())?;
                 }
             }
@@ -1347,8 +1348,8 @@ impl Reasons<'_> {
         Ok(None)
     }
 
-    /// A track that's in: its own rule, its release's, an artist's, or a tag
-    /// value's.
+    /// A track that's in: its own rule, its release's, an artist's, a tag
+    /// value's, or an everything rule.
     fn of_track(&self, track: &Track) -> Result<Reason> {
         if self.included(&RuleTarget::Track(track.id)).is_some() {
             return Ok(Reason::Own);
@@ -1359,13 +1360,15 @@ impl Reasons<'_> {
         let rule = match broader {
             Some(rule) => Some(rule),
             None => self.tag_rule(&[track.id])?,
-        };
+        }
+        .or_else(|| self.included(&RuleTarget::Everything));
         Ok(rule.map_or(Reason::Own, |rule| Reason::Through(rule.clone())))
     }
 
     /// A release: by its own rule or an artist's, even with no tracks yet,
     /// unless it's left out; or a tag value's, when that brings in all its
-    /// tracks; or else by some of its tracks.
+    /// tracks; or an everything rule, even with no tracks yet, unless it's
+    /// left out; or else by some of its tracks.
     fn of_release(
         &self,
         release: i64,
@@ -1381,13 +1384,17 @@ impl Reasons<'_> {
                 return Ok(Some(Reason::Through(rule.clone())));
             }
         }
-        if included.is_empty() {
-            return Ok(None);
+        if !included.is_empty()
+            && let Some(rule) = self.tag_rule(tracks)?
+        {
+            return Ok(Some(Reason::Through(rule.clone())));
         }
-        Ok(Some(match self.tag_rule(tracks)? {
-            Some(rule) => Reason::Through(rule.clone()),
-            None => Reason::Tracks,
-        }))
+        if !self.excluded(&target)
+            && let Some(rule) = self.included(&RuleTarget::Everything)
+        {
+            return Ok(Some(Reason::Through(rule.clone())));
+        }
+        Ok((!included.is_empty()).then_some(Reason::Tracks))
     }
 }
 

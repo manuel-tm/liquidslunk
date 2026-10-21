@@ -18,7 +18,7 @@ use crate::tagging::{TagFilter, TagOwner, TagType};
 
 const COLUMNS: &str = r#""id", "uuid", "name", "kind", "folder", "format", "aac_kbps", "cd_resolution", "path_template", "embed_covers", "cover_px", "cover_file", "last_synced_at", "inserted_at", "updated_at""#;
 
-const RULE_COLUMNS: &str = r#""id", "external_library_id", "exclude", "release_id", "artist_id", "track_id", "text_tag_id", "real_number_tag_id", "date_tag_id", "tag_equals", "tag_min", "tag_max""#;
+const RULE_COLUMNS: &str = r#""id", "external_library_id", "exclude", "release_id", "artist_id", "track_id", "text_tag_id", "real_number_tag_id", "date_tag_id", "tag_equals", "tag_min", "tag_max", "everything""#;
 
 fn library(row: &Row) -> rusqlite::Result<ExternalLibrary> {
     let text = |index: usize| -> rusqlite::Result<String> { row.get(index) };
@@ -155,6 +155,8 @@ fn rule(row: &Row) -> rusqlite::Result<(i64, Rule)> {
         RuleTarget::Artist(artist)
     } else if let Some(track) = row.get::<_, Option<i64>>(5)? {
         RuleTarget::Track(track)
+    } else if row.get::<_, i64>(12)? == 1 {
+        RuleTarget::Everything
     } else {
         let mut found = None;
         for (index, kind) in [(6, TagType::Text), (7, TagType::Number), (8, TagType::Date)] {
@@ -207,6 +209,7 @@ pub fn insert_rule(conn: &Connection, library_id: i64, values: &RuleValues) -> R
     let (mut release, mut artist, mut track) = (None, None, None);
     let mut tags: [Option<i64>; 3] = [None; 3];
     let (mut equals, mut min, mut max) = (None, None, None);
+    let mut everything = false;
     match &values.target {
         RuleTarget::Release(id) => release = Some(*id),
         RuleTarget::Artist(id) => artist = Some(*id),
@@ -226,10 +229,11 @@ pub fn insert_rule(conn: &Connection, library_id: i64, values: &RuleValues) -> R
             tags[index] = Some(*tag_id);
             (equals, min, max) = (e.clone(), low.clone(), high.clone());
         }
+        RuleTarget::Everything => everything = true,
     }
     conn.execute(
-        r#"insert into "external_library_rules" ("external_library_id", "exclude", "release_id", "artist_id", "track_id", "text_tag_id", "real_number_tag_id", "date_tag_id", "tag_equals", "tag_min", "tag_max")
-        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+        r#"insert into "external_library_rules" ("external_library_id", "exclude", "release_id", "artist_id", "track_id", "text_tag_id", "real_number_tag_id", "date_tag_id", "tag_equals", "tag_min", "tag_max", "everything")
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
         params![
             library_id,
             i64::from(values.exclude),
@@ -241,7 +245,8 @@ pub fn insert_rule(conn: &Connection, library_id: i64, values: &RuleValues) -> R
             tags[2],
             equals,
             min,
-            max
+            max,
+            i64::from(everything)
         ],
     )?;
     Ok(conn.last_insert_rowid())
@@ -268,10 +273,10 @@ pub fn delete_rule(conn: &Connection, rule_id: i64) -> Result<()> {
 }
 
 /// The tracks an external library's rules come to: those a rule includes,
-/// and no rule leaves out. Tag value rules are given as the filters they
-/// are. With `within`, only among those tracks, in no particular order;
-/// otherwise every one, by release title ignoring case, then release, disc
-/// and number.
+/// or all of them with an everything rule, and no rule leaves out. Tag
+/// value rules are given as the filters they are. With `within`, only among
+/// those tracks, in no particular order; otherwise every one, by release
+/// title ignoring case, then release, disc and number.
 pub fn members(
     conn: &Connection,
     library_id: i64,
@@ -297,6 +302,9 @@ pub fn members(
         .add(Expr::cust(format!(
             r#""tracks"."id" in ({})"#,
             named(0, "track_id")
+        )))
+        .add(Expr::cust(format!(
+            r#"exists (select 1 from "external_library_rules" where "external_library_id" = {library_id} and "everything" = 1)"#
         )));
     for filter in tags {
         included = included.add(tag_value(filter));
