@@ -173,7 +173,6 @@ export function ImportNewRelease() {
     { folder },
     { fresh: true }
   )
-  const unpickedArtists = unpicked(suggestion?.artists ?? [])
   const plural = (n: number, noun: string) =>
     `${n} ${noun}${n === 1 ? "" : "s"}`
 
@@ -210,25 +209,11 @@ export function ImportNewRelease() {
               </AlertDescription>
             </Alert>
           )}
-          {unpickedArtists.length > 0 && (
-            <p className="max-w-2xl text-xs text-muted-foreground">
-              The tags name{" "}
-              {unpickedArtists.map((a, index) => (
-                <span key={a.name}>
-                  {index > 0 && ", "}"<span dir="auto">{a.name}</span>"
-                  {a.matches > 1
-                    ? `, which ${a.matches} artists match`
-                    : ", which isn't an artist yet"}
-                </span>
-              ))}
-              . Artists has each one typed in, in turn, to pick or create.
-            </p>
-          )}
           <OtherNamesOffer offers={offeredNames(suggestion.artists)} />
           <ReleaseDetailsForm
             submitLabel="Create and continue"
             offerSplit
-            typedArtists={unpickedArtists.map((a) => a.name)}
+            pendingArtists={unpicked(suggestion.artists)}
             initial={{
               ...EMPTY_DETAILS,
               title: suggestion.title,

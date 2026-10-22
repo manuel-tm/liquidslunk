@@ -1,5 +1,5 @@
 // What the import makes of artist tags: the artists they pick, the names left
-// to pick, and other names to offer.
+// to settle, and other names to offer.
 import type { ArtistSuggestion } from "@/bindings"
 import type { Option } from "@/components/picker"
 
@@ -26,16 +26,47 @@ export function pickedArtists(
   return [...picked.values()]
 }
 
-/** The tags that picked no artist: none matched, or several did. */
-export function unpicked(suggestions: ArtistSuggestion[]): ArtistSuggestion[] {
-  return suggestions.filter((suggestion) => !suggestion.artist)
+/**
+ * A tag's name that picked no artist, because none matched or several did. It
+ * waits in the artists list until it's created, chosen or removed.
+ */
+export type PendingArtist = Pick<ArtistSuggestion, "name" | "matches">
+
+/** The tags that picked no artist, each name once. */
+export function unpicked(suggestions: ArtistSuggestion[]): PendingArtist[] {
+  const pending = new Map<string, PendingArtist>()
+  for (const { name, artist, matches } of suggestions) {
+    if (!artist && !pending.has(name)) pending.set(name, { name, matches })
+  }
+  return [...pending.values()]
 }
 
-/** "J. Smith (2 artists)": an unpicked tag, saying why. */
-export function unpickedLabel(suggestion: ArtistSuggestion): string {
-  return suggestion.matches > 1
-    ? `${suggestion.name} (${suggestion.matches} artists)`
-    : suggestion.name
+/** "Not an artist yet", or "2 artists match": why a name picked none. */
+export function pendingReason({ matches }: PendingArtist): string {
+  return matches > 1 ? `${matches} artists match` : "Not an artist yet"
+}
+
+/** Whether a name can be made an artist at once: none has it yet. */
+export function creatable({ matches }: PendingArtist): boolean {
+  return matches < 2
+}
+
+/**
+ * The list once a pending name is settled: without the name, and with the
+ * artist chosen for it at the end, unless it's there already. A null artist
+ * just removes the name.
+ */
+export function settle(
+  values: { artists: Option[]; pending: PendingArtist[] },
+  name: string,
+  artist: Option | null
+): { artists: Option[]; pending: PendingArtist[] } {
+  const pending = values.pending.filter((p) => p.name !== name)
+  const listed = !artist || values.artists.some((a) => a.id === artist.id)
+  return {
+    artists: listed ? values.artists : [...values.artists, artist],
+    pending,
+  }
 }
 
 /** A name from a tag, to offer as an alternate name of an artist. */

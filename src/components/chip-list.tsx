@@ -2,14 +2,17 @@ import { XIcon } from "lucide-react"
 import { type ReactNode, useState } from "react"
 
 import { CreditedChipLabel } from "@/components/credited-as"
+import { PendingArtistItem } from "@/components/pending-artist"
 import type { Option, PickerProps } from "@/components/picker"
 import { Badge } from "@/components/ui/badge"
+import type { PendingArtist } from "@/lib/import"
 
 /**
  * A compact list for table rows: chips in order, each removable, and a
  * picker that adds one at the end. With `credited`, the chips are artists:
  * each shows the name it's credited with, and opens a popover to change it.
- * With `typed`, the picker has each of those names typed in, in turn.
+ * `pending` are the import's tag names that picked no artist, each marked
+ * after the chips until it's settled.
  */
 export function ChipList({
   items,
@@ -17,15 +20,17 @@ export function ChipList({
   picker,
   disabled,
   credited = false,
-  typed = [],
+  pending = [],
+  onSettle,
 }: {
   items: Option[]
   onChange: (items: Option[]) => void
   picker: (props: PickerProps) => ReactNode
   disabled?: boolean
   credited?: boolean
-  /** Names typed into the picker in turn, a new one after each pick */
-  typed?: string[]
+  pending?: PendingArtist[]
+  /** A pending name's artist, or null when it's removed */
+  onSettle?: (name: string, artist: Option | null) => void
 }) {
   const [pickerKey, setPickerKey] = useState(0)
   return (
@@ -64,13 +69,22 @@ export function ChipList({
           ))}
         </div>
       )}
+      {!disabled &&
+        pending.map((artist) => (
+          <PendingArtistItem
+            key={artist.name}
+            artist={artist}
+            exclude={items.map((item) => item.id)}
+            compact
+            onSettle={(option) => onSettle?.(artist.name, option)}
+          />
+        ))}
       {!disabled && (
         <div key={pickerKey}>
           {picker({
             value: null,
             exclude: items.map((item) => item.id),
             placeholder: "Add",
-            defaultQuery: typed[pickerKey],
             onChange: (option) => {
               if (!option) return
               onChange([...items, option])

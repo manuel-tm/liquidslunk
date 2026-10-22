@@ -134,6 +134,8 @@ src/
                            for a table row
     title-split.tsx        the import's split of a title at " = ", and Swap
     other-names-offer.tsx  the import's offer of names from artist tags
+    pending-artist.tsx     an artist tag the import couldn't pick, in an
+                           artists list: Create, Choose…, remove
     credited-as.tsx        the name an artist is credited with: a field,
                            and a chip label with a popover
     file-uses.tsx          what uses a file, each linking to it
@@ -177,8 +179,9 @@ src/
     titles.ts              which alternate title a list row shows, the
                            artists' names in a title's language, and a
                            title's parts around " = "
-    import.ts              the artists the import's tags pick, the tags left
-                           to pick, and the other names to offer
+    import.ts              the artists the import's tags pick, the names
+                           left to settle, and the other names to offer;
+                           import.test.ts tests them
     queue.ts               the player's queue, as a reducer, and what plays
                            next; queue.test.ts tests them
     tags.ts                tag types, values, and the list's tag filters
@@ -353,7 +356,12 @@ Files are registered only when a step saves them, together with what uses them.
 
 **Names and titles from the tags:**
 - **Artists** the backend matched are picked already, each credited as the backend says (`lib/import.ts`): ARTIST=ALIKA picks Alika, credited as "ALIKA". An artist tagged twice is picked once.
-- **Tags that picked no artist,** because none matched or several did, are named above the form, or under the row's artists ("Tags: J. Smith (2 artists)"). The artists picker has each one typed in, in turn: `OrderedList` and `ChipList` take them as `typed`, and pass the next one to the picker as `defaultQuery` after each pick. Clicking the picker lists the matches, or offers to create the artist.
+- **Tags that picked no artist,** because none matched or several did, wait in the artists list as pending names (`unpicked()` in `lib/import.ts`), each name once. They're marked so they aren't taken for picked artists: `OrderedList` and `ChipList` take them as `pending`, and show each after the picked ones as a `PendingArtistItem`, with a dashed border and why it's pending ("Not an artist yet", "2 artists match"). The list's `onSettle` hears what becomes of each (`settle()`):
+  - **Create** makes an artist with the name at once. It isn't offered when several artists have the name, since one of them is likely the one.
+  - **Choose…** opens the artist picker with the name typed in (`autoOpen`), to pick one of the matches or an artist by another name, or to create one from there.
+  - **Remove** drops the name.
+
+  The step doesn't save while a name is pending, and says so by its button. In the tracks step, an artist created or chosen for a name is the name's in every row, so it's created once, while Remove is only the row's. Above the table, a box lists the checked rows' pending names, with "Create 3 artists" for those that can be created, and "Remove all".
 - **Other names** from tags like "Ryo Fukui = 福居良" are offered by `OtherNamesOffer`, above the form or the tracks: "Add to Ryo Fukui's names" adds one at once, with `addArtistName`, in the language its script gives away (`scriptLanguage()`: kana are `ja`, Hangul `ko`).
 - **Titles with " = "** ("Scenery = シーナリィ") are kept whole, and offered a split (`components/title-split.tsx`). Nothing is split unless the user says so, and an "=" without spaces around it ("E=MC²") isn't offered one.
   - The release step offers it under the title (`offerSplit` on the details form, and on `DetailsTab` once the release exists). Split makes the first part the main title, and the others printed alternate titles, each in the language its script gives away. Then "Swap" trades the main title with the first alternate one, languages included, for a user who wants the original language first.
@@ -527,7 +535,7 @@ Pressing `d` toggles between light and dark. It's ignored while typing in a fiel
 
 `npm test` runs Vitest (`vitest run`), configured in `vite.config.ts`'s `test`, so `@/` resolves as it does in the app.
 - **Where:** next to what they test, as `src/**/*.test.ts`. They import `describe`, `it` and `expect` from `vitest`, with no globals, so `tsc -b` checks them like the rest of `src/`.
-- **What:** plain functions, in Node, with no DOM. So far that's the player's queue (`lib/queue.test.ts`), and external libraries' rules, memberships, plans and syncs in words (`lib/external.test.ts`). Components are checked in screenshots instead.
+- **What:** plain functions, in Node, with no DOM. So far that's the player's queue (`lib/queue.test.ts`), external libraries' rules, memberships, plans and syncs in words (`lib/external.test.ts`), and the import's pending artist names (`lib/import.test.ts`). Components are checked in screenshots instead.
 
 ### Screenshots
 

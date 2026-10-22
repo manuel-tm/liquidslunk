@@ -37,14 +37,17 @@ import type { ReleaseTracks } from "@/bindings"
 import { creditedInput, creditedOption } from "@/lib/credited"
 import { formatDuration } from "@/lib/format"
 import {
+  creatable,
   type OfferedName,
   offeredNames,
+  type PendingArtist,
   pickedArtists,
+  settle,
   unpicked,
-  unpickedLabel,
 } from "@/lib/import"
 import { textProps } from "@/lib/languages"
 import { call, idParam, useCommand } from "@/lib/query"
+import { cn } from "@/lib/utils"
 import { NotFound } from "@/routes/not-found"
 
 type TrackRow = {
@@ -69,10 +72,8 @@ type TrackRow = {
   fromFolder: boolean
   /** Why it can't be checked: it's another release's track */
   locked?: string
-  /** Tag artist names that picked no artist */
-  hint?: string
-  /** Those names, typed into the artists picker in turn */
-  typed?: string[]
+  /** Tag artist names that picked no artist, until they're settled */
+  pending: PendingArtist[]
   /** Its title was split at " = ", so it can be swapped */
   split?: boolean
 }
@@ -93,6 +94,7 @@ function initialRows(data: ReleaseTracks): TrackRow[] {
     durationMs: track.durationMs,
     include: true,
     fromFolder: false,
+    pending: [],
   }))
   // On a regular release, the release's artists perform a track with none of
   // its own, so tags naming them don't become track artists
@@ -102,7 +104,6 @@ function initialRows(data: ReleaseTracks): TrackRow[] {
   for (const suggestion of data.trackSuggestions ?? []) {
     // Already one of this release's tracks: it has its row
     if (suggestion.track?.release.id === data.id) continue
-    const unmatched = unpicked(suggestion.artists)
     rows.push({
       key: `path-${suggestion.path}`,
       fileId: suggestion.file?.id,
@@ -120,10 +121,7 @@ function initialRows(data: ReleaseTracks): TrackRow[] {
       locked: suggestion.track
         ? `Already a track on ${suggestion.track.release.title}`
         : undefined,
-      hint: unmatched.length
-        ? `Tags: ${unmatched.map(unpickedLabel).join(", ")}`
-        : undefined,
-      typed: unmatched.map((a) => a.name),
+      pending: unpicked(suggestion.artists),
     })
   }
   // Sorted once: rows don't move while their numbers are being typed
@@ -239,6 +237,45 @@ function Rows({
       current.map((row) => (row.key === key ? { ...row, ...changes } : row))
     )
   const included = rows.filter((row) => row.include)
+  /**
+   * Settles a tag's name: an artist chosen for it is the name's in every row,
+   * so it's created once, while removing it is only this row's.
+   */
+  const settleName = (key: string, name: string, artist: Option | null) =>
+    setRows((current) =>
+      current.map((row) =>
+        row.key === key || (artist && row.pending.some((p) => p.name === name))
+          ? { ...row, ...settle(row, name, artist) }
+          : row
+      )
+    )
+  // The included rows' pending names, each once
+  const pending = [
+    ...new Map(
+      included.flatMap((row) => row.pending).map((p) => [p.name, p])
+    ).values(),
+  ]
+  const createAll = useMutation({
+    mutationFn: async (names: string[]) => {
+      // Each is settled as it's created, so a failure leaves none to create twice
+      for (const name of names) {
+        const artist = await call("createArtist", { name })
+        // A string, as pickers' options' ids are
+        const option = {
+          id: String(artist.id),
+          name: artist.name,
+          lang: artist.nameLanguage,
+        }
+        setRows((current) =>
+          current.map((row) =>
+            row.pending.some((p) => p.name === name)
+              ? { ...row, ...settle(row, name, option) }
+              : row
+          )
+        )
+      }
+    },
+  })
   const titlesOf = (row: TrackRow): TitleValues => ({
     title: row.title,
     language: row.titleLanguage,
@@ -325,6 +362,59 @@ function Rows({
         <QueryError error={save.error} title="Can't save the tracks" />
       )}
       <OtherNamesOffer offers={offers} />
+      {pending.length > 0 && (
+        <div className="flex max-w-2xl flex-col gap-1.5 border border-dashed border-destructive/60 px-2 py-1.5 text-xs">
+          <div className="flex items-center gap-3">
+            <span className="flex-1">
+              {pending.length === 1
+                ? "An artist from the tags isn't picked: "
+                : `${pending.length} artists from the tags aren't picked: `}
+              {pending.map((p, index) => (
+                <span key={p.name}>
+                  {index > 0 && ", "}
+                  <span dir="auto">{p.name}</span>
+                  {!creatable(p) && ` (${p.matches} artists match)`}
+                </span>
+              ))}
+              .
+            </span>
+            {pending.some(creatable) && (
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                disabled={createAll.isPending}
+                onClick={() =>
+                  createAll.mutate(pending.filter(creatable).map((p) => p.name))
+                }
+              >
+                Create{" "}
+                {pending.filter(creatable).length === 1
+                  ? "the artist"
+                  : `${pending.filter(creatable).length} artists`}
+              </Button>
+            )}
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              disabled={createAll.isPending}
+              onClick={() =>
+                setRows((current) =>
+                  current.map((row) =>
+                    row.include ? { ...row, pending: [] } : row
+                  )
+                )
+              }
+            >
+              Remove all
+            </Button>
+          </div>
+          {createAll.error && (
+            <p className="text-destructive">{createAll.error.message}</p>
+          )}
+        </div>
+      )}
       {(splittable.length > 0 || swappable.length > 0) && (
         <div className="flex max-w-2xl items-center gap-3 border px-2 py-1.5 text-xs">
           <span className="flex-1">
@@ -523,11 +613,11 @@ function Rows({
                     onChange={(artists) => edit(row.key, { artists })}
                     picker={(p) => <ArtistPicker {...p} />}
                     credited
-                    typed={row.typed}
+                    pending={row.pending}
+                    onSettle={(name, artist) =>
+                      settleName(row.key, name, artist)
+                    }
                   />
-                  {row.hint && (
-                    <p className="mt-1 text-muted-foreground">{row.hint}</p>
-                  )}
                 </TableCell>
                 <TableCell className="align-top">
                   <ChipList
@@ -590,16 +680,23 @@ function Rows({
                   durationMs: null,
                   include: true,
                   fromFolder: false,
+                  pending: [],
                 },
               ])
               setPickerKey((key) => key + 1)
             }}
           />
         </div>
+        {pending.length > 0 && (
+          <p className="ml-auto text-xs leading-8 text-muted-foreground">
+            Create, choose or remove the artists from the tags first.
+          </p>
+        )}
         <Button
           type="submit"
           disabled={
             save.isPending ||
+            pending.length > 0 ||
             !included.every((row) =>
               alternateTitlesValid(row.title, row.alternateTitles)
             ) ||
@@ -610,7 +707,7 @@ function Rows({
               )
             )
           }
-          className="ml-auto"
+          className={cn(pending.length === 0 && "ml-auto")}
         >
           {submitLabel}
         </Button>

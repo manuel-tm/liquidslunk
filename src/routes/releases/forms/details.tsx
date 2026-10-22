@@ -24,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { creditedInput } from "@/lib/credited"
+import { type PendingArtist, settle } from "@/lib/import"
 import { textProps } from "@/lib/languages"
 import { call } from "@/lib/query"
 
@@ -56,25 +57,26 @@ export const EMPTY_DETAILS: DetailsValues = {
 /**
  * A release's details: title, artists, various artists, date, formats, media,
  * labels and catalog number. Without `releaseId`, it creates the release. The
- * import also offers to split a title with " = ", and types the tag names that
- * picked no artist into Artists, in turn.
+ * import also offers to split a title with " = ", and lists the tag names that
+ * picked no artist in Artists, which it doesn't save until they're settled.
  */
 export function ReleaseDetailsForm({
   releaseId,
   initial,
   submitLabel = "Save",
   offerSplit = false,
-  typedArtists,
+  pendingArtists = [],
   onSaved,
 }: {
   releaseId?: number
   initial: DetailsValues
   submitLabel?: string
   offerSplit?: boolean
-  typedArtists?: string[]
+  pendingArtists?: PendingArtist[]
   onSaved: (id: number) => void
 }) {
   const [values, setValues] = useState(initial)
+  const [pending, setPending] = useState(pendingArtists)
   const set = (changes: Partial<DetailsValues>) =>
     setValues((v) => ({ ...v, ...changes }))
   const save = useMutation({
@@ -165,7 +167,16 @@ export function ReleaseDetailsForm({
             onChange={(artists) => set({ artists })}
             picker={(p) => <ArtistPicker {...p} />}
             credited
-            typed={typedArtists}
+            pending={pending}
+            onSettle={(name, artist) => {
+              const settled = settle(
+                { artists: values.artists, pending },
+                name,
+                artist
+              )
+              set({ artists: settled.artists })
+              setPending(settled.pending)
+            }}
           />
           <FieldDescription>
             Who the release is by, each as printed: blank for the main name. A
@@ -238,16 +249,22 @@ export function ReleaseDetailsForm({
             As printed on the spine or back cover.
           </FieldDescription>
         </Field>
-        <div>
+        <div className="flex items-center gap-3">
           <Button
             type="submit"
             disabled={
               save.isPending ||
+              pending.length > 0 ||
               !alternateTitlesValid(values.title, values.alternateTitles)
             }
           >
             {submitLabel}
           </Button>
+          {pending.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Create, choose or remove the artists from the tags first.
+            </p>
+          )}
         </div>
       </FieldGroup>
     </form>

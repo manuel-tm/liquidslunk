@@ -2,8 +2,10 @@ import { ArrowDownIcon, ArrowUpIcon, XIcon } from "lucide-react"
 import { type ReactNode, useState } from "react"
 
 import { CreditedAsInput } from "@/components/credited-as"
+import { PendingArtistItem } from "@/components/pending-artist"
 import type { Option, PickerProps } from "@/components/picker"
 import { Button } from "@/components/ui/button"
+import type { PendingArtist } from "@/lib/import"
 import { textProps } from "@/lib/languages"
 
 /** Moves an item in a list by `by` places. */
@@ -66,22 +68,24 @@ export function RowActions({
 /**
  * Picked rows, in order: the order sets `position`. A picker underneath adds
  * one. With `credited`, the rows are artists, each with the name it's credited
- * with. With `typed`, like the import's tag names that picked no artist, the
- * picker has each one typed in, in turn.
+ * with. `pending` are the import's tag names that picked no artist, each a row
+ * of its own, after the picked ones, until it's settled.
  */
 export function OrderedList({
   items,
   onChange,
   picker,
   credited = false,
-  typed = [],
+  pending = [],
+  onSettle,
 }: {
   items: Option[]
   onChange: (items: Option[]) => void
   picker: (props: PickerProps) => ReactNode
   credited?: boolean
-  /** Names typed into the picker in turn, a new one after each pick */
-  typed?: string[]
+  pending?: PendingArtist[]
+  /** A pending name's artist, or null when it's removed */
+  onSettle?: (name: string, artist: Option | null) => void
 }) {
   // A new key clears the picker after each pick
   const [pickerKey, setPickerKey] = useState(0)
@@ -118,11 +122,18 @@ export function OrderedList({
           />
         </div>
       ))}
+      {pending.map((artist) => (
+        <PendingArtistItem
+          key={artist.name}
+          artist={artist}
+          exclude={items.map((item) => item.id)}
+          onSettle={(option) => onSettle?.(artist.name, option)}
+        />
+      ))}
       <div key={pickerKey}>
         {picker({
           value: null,
           exclude: items.map((item) => item.id),
-          defaultQuery: typed[pickerKey],
           onChange: (option) => {
             if (!option) return
             onChange([...items, option])

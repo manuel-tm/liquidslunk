@@ -47,6 +47,8 @@ export type PickerProps<T extends Option = Option> = {
   disabled?: boolean
   /** Typed in to start with, like a tag name the import couldn't pick */
   defaultQuery?: string
+  /** Open and focused as it appears, like when it's asked for */
+  autoOpen?: boolean
 }
 
 /**
@@ -62,6 +64,7 @@ export function Picker<T extends Option>({
   "aria-label": ariaLabel,
   disabled,
   defaultQuery,
+  autoOpen,
   options,
   onQuery,
   query,
@@ -98,6 +101,7 @@ export function Picker<T extends Option>({
       value={value}
       disabled={disabled || creating}
       defaultInputValue={defaultQuery}
+      defaultOpen={autoOpen}
       itemToStringLabel={(option) => option.name}
       isItemEqualToValue={(a, b) => keyOf(a) === keyOf(b)}
       onInputValueChange={onQuery}
@@ -118,6 +122,7 @@ export function Picker<T extends Option>({
       <ComboboxInput
         id={id}
         aria-label={ariaLabel}
+        autoFocus={autoOpen}
         placeholder={placeholder ?? `Search ${noun}s`}
         showClear={value !== null}
         className="w-full"
