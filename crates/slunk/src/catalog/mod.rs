@@ -6,6 +6,7 @@
 //! context").
 //!
 //! - `names`: saving alternate names, and the links credited with them.
+//! - `aliases`: saving an artist's aliases, as one group with it.
 //! - `releases`: releases, their links, cover, file links and credits.
 //! - `tracks`: tracks, and a release's whole track list with its disc titles.
 //! - `suggestions`: what the import makes of a folder's tags and names.
@@ -29,6 +30,7 @@ use crate::tagging::{TagFilter, TagValuesInput};
 use crate::text::{clean_or_none, clean_text};
 use crate::{Error, Result};
 
+mod aliases;
 mod credited;
 mod names;
 mod releases;
@@ -79,6 +81,9 @@ pub struct ArtistInput {
     /// On a rename, credits the links that showed the old main name with
     /// it, so they keep showing it
     pub keep_old_name: bool,
+    /// The artist's aliases, which become one group with it. Left out, its
+    /// group stays as it is.
+    pub aliases: Option<Vec<i64>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -334,7 +339,7 @@ impl Catalog {
         artists::format_counts(&self.store.conn(), id)
     }
 
-    /// Creates an artist with its alternate names and file links,
+    /// Creates an artist with its alternate names, aliases and file links,
     /// registering files given by path, in one transaction.
     pub fn create_artist(&self, input: &ArtistInput) -> Result<Artist> {
         let values = names::named_values(
@@ -347,13 +352,15 @@ impl Catalog {
             let registered = Media::insert_prepared(tx, prepared)?;
             let artist = named::insert(tx, Table::Artists, &values)?;
             names::save_artist_names(tx, None, &artist, input.alternate_names.as_deref(), false)?;
+            aliases::save_aliases(tx, artist.id, input.aliases.as_deref())?;
             self.set_file_links(tx, LinkOwner::Artist, artist.id, &input.files, &registered)?;
             Ok(artist)
         })
     }
 
-    /// Saves an artist, its alternate names and its file links, in one
-    /// transaction. Its links keep showing what they showed (`names.rs`).
+    /// Saves an artist, its alternate names, its aliases and its file links,
+    /// in one transaction. Its links keep showing what they showed
+    /// (`names.rs`).
     pub fn update_artist(&self, id: i64, input: &ArtistInput) -> Result<Artist> {
         let values = names::named_values(
             &input.name,
@@ -374,6 +381,7 @@ impl Catalog {
                 input.alternate_names.as_deref(),
                 input.keep_old_name,
             )?;
+            aliases::save_aliases(tx, id, input.aliases.as_deref())?;
             self.set_file_links(tx, LinkOwner::Artist, id, &input.files, &registered)?;
             Ok(artist)
         })
@@ -421,6 +429,12 @@ impl Catalog {
     /// Alternate names by artist, in order.
     pub fn artist_names_of(&self, ids: &[i64]) -> Result<HashMap<i64, Vec<AlternateName>>> {
         named::alternate_names_of(&self.store.conn(), Table::Artists, ids)
+    }
+
+    /// The artists in an artist's alias group, but itself, by name ignoring
+    /// case, then by id. An unknown artist has none.
+    pub fn artist_aliases(&self, id: i64) -> Result<Vec<Artist>> {
+        aliases::aliases_of(&self.store.conn(), id)
     }
 
     /// How many artist links are credited with each name.

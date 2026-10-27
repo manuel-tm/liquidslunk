@@ -1,6 +1,6 @@
 # Artist aliases
 
-> **Status: in design.**
+> **Status: being built.**
 
 Some artists release under several names, each a project of its own: Joel Thomas Zimmerman is deadmau5, and also testpilot. In liquidslunk today, those are three artists with nothing between them. Alternate names don't fit: they're other ways of writing one artist's name, and what's credited with one is on that artist's page. This design adds aliases, as Discogs has them: artists of their own, each with its own page, releases and picture, grouped to say they're the same person.
 

@@ -12,6 +12,7 @@ use slunk::external::{
     OutputFormat, Reason, RuleTarget, RuleValues, Subject,
 };
 use slunk::media::{Library, Media};
+use slunk::repo::migrations::MIGRATIONS;
 use slunk::repo::store::Store;
 use slunk::repo::{connection, migrator};
 use slunk::tagging::TagType;
@@ -928,7 +929,12 @@ fn rolling_back_everything_rules_deletes_them() {
         ],
     );
     let db = f.root().join("slunk.db");
-    migrator::rollback(&db, 1, 10).unwrap();
+    // Back to before everything rules, with the migrations after them
+    let after = MIGRATIONS
+        .iter()
+        .position(|migration| migration.name == "20261021031855_add_everything_rules")
+        .unwrap();
+    migrator::rollback(&db, MIGRATIONS.len() - after, 10).unwrap();
     let left: Vec<(i64, Option<i64>, Option<i64>)> = {
         let conn = f.store.conn();
         let mut statement = conn

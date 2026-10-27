@@ -51,7 +51,7 @@ impl Table {
 const COLUMNS: &str = r#""id", "name", "name_language", "picture", "inserted_at", "updated_at""#;
 
 /// `COLUMNS`, of the table joined as "owners".
-const JOINED_COLUMNS: &str = r#""owners"."id", "owners"."name", "owners"."name_language", "owners"."picture", "owners"."inserted_at", "owners"."updated_at""#;
+pub(super) const JOINED_COLUMNS: &str = r#""owners"."id", "owners"."name", "owners"."name_language", "owners"."picture", "owners"."inserted_at", "owners"."updated_at""#;
 
 /// A page, and how many match in all. The search matches the main name or an
 /// alternate name.
@@ -356,7 +356,7 @@ pub fn set_alternate_names(
     Ok(())
 }
 
-fn named(row: &Row<'_>) -> rusqlite::Result<Named> {
+pub(super) fn named(row: &Row<'_>) -> rusqlite::Result<Named> {
     Ok(Named {
         id: row.get(0)?,
         name: row.get(1)?,

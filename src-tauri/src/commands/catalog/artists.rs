@@ -1,5 +1,5 @@
-//! Artists, with their alternate names, pictures and file links, and the
-//! artist page's tabs: releases, appearances and credits.
+//! Artists, with their alternate names, aliases, pictures and file links,
+//! and the artist page's tabs: releases, appearances and credits.
 
 use serde::{Deserialize, Serialize};
 use slunk::catalog::{self as domain, ListKind};
@@ -10,8 +10,8 @@ use tauri::AppHandle;
 
 use super::releases::{self, ReleaseFiltersArgs, ReleasePage, ReleasesArgs};
 use super::{
-    CreditedArtist, FileLink, FileLinkInput, IdArgs, NameRef, NamedItem, OptionsArgs, PageArgs,
-    Related, SetPictureArgs, files_by_id,
+    ArtistRef, CreditedArtist, FileLink, FileLinkInput, IdArgs, NameRef, NamedItem, OptionsArgs,
+    PageArgs, Related, SetPictureArgs, files_by_id,
 };
 use crate::commands::media::{File, FileRef};
 use crate::commands::on_library;
@@ -113,6 +113,8 @@ pub struct ArtistDetails {
     /// unless it keeps the old name on them.
     pub main_name_uses: i64,
     pub alternate_names: Vec<UsedArtistName>,
+    /// The other artists in its alias group, by name
+    pub aliases: Vec<ArtistRef>,
     pub picture: Option<File>,
     pub files: Vec<FileLink>,
 }
@@ -146,6 +148,14 @@ pub struct ArtistInput {
     #[serde(default)]
     #[specta(optional)]
     pub keep_old_name: Option<bool>,
+    /// The artist's aliases, as artist ids, which become one alias group
+    /// with it. The artist's old aliases that are left out stay aliases of
+    /// each other, and so do the other aliases of an artist given without
+    /// them. Empty takes it out of its group. Left out, its group stays as it
+    /// is.
+    #[serde(default)]
+    #[specta(optional)]
+    pub aliases: Option<Vec<i64>>,
 }
 
 impl From<ArtistInput> for domain::ArtistInput {
@@ -164,6 +174,7 @@ impl From<ArtistInput> for domain::ArtistInput {
                 .alternate_names
                 .map(|names| names.into_iter().map(Into::into).collect()),
             keep_old_name: input.keep_old_name.unwrap_or(false),
+            aliases: input.aliases,
         }
     }
 }
@@ -260,6 +271,7 @@ pub fn details(library: &Library, args: IdArgs) -> Result<Option<ArtistDetails>,
                 name: name.into(),
             })
             .collect(),
+        aliases: aliases_of(library, artist.id)?,
         picture: artist.picture.and_then(|id| files.get(&id).cloned()),
         files: links
             .into_iter()
@@ -311,6 +323,23 @@ pub fn names(library: &Library, args: IdArgs) -> Result<Vec<ArtistName>, Command
         .collect())
 }
 
+/// An artist's aliases, by name, for the form when it picks one. An unknown
+/// artist has none.
+#[tauri::command]
+#[specta::specta]
+pub async fn artist_aliases(app: AppHandle, args: IdArgs) -> Result<Vec<ArtistRef>, CommandError> {
+    on_library(app, move |library| aliases_of(library, args.id)).await
+}
+
+pub fn aliases_of(library: &Library, id: i64) -> Result<Vec<ArtistRef>, CommandError> {
+    Ok(library
+        .catalog
+        .artist_aliases(id)?
+        .into_iter()
+        .map(ArtistRef::from)
+        .collect())
+}
+
 /// Creates an artist. Files given by path are registered first, in the same
 /// transaction.
 #[tauri::command]
@@ -323,8 +352,8 @@ pub fn create(library: &Library, args: ArtistInput) -> Result<Artist, CommandErr
     Ok(library.catalog.create_artist(&args.into())?.into())
 }
 
-/// Saves an artist, its alternate names and its file links. Files given by
-/// path are registered first, in the same transaction.
+/// Saves an artist, its alternate names, its aliases and its file links.
+/// Files given by path are registered first, in the same transaction.
 #[tauri::command]
 #[specta::specta]
 pub async fn update_artist(app: AppHandle, args: UpdateArtistArgs) -> Result<Artist, CommandError> {
@@ -441,6 +470,8 @@ pub struct ArtistHeader {
     pub name: String,
     pub name_language: Option<String>,
     pub alternate_names: Vec<ArtistName>,
+    /// The other artists in its alias group, by name
+    pub aliases: Vec<ArtistRef>,
     pub picture: Option<FileRef>,
     /// What keeps it from being deleted, in words
     pub blockers: Vec<String>,
@@ -592,6 +623,7 @@ pub fn header(library: &Library, args: IdArgs) -> Result<Option<ArtistHeader>, C
             .into_iter()
             .map(ArtistName::from)
             .collect(),
+        aliases: aliases_of(library, id)?,
         blockers: catalog.artist_blockers(id)?,
         counts: ArtistCounts {
             releases,

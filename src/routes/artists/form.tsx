@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 import { useNavigate, useParams } from "react-router"
 
+import { aliasOption, AliasesEditor } from "@/components/aliases-editor"
 import {
   type AlternateNameRow,
   alternateNameRow,
@@ -90,6 +91,7 @@ export function ArtistForm() {
             initialLanguage={artist?.nameLanguage ?? null}
             initialNames={(artist?.alternateNames ?? []).map(alternateNameRow)}
             mainNameUses={artist?.mainNameUses ?? 0}
+            initialAliases={(artist?.aliases ?? []).map(aliasOption)}
             initialPicture={
               artist?.picture
                 ? { id: String(artist.picture.id), name: artist.picture.path }
@@ -120,6 +122,7 @@ function Form({
   initialLanguage,
   initialNames,
   mainNameUses = 0,
+  initialAliases,
   initialPicture,
   initialLinks,
 }: {
@@ -129,6 +132,7 @@ function Form({
   initialNames: AlternateNameRow[]
   /** Links that show the main name, which a rename changes */
   mainNameUses?: number
+  initialAliases: Option[]
   initialPicture: Option | null
   initialLinks: FileLinkRow[]
 }) {
@@ -138,6 +142,7 @@ function Form({
   const [names, setNames] = useState(initialNames)
   // Set by "Make main", which keeps every link showing what it showed
   const [keepOldName, setKeepOldName] = useState(false)
+  const [aliases, setAliases] = useState(initialAliases)
   const [picture, setPicture] = useState(initialPicture)
   const [links, setLinks] = useState(initialLinks)
   const [asking, setAsking] = useState<Consequences | null>(null)
@@ -149,6 +154,7 @@ function Form({
         alternateNames: artistNamesInput(names),
         keepOldName: keep,
         // Options' ids are strings, as the Picker's are
+        aliases: aliases.map((alias) => Number(alias.id)),
         pictureId: picture ? Number(picture.id) : null,
         files: fileLinksInput(links),
       }
@@ -252,6 +258,20 @@ function Form({
             Other spellings (ALIKA), initials (R. Fukui), names in other scripts
             (福居良) and real names. A release, track or credit can be credited
             with any of them, and searching finds the artist by any of them.
+          </FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel>Aliases</FieldLabel>
+          <AliasesEditor
+            artistId={id}
+            aliases={aliases}
+            onChange={setAliases}
+          />
+          <FieldDescription>
+            Other artists this one is: another name the same person or band
+            releases under, with its own page, like testpilot for deadmau5. Each
+            alias is an alias of the others too. Another way of writing this
+            artist's name is an alternate name.
           </FieldDescription>
         </Field>
         <Field>

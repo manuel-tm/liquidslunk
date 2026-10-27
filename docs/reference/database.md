@@ -2,7 +2,7 @@
 
 > Keep this page up to date: any migration that changes the schema updates it in the same change.
 
-This is the schema as built, by these migrations in `crates/slunk/src/repo/migrations/`, one module each (`m20261011141955_create_baseline.rs`, …). The first eight are slunk's, ported statement by statement, so a library slunk made opens as it is, and a new one gets slunk's schema exactly ([How it's checked](#how-its-checked)). The ninth and tenth are liquidslunk's own: slunk refuses a library once the ninth has run, so slunk can open it again only from a backup made before.
+This is the schema as built, by these migrations in `crates/slunk/src/repo/migrations/`, one module each (`m20261011141955_create_baseline.rs`, …). The first eight are slunk's, ported statement by statement, so a library slunk made opens as it is, and a new one gets slunk's schema exactly ([How it's checked](#how-its-checked)). The ninth to the eleventh are liquidslunk's own: slunk refuses a library once the ninth has run, so slunk can open it again only from a backup made before.
 
 | Migration | Adds |
 |---|---|
@@ -16,8 +16,9 @@ This is the schema as built, by these migrations in `crates/slunk/src/repo/migra
 | `20261016180957_add_alternate_titles` | Alternate titles: `release_alternate_titles`, `track_alternate_titles` and `release_disc_alternate_titles`, and the main titles' languages |
 | `20261020045756_add_external_libraries` | External libraries: `external_libraries` and their rules, `external_library_rules` ([External libraries](#external-libraries)) |
 | `20261021031855_add_everything_rules` | Everything rules: `everything` on `external_library_rules`, which it rebuilds. Rolling it back deletes them. |
+| `20261026202659_add_artist_aliases` | Artist aliases: `artist_aliases`, and its trigger ([Artist aliases](#artist-aliases)). Rolling it back deletes them. |
 
-The schema is slunk's, carried over unchanged, with external libraries added. This page describes what it holds and the rules it enforces, with the reasons where they aren't plain, as for [disc titles](#disc-titles) and [credited names](#credited-names). Every column's type is in its migration's `create table`, and `sqlite3 slunk.db .schema` shows them all.
+The schema is slunk's, carried over unchanged, with external libraries and artist aliases added. This page describes what it holds and the rules it enforces, with the reasons where they aren't plain, as for [disc titles](#disc-titles), [credited names](#credited-names) and [artist aliases](#artist-aliases). Every column's type is in its migration's `create table`, and `sqlite3 slunk.db .schema` shows them all.
 
 How to connect and migrate: [development/backend.md](../development/backend.md#the-database).
 
@@ -25,7 +26,7 @@ How to connect and migrate: [development/backend.md](../development/backend.md#t
 
 - Every table is `STRICT`, so SQLite rejects a value of the wrong type.
 - `files`, `artists`, `labels`, `releases` and `tracks` use `INTEGER PRIMARY KEY AUTOINCREMENT`, so a deleted id is never reused. They also have `inserted_at` and `updated_at`, which default to `unixepoch()`. The app sets `updated_at`.
-- Other tables use `INTEGER PRIMARY KEY`.
+- Other tables use `INTEGER PRIMARY KEY`: an `id`, or for `artist_aliases`, the artist's id.
 - Booleans are `INTEGER` 0 or 1, with a CHECK.
 - Instants are Unix epoch seconds, UTC. Durations are milliseconds.
 - Every foreign key column leads an index. Indexes are named `<table>_<columns>_index`.
@@ -38,6 +39,7 @@ How to connect and migrate: [development/backend.md](../development/backend.md#t
 | `artists` | `name`, its language `name_language`, and `picture` → `files` |
 | `labels` | `name`, its language `name_language`, and `picture` → `files` (the logo) |
 | `artist_alternate_names` | Other names an artist goes by, with `position`: other spellings ("ALIKA"), initials, names in other scripts ("福居良"). Each has a `language`, a `note`, and `real_name` (0 or 1) for a legal or birth name. |
+| `artist_aliases` | Alias groups ([below](#artist-aliases)): each artist in one, by its `artist_id`, with `alias_group`, the number the group's artists share |
 | `label_alternate_names` | Other names a label goes by, built the same way, without `real_name` |
 | `releases` | `title` and its language `title_language`, `release_date` with `release_date_precision`, `catalog_number`, `cover_picture` → `files`, `various_artists` |
 | `tracks` | `title` and its language `title_language` (NULL: the release's), `duration_ms`, `track_number`, `cd_number` (default 1), `release_id`, and `file_id` (its audio) |
@@ -97,6 +99,7 @@ How to connect and migrate: [development/backend.md](../development/backend.md#t
 - **Disc titles:** `(release_id, cd_number)` is unique, so a disc has one title, and `cd_number > 0`. A disc's alternate titles hang off its title, so it needs a title to have them, and when its last track leaves it, its title goes, and they go with it (CASCADE).
 - **Links:** an artist, label, format, medium or file appears at most once per release or track. An artist appears once per credit line, and two artists on a line can't share a `position`. `position >= 0`.
 - **Credited names:** see [Credited names](#credited-names).
+- **Alias groups:** see [Artist aliases](#artist-aliases).
 - **Tag values**, on releases and tracks alike:
   - `(release_id, tag_id, value)` and `(track_id, tag_id, value)` are unique;
   - a date tag's value is a day, at midnight UTC, and a number tag's value is finite (triggers below).
@@ -138,7 +141,7 @@ An external library is a selection of the library, for a folder or an iPod ([bac
   - Partial unique indexes keep each thing named once per external library: a release, an artist or a track, whether it's in or left out; a text tag's value, ignoring case; a number or date tag's filter; and the whole library.
   - Deleting a release, an artist, a track or a tag deletes its rules (CASCADE).
 
-Two more triggers don't abort anything. `tracks_empty_disc_loses_title_delete` and `…_update` delete a disc's title when its last track leaves it: see [Disc titles](#disc-titles).
+Three more triggers don't abort anything. `tracks_empty_disc_loses_title_delete` and `…_update` delete a disc's title when its last track leaves it: see [Disc titles](#disc-titles). `artist_aliases_group_of_one_delete` deletes an alias group's last artist: see [Artist aliases](#artist-aliases).
 
 ### Disc titles
 
@@ -167,6 +170,14 @@ The four artist link tables, `artists_releases`, `artists_tracks`, `artists_rele
 - A name a link is credited with can't be deleted (RESTRICT). `SET NULL` isn't possible: `artist_id` is part of the key, so it would be set to NULL too.
 - `(artist_id, credited_name_id)` is indexed on each table, which also serves lookups by artist.
 
+### Artist aliases
+
+Artists that are the same person or band under other names, like deadmau5 and testpilot, are an alias group ([backend.md](../development/backend.md#the-catalog-context)). Every artist in a group is an alias of every other one.
+- **`artist_aliases`** has a row per artist in a group. `artist_id` is its `INTEGER PRIMARY KEY`, so an artist is in one group at most, and `alias_group` is the group's number, above 0. An artist with no aliases has no row.
+- **A group is only its number.** There's no table of groups, and nothing else refers to one. The app numbers a new group after the highest, so a number can come back once its group has gone.
+- **A group has two artists or more.** When an artist leaves one and only one is left, `artist_aliases_group_of_one_delete` deletes that one too, whether the row was deleted or its artist was (CASCADE). Rows are only inserted and deleted, never updated, so the trigger sees every way out of a group. A group of one can still be inserted, since a new group's first row comes before its second: the app inserts a group whole.
+- **Rolling back** `20261026202659_add_artist_aliases` drops the table, and the groups with it.
+
 ### Deletes
 
 Foreign keys decide what a delete does.
@@ -183,7 +194,7 @@ Foreign keys decide what a delete does.
   - a track: its artists, credit lines, alternate titles, file links and tag values;
   - a disc title: its alternate titles;
   - a credit line: its artists;
-  - an artist: its alternate names and file links;
+  - an artist: its alternate names, its file links, and its row in `artist_aliases`, which takes its group's last artist with it;
   - a label: its alternate names;
   - a tag definition: its external library rules;
   - an external library: its rules.
@@ -211,4 +222,4 @@ The migrations' tests, in `crates/slunk/`, check slunk's eight migrations agains
 - **Upgrades:** from each state between migrations, with rows in every table, the Rust runner ends where slunk's does, rows and `AUTOINCREMENT` counters included.
 - **Rollbacks** end where slunk's do, and every `down`, liquidslunk's own too, undoes its `up`. One `down` doesn't give back the exact text it found: `20261014052413_add_track_tags` recreates the `<type>_tags_multiple_off` triggers with the baseline's logic, but laid out differently, as slunk's did. So that check compares the SQL without its whitespace and parentheses.
 
-`20261020045756_add_external_libraries` and `20261021031855_add_everything_rules` have no slunk version to check against. Their rules are tested in `tests/external_libraries.rs`, with what rolling back the second deletes, and their `down`s with the others.
+`20261020045756_add_external_libraries` and `20261021031855_add_everything_rules` have no slunk version to check against. Their rules are tested in `tests/external_libraries.rs`, with what rolling back the second deletes, and their `down`s with the others. `20261026202659_add_artist_aliases` has no slunk version either. Its rules are tested in `tests/catalog.rs`, and its `down` with the others.

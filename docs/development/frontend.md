@@ -9,6 +9,7 @@ The frontend is slunk's, moved into the app when the port began, in `src/`. It d
 - the files pages: list, register, read and update;
 - the catalog's pages: releases (with the release page and its edit tabs), artists (with their tabs), tracks, labels, release formats and release media;
 - alternate names of artists and labels, and the language of each name;
+- artists' aliases: other artists that are the same person or band, on the artist page and in its form ([Aliases](#aliases));
 - artists as credited on releases, tracks and credit lines, with the name printed there;
 - alternate titles of releases, tracks and discs, under their main titles, and the language of each title;
 - tags: their definitions' pages, a release's Tags tab, its tags on the release page, a track's tags, and tag filters on the release and track lists;
@@ -125,8 +126,9 @@ src/
     credits-editor.tsx     credit lines: a role, then its artists
     file-links-editor.tsx  file links, each with a note
     alternate-names-editor.tsx  an artist's or label's alternate names
-    alternate-names.tsx    alternate names under a name, and the one a
-                           search matched
+    alternate-names.tsx    alternate names and an artist's aliases under a
+                           name, and the name a search matched
+    aliases-editor.tsx     an artist's aliases: chips, then the artist picker
     language-picker.tsx    a language tag, by name or tag
     titles.tsx             a title with its language, the lines of alternate
                            titles under it, and a list row's one
@@ -216,7 +218,7 @@ src/
   - The release page's heading, the track page's heading and the tracklist use it. The tracklist repeats the artists only on a various-artists release, where its rows name them. Disc headings show their alternate titles too. "Hide alternate titles" hides them in the tracklist, and the browser remembers it (`slunk.release.hideAlternateTitles`), like "Hide credits".
   - Lists show one alternate title under each main title, cut to one line (`ListedAlternateTitle`): the one the search matched, or else the first. `ReleaseTable` takes the list's `q` for it.
 - **Languages of names:** a shown name gets `textProps(language)` from `lib/languages.ts`, which sets `lang` to its language and `dir="auto"`. `lang` picks the glyphs (Japanese and Chinese share code points but not shapes), and `dir="auto"` keeps a right-to-left name from moving the dashes and commas around it. So a command that returns an artist's or label's name returns its `nameLanguage` too. `Names` does it for each name, a crumb takes a `lang`, and a picker option one too. `languageName()` names a tag with the browser's `Intl.DisplayNames`: `ja-Latn` is "Japanese (Latin)".
-- **Alternate names** show under an artist's or label's name on its page (`AlternateNames`): "Real name", then "Other names", each with its language. In the artist and label lists, a row that a search found by an alternate name shows that name under the main one (`MatchedName`), and the pickers show it after the option's name, muted.
+- **Alternate names** show under an artist's or label's name on its page (`AlternateNames`): "Real name", then "Other names", each with its language, then an artist's "Aliases" ([Aliases](#aliases)). In the artist and label lists, a row that a search found by an alternate name shows that name under the main one (`MatchedName`), and the pickers show it after the option's name, muted.
 - **Links:** use React Router's `Link`.
   - shadcn components built on Base UI take it through their `render` prop: `<SidebarMenuButton render={<Link to="/" />}>`.
   - For a link that looks like a button, use `ButtonLink`. Don't render a `Link` inside `Button`: Base UI then gives the link `role="button"`, so assistive tech announces a button.
@@ -247,7 +249,7 @@ Data comes from Tauri commands, through TanStack Query.
 
 #### The catalog
 
-- **Artists** (`routes/artists/list.tsx`, `form.tsx`) call `artists`, `artist`, `createArtist` and `updateArtist`; **labels** (`routes/labels/list.tsx`, `form.tsx`) `labels`, `label`, `createLabel` and `updateLabel`; and **release formats and release media** (`routes/lists/`) `listItems`, `listItem`, `createListItem`, `renameListItem` and `deleteListItem`, with a `kind` ([backend.md](backend.md#the-catalog-context)). `ListKind` comes from `@/bindings`.
+- **Artists** (`routes/artists/list.tsx`, `form.tsx`) call `artists`, `artist`, `createArtist` and `updateArtist`, and the form `artistAliases` when it picks an alias ([Aliases](#aliases)); **labels** (`routes/labels/list.tsx`, `form.tsx`) `labels`, `label`, `createLabel` and `updateLabel`; and **release formats and release media** (`routes/lists/`) `listItems`, `listItem`, `createListItem`, `renameListItem` and `deleteListItem`, with a `kind` ([backend.md](backend.md#the-catalog-context)). `ListKind` comes from `@/bindings`.
 - **The pickers** call their own small commands, which return the first 20 by name: `artistOptions`, `labelOptions` and `listItemOptions`. `CreditedAsInput` asks `artistNames`, and `LanguagePicker` `languages`.
 
 #### Releases
@@ -255,7 +257,7 @@ Data comes from Tauri commands, through TanStack Query.
 - **The release list** (`routes/releases/list.tsx`) calls `releases`, with its page, sort, search and filters; the page also names the filters' format, medium and label for their pickers (`filterFormat`, `filterMedium`, `filterLabel`). "Select all N that match" calls `releaseIds`, and the bulk edits `setTagOnReleases` and `removeTagFromReleases`.
 - **The release page** calls `releasePage`, which has everything it shows; Delete calls `deleteRelease`, and choosing a cover `setReleaseCover`. Its files page calls `releaseFiles`.
 - **The edit tabs:** their header calls `releaseHeader`, so it names the release on any tab. Details calls `release`, then `createRelease` or `updateRelease`; Tracks `releaseTracks`, then `setReleaseTracks`; Files `releaseFiles`, then `setReleaseFiles`; Credits `releaseCredits`, then `setReleaseCredits`.
-- **The artist page** (`routes/artists/page.tsx`): its frame calls `artistHeader`, with the counts on the tabs, which every tab shares from the cache; the tabs call `artistReleases`, `artistAppearances`, `artistCredits`, and `artist` for the Files tab. **The label's page** calls `labelPage`, with its releases.
+- **The artist page** (`routes/artists/page.tsx`): its frame calls `artistHeader`, with the counts on the tabs and the artist's aliases, which every tab shares from the cache; the tabs call `artistReleases`, `artistAppearances`, `artistCredits`, and `artist` for the Files tab. **The label's page** calls `labelPage`, with its releases.
 - **The dashboard** calls `libraryStatus`, `catalogTotals`, `fileCounts`, and `releases` for the newest twelve.
 - **Credit roles** in the credits editor come from `creditRoles`.
 
@@ -366,6 +368,14 @@ Files are registered only when a step saves them, together with what uses them.
 - **Titles with " = "** ("Scenery = シーナリィ") are kept whole, and offered a split (`components/title-split.tsx`). Nothing is split unless the user says so, and an "=" without spaces around it ("E=MC²") isn't offered one.
   - The release step offers it under the title (`offerSplit` on the details form, and on `DetailsTab` once the release exists). Split makes the first part the main title, and the others printed alternate titles, each in the language its script gives away. Then "Swap" trades the main title with the first alternate one, languages included, for a user who wants the original language first.
   - The tracks step has a split button by each title that has one, and "Split all" above the table. A split row's button then swaps it, and "Swap all" swaps every split row.
+
+### Aliases
+
+An artist's aliases are other artists that are the same person or band under another name: testpilot, for deadmau5 ([backend.md](backend.md#the-catalog-context)).
+- **The artist page** shows them under the alternate names (`AlternateNames`): "Aliases: Joel Thomas Zimmerman, testpilot", each linking to its page, in its name's language. With none, there's no row.
+- **The artist form** edits them with `AliasesEditor`, after Alternate names: a `ChipList` of the aliases, by name, then the artist picker, which leaves out the artist and its aliases. The picker can create an artist at once, as it does in the release form, and Cancel doesn't undo that.
+- **Picking an artist brings its aliases.** Saving makes the list one group with the artist, so the editor asks `artistAliases` for the picked artist's own aliases, adds them, and says so under the chips: "With testpilot's alias, Joel Thomas Zimmerman." Each can still be removed before saving.
+- **Removing one** takes it out of the group when the form is saved. The aliases are saved with the rest of the form, which asks nothing more about them.
 
 ### Disc titles
 

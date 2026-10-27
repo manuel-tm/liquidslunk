@@ -98,6 +98,8 @@ export const commands = {
 	 */
 	mainNameUses: number,
 	alternateNames: UsedArtistName[],
+	/**  The other artists in its alias group, by name */
+	aliases: ArtistRef[],
 	picture: File | null,
 	files: FileLink[],
 } | null, CommandError>(__TAURI_INVOKE("artist", { args })),
@@ -109,13 +111,18 @@ export const commands = {
 	 */
 	artistNames: (args: IdArgs) => typedError<ArtistName[], CommandError>(__TAURI_INVOKE("artist_names", { args })),
 	/**
+	 *  An artist's aliases, by name, for the form when it picks one. An unknown
+	 *  artist has none.
+	 */
+	artistAliases: (args: IdArgs) => typedError<ArtistRef[], CommandError>(__TAURI_INVOKE("artist_aliases", { args })),
+	/**
 	 *  Creates an artist. Files given by path are registered first, in the same
 	 *  transaction.
 	 */
 	createArtist: (args: ArtistInput) => typedError<Artist, CommandError>(__TAURI_INVOKE("create_artist", { args })),
 	/**
-	 *  Saves an artist, its alternate names and its file links. Files given by
-	 *  path are registered first, in the same transaction.
+	 *  Saves an artist, its alternate names, its aliases and its file links.
+	 *  Files given by path are registered first, in the same transaction.
 	 */
 	updateArtist: (args: UpdateArtistArgs) => typedError<Artist, CommandError>(__TAURI_INVOKE("update_artist", { args })),
 	/**
@@ -143,6 +150,8 @@ export const commands = {
 	name: string,
 	nameLanguage: string | null,
 	alternateNames: ArtistName[],
+	/**  The other artists in its alias group, by name */
+	aliases: ArtistRef[],
 	picture: FileRef | null,
 	/**  What keeps it from being deleted, in words */
 	blockers: string[],
@@ -762,6 +771,8 @@ export type ArtistDetails = {
 	 */
 	mainNameUses: number,
 	alternateNames: UsedArtistName[],
+	/**  The other artists in its alias group, by name */
+	aliases: ArtistRef[],
 	picture: File | null,
 	files: FileLink[],
 };
@@ -772,6 +783,8 @@ export type ArtistHeader = {
 	name: string,
 	nameLanguage: string | null,
 	alternateNames: ArtistName[],
+	/**  The other artists in its alias group, by name */
+	aliases: ArtistRef[],
 	picture: FileRef | null,
 	/**  What keeps it from being deleted, in words */
 	blockers: string[],
@@ -801,6 +814,14 @@ export type ArtistInput = {
 	 *  as an alternate name, so they keep showing it. Default false.
 	 */
 	keepOldName?: boolean | null,
+	/**
+	 *  The artist's aliases, as artist ids, which become one alias group
+	 *  with it. The artist's old aliases that are left out stay aliases of
+	 *  each other, and so do the other aliases of an artist given without
+	 *  them. Empty takes it out of its group. Left out, its group stays as it
+	 *  is.
+	 */
+	aliases?: number[] | null,
 };
 
 /**  An artist in a list or a picker, with its alternate names, in order. */

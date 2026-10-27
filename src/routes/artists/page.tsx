@@ -156,7 +156,10 @@ function ArtistFrame({
                 >
                   {artist.name}
                 </h1>
-                <AlternateNames names={artist.alternateNames} />
+                <AlternateNames
+                  names={artist.alternateNames}
+                  aliases={artist.aliases}
+                />
                 <ExternalMemberships subject={{ artist: artist.id }} />
               </div>
             </div>

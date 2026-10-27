@@ -213,6 +213,16 @@ pub struct ArtistRef {
     pub name_language: Option<String>,
 }
 
+impl From<domain::Artist> for ArtistRef {
+    fn from(artist: domain::Artist) -> Self {
+        ArtistRef {
+            id: artist.id,
+            name: artist.name,
+            name_language: artist.name_language,
+        }
+    }
+}
+
 /// An artist a link names, with its other names, in order, for a page that
 /// shows a title's artists in the title's language.
 #[derive(Debug, Clone, Serialize, Type)]

@@ -1,15 +1,25 @@
 import { Fragment } from "react"
 
+import { artistUrl, Names } from "@/components/names"
 import { languageName, textProps } from "@/lib/languages"
 import { matchedName } from "@/lib/names"
 
 type Name = { name: string; language?: string | null; realName?: boolean }
 
+type Alias = { id: number; name: string; nameLanguage: string | null }
+
 /**
  * An artist's or label's alternate names, under its name: the real names, then
- * the others, each with its language. A row with nothing in it is hidden.
+ * the others, each with its language, then an artist's aliases, each linking to
+ * its page. A row with nothing in it is hidden.
  */
-export function AlternateNames({ names }: { names: Name[] }) {
+export function AlternateNames({
+  names,
+  aliases = [],
+}: {
+  names: Name[]
+  aliases?: Alias[]
+}) {
   const real = names.filter((name) => name.realName)
   const other = names.filter((name) => !name.realName)
   const rows: [string, Name[]][] = [
@@ -17,7 +27,7 @@ export function AlternateNames({ names }: { names: Name[] }) {
     ["Other names", other],
   ]
   const shown = rows.filter(([, list]) => list.length > 0)
-  if (shown.length === 0) return null
+  if (shown.length === 0 && aliases.length === 0) return null
 
   return (
     <dl className="grid grid-cols-[minmax(5rem,auto)_1fr] gap-x-2 gap-y-1 text-xs">
@@ -40,6 +50,14 @@ export function AlternateNames({ names }: { names: Name[] }) {
           </dd>
         </Fragment>
       ))}
+      {aliases.length > 0 && (
+        <>
+          <dt className="text-muted-foreground">Aliases:</dt>
+          <dd>
+            <Names items={aliases} to={artistUrl} />
+          </dd>
+        </>
+      )}
     </dl>
   )
 }

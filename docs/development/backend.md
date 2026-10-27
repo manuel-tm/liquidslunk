@@ -4,7 +4,7 @@
 
 The backend is Rust, built into the app. It was ported from slunk's Node backend one context at a time: first the database, its migrations and the database commands, and the app around them, then the media context, the catalog, the tagging context and the library check. While the port ran, slunk's backend served the routes not ported yet, beside the app in debug builds, and a script checked that the commands wrote what slunk's backend wrote, step by step. Once every page ran on Rust commands, slunk's backend was removed, with what ran it.
 
-Since the port, the backend has added the music player's commands, `player_tracks` and `release_track_ids` ([Commands](#commands)), and the menu bar's Controls menu ([The menu bar](#the-menu-bar)); and the external libraries context, with liquidslunk's first migration of its own ([The external libraries context](#the-external-libraries-context)).
+Since the port, the backend has added the music player's commands, `player_tracks` and `release_track_ids` ([Commands](#commands)), and the menu bar's Controls menu ([The menu bar](#the-menu-bar)); the external libraries context, with liquidslunk's first migration of its own ([The external libraries context](#the-external-libraries-context)); and artist aliases, with a migration of their own ([The catalog context](#the-catalog-context)).
 
 Each rule on this page has a test.
 
@@ -90,6 +90,7 @@ crates/slunk/                the domain and its database, with no Tauri dependen
                              releases, tracks
     mod.rs                   Catalog: lists, artists, labels, pictures, deletes
     names.rs                 alternate names, and the links credited with them
+    aliases.rs               an artist's aliases, saved as one group with it
     releases.rs              releases: details, links, cover, files, credits
     tracks.rs                tracks, and a release's track list and disc titles
     suggestions.rs           what the import makes of a folder's tags and names
@@ -110,6 +111,7 @@ crates/slunk/                the domain and its database, with no Tauri dependen
     file_links.rs            files linked to releases, artists and tracks
     named.rs                 artists and labels: their rows and alternate names
     artists.rs               names credited on links, and what blocks a delete
+    aliases.rs               artist aliases: groups, inserted and deleted
     labels.rs                the releases a label is on
     lists.rs                 release formats and release media
     releases.rs              releases, and their artists, labels, formats, media
@@ -126,7 +128,8 @@ crates/slunk/                the domain and its database, with no Tauri dependen
   tests/parity.rs            the migrations, checked against slunk's
   tests/media.rs             the media context's rules
   tests/audio.rs             durations and tags, checked against slunk's
-  tests/catalog.rs           the catalog context's rules: artists, labels, lists
+  tests/catalog.rs           the catalog context's rules: artists, their
+                             aliases, labels, lists
   tests/releases.rs          the catalog context's rules for releases
   tests/tracks.rs            the rules for tracks and the import's suggestions
   tests/languages.rs         language tags, checked against Node's
@@ -243,6 +246,13 @@ node crates/slunk/tests/fixtures/audio/generate.ts
   - So "Make main", which sends the old main name as a new row, drops the promoted name and sets `keepOldName`, swaps the two names, and every link shows what it did.
   - `artist_name_uses()` counts the links credited with each name, and `main_name_uses()` those that show the main name.
 - **One more name** (`add_artist_name()`) is added after an artist's others, as the import adds a tag's other names: cleaned, in its language, canonical, and never a real name. It's refused when it's blank ("The name is blank"), when it's the main name (`"Ryo Fukui" is already the artist's main name`), and when the artist has it already (`Ryo Fukui already has the name "福居良"`).
+- **Aliases** are other artists that are the same person or band under another name: deadmau5 and testpilot. Each keeps its own page, releases, credits, picture, files and external library rules. They're kept as groups ([reference/database.md](../reference/database.md#artist-aliases)), and every artist in a group is an alias of every other one. An alias means the same person, so a name two people each released under can't be an alias of both: it would make them one group.
+  - They're saved with their artist (`catalog/aliases.rs`), as a list of artist ids, which become one group with it, under a new number: the rows of the artist and of the artists given are deleted, then inserted again. Left out, the artist's group stays as it is, and an empty list takes it out of it.
+  - Everyone else keeps their group: the artist's old aliases that are left out stay aliases of each other, and so do the other aliases of an artist given without them. So the form sends a picked artist's aliases with it, which joins their groups.
+  - A group left with one artist loses it, whether a save or a delete left it: the database's trigger does that.
+  - An id given twice is kept once. The artist itself is refused ("An artist can't be its own alias"), and an unknown one is `NotFound` ("There's no artist 12").
+  - `artist_aliases()` lists an artist's aliases by name, ignoring case, then by id. Deleting an artist takes it out of its group, and aliases never block a delete.
+  - Nothing else follows aliases: credits, the import, search, the release list's artist filter and external library rules each name one artist.
 - **Pictures and logos** can be set on their own (`set_artist_picture`, `set_label_picture`), from a file id or a path. A path that isn't registered yet is registered in the same transaction, so a file the database refuses ("an artist picture must be an image") isn't left registered, and neither is one for an artist or label that isn't there. A ref with neither: "A file needs an id or a path".
 - **An artist's file links** are saved with it, replacing the old ones, in their order, with paths registered in the same transaction. Notes are cleaned, and a blank one is none.
 - **Saving** an artist or label checks its language first, then reads the files given by path, then writes everything in one transaction, so a failure saves nothing and registers nothing. An unknown id is `NotFound`: "There's no artist 12". A blank name is the database's CHECK: "The name can't be empty".
@@ -596,7 +606,7 @@ The app runs `migrate` whenever it opens a library, so users never migrate by ha
 
 Each migration is a module in `repo/migrations/`, `m<timestamp>_<name>.rs`, with an `up` and a `down` that take a `&Transaction`. `migrations![…]` in `mod.rs` declares them and lists them in order, and a test checks that the list is sorted and lists every module in the folder.
 
-The first eight are slunk's: its Kysely migrations' statements, copied from what Kysely actually ran, so they build slunk's schema to the character. Each module runs its statements in order with `run()`, each prepared on its own, as Kysely ran them. Two have logic: `add_tag_value_rules` checks the rows already there before adding its triggers, and `add_credited_names` rebuilds four tables. The ninth, `add_external_libraries`, is liquidslunk's first of its own, and the tenth, `add_everything_rules`, rebuilds its rules table to add everything rules.
+The first eight are slunk's: its Kysely migrations' statements, copied from what Kysely actually ran, so they build slunk's schema to the character. Each module runs its statements in order with `run()`, each prepared on its own, as Kysely ran them. Two have logic: `add_tag_value_rules` checks the rows already there before adding its triggers, and `add_credited_names` rebuilds four tables. The ninth, `add_external_libraries`, is liquidslunk's first of its own, the tenth, `add_everything_rules`, rebuilds its rules table to add everything rules, and the eleventh, `add_artist_aliases`, adds artist aliases.
 
 The rules:
 - Never edit a migration once it has been committed. Write a new one.
@@ -679,7 +689,7 @@ The frontend calls the backend through Tauri commands, in `src-tauri/src/command
 - `media.rs`: `files`, `file`, `file_counts`, `folder`, `folder_files`, `register_files`, `update_file` and `delete_file` ([The media context](#the-media-context)), and `open_file` and `reveal_file`;
 - `catalog/` ([The catalog context](#the-catalog-context)), a module per entity:
   - `lists.rs`: `list_items`, `list_item`, `list_item_options`, `create_list_item`, `rename_list_item` and `delete_list_item`, each with a `kind`;
-  - `artists.rs`: `artists`, `artist`, `artist_options`, `artist_names`, `create_artist`, `update_artist`, `set_artist_picture`, `add_artist_name` and `delete_artist`, and the artist page's: `artist_header`, which every tab shows, `artist_releases`, `artist_appearances` and `artist_credits`;
+  - `artists.rs`: `artists`, `artist`, `artist_options`, `artist_names`, `artist_aliases`, `create_artist`, `update_artist`, `set_artist_picture`, `add_artist_name` and `delete_artist`, and the artist page's: `artist_header`, which every tab shows, with the artist's aliases, `artist_releases`, `artist_appearances` and `artist_credits`;
   - `labels.rs`: `labels`, `label`, `label_options`, `create_label`, `update_label`, `set_label_picture` and `delete_label`, and the label's page, `label_page`;
   - `releases.rs` ([Releases](#releases)): the list, `releases` and `release_ids`; the release page, `release_page`; the edit tabs' header, `release_header`, and their reads, `release`, `release_files` and `release_credits`; `create_release`, `update_release`, `delete_release`, `set_release_cover`, `set_release_files` and `set_release_credits`; the picker's `release_options`, `credit_roles`, and the dashboard's `catalog_totals`;
   - `tracks.rs` ([Tracks](#tracks)): the list, `tracks`; the track page, `track_page`; the track form's read, `track_form`, and `create_track`, `update_track` and `delete_track`; and the Tracks tab's, `release_tracks`, which with a folder has the import's rows too, and `set_release_tracks`; and the player's: `player_tracks`, which returns what the player shows of each track it's given (its title, who performs it, its release and the release's cover, and its file), once each, in the order given, where an id that isn't a track is left out, not an error, since a queue can name a track deleted since; and `release_track_ids`, a release's tracks' ids by disc, then by number, none for a release that isn't there; and the track picker's `track_options`, the first 20 tracks by title, with their release. Their tests are next to them;

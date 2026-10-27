@@ -54,6 +54,7 @@ pub fn builder() -> Builder<Wry> {
             catalog::artists::artist,
             catalog::artists::artist_options,
             catalog::artists::artist_names,
+            catalog::artists::artist_aliases,
             catalog::artists::create_artist,
             catalog::artists::update_artist,
             catalog::artists::set_artist_picture,

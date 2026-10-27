@@ -3,6 +3,7 @@
 //! the sample data (`seeds`). Repositories are plain functions over a
 //! `&Connection`, and a `Transaction` is one (backend.md, "Structure").
 
+pub mod aliases;
 pub mod artists;
 pub mod backups;
 pub mod connection;

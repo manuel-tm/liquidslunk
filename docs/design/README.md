@@ -14,7 +14,7 @@ Each design doc plans one topic, numbered in the order it's written: `N_topic.md
 | [2_player.md](2_player.md) | The music player: playback in the sidebar, between the library menu and Import, with a queue and shortcuts; macOS's Now Playing and media keys; and a Controls menu in the menu bar | Complete |
 | [3_gapless.md](3_gapless.md) | Gapless playback: the next track loaded ahead in a second element, and started just before the current one ends | Complete |
 | [4_external_libraries.md](4_external_libraries.md) | External libraries: a selection of the library, converted, tagged and given covers from the catalog, and synced to a folder or to an iPod with video (5th and 5.5th generations) | Complete |
-| [5_artist_aliases.md](5_artist_aliases.md) | Artist aliases: artists that are the same person or band under another name, like deadmau5 and testpilot, kept as groups in one table and shown on the artist page | In design |
+| [5_artist_aliases.md](5_artist_aliases.md) | Artist aliases: artists that are the same person or band under another name, like deadmau5 and testpilot, kept as groups in one table and shown on the artist page | Being built |
 
 This README isn't a design doc. It's updated whenever a design doc is added or changes status.
 

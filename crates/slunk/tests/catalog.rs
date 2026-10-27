@@ -1004,3 +1004,240 @@ fn deletes_say_what_blocks_them() {
     assert_eq!(fixture.number("select count(*) from artists_files"), 0);
     assert_eq!(fixture.number("select count(*) from files"), 1);
 }
+
+impl Fixture {
+    /// Saves only the artist's aliases, as the form does.
+    fn set_aliases(&self, id: i64, aliases: &[i64]) -> slunk::Result<slunk::catalog::Artist> {
+        let artist = self.catalog.get_artist(id).unwrap().unwrap();
+        self.update(
+            id,
+            ArtistInput {
+                name: artist.name,
+                aliases: Some(aliases.to_vec()),
+                ..ArtistInput::default()
+            },
+        )
+    }
+
+    /// The names of the artist's aliases, in order.
+    fn aliases(&self, id: i64) -> Vec<String> {
+        self.catalog
+            .artist_aliases(id)
+            .unwrap()
+            .into_iter()
+            .map(|artist| artist.name)
+            .collect()
+    }
+}
+
+#[test]
+fn every_artist_in_a_group_is_an_alias_of_the_others() {
+    let fixture = Fixture::new();
+    let joel = fixture.artist("Joel Thomas Zimmerman", &[]);
+    let deadmau5 = fixture.artist("deadmau5", &[]);
+    let testpilot = fixture.artist("testpilot", &[]);
+    let other = fixture.artist("Ryo Fukui", &[]);
+    fixture.set_aliases(joel, &[testpilot, deadmau5]).unwrap();
+
+    // By name ignoring case, then by id
+    assert_eq!(fixture.aliases(joel), ["deadmau5", "testpilot"]);
+    assert_eq!(
+        fixture.aliases(deadmau5),
+        ["Joel Thomas Zimmerman", "testpilot"]
+    );
+    assert_eq!(
+        fixture.aliases(testpilot),
+        ["deadmau5", "Joel Thomas Zimmerman"]
+    );
+    assert!(fixture.aliases(other).is_empty());
+    assert!(fixture.aliases(999).is_empty());
+    assert_eq!(
+        fixture.number("select count(distinct alias_group) from artist_aliases"),
+        1
+    );
+
+    // A new artist joins with the whole group, as the form sends it
+    let halcyon = fixture
+        .catalog
+        .create_artist(&ArtistInput {
+            name: "halcyon".into(),
+            aliases: Some(vec![deadmau5, joel, testpilot]),
+            ..ArtistInput::default()
+        })
+        .unwrap()
+        .id;
+    assert_eq!(
+        fixture.aliases(testpilot),
+        ["deadmau5", "halcyon", "Joel Thomas Zimmerman"]
+    );
+    assert_eq!(
+        fixture.aliases(halcyon),
+        ["deadmau5", "Joel Thomas Zimmerman", "testpilot"]
+    );
+}
+
+#[test]
+fn linking_artists_with_aliases_joins_their_groups() {
+    let fixture = Fixture::new();
+    let [a, b, c, d] = ["A", "B", "C", "D"].map(|name| fixture.artist(name, &[]));
+    fixture.set_aliases(a, &[b]).unwrap();
+    fixture.set_aliases(c, &[d]).unwrap();
+    assert_eq!(fixture.aliases(a), ["B"]);
+    assert_eq!(fixture.aliases(d), ["C"]);
+
+    // Picking C brings its alias D, so the form sends both
+    fixture.set_aliases(a, &[b, c, d]).unwrap();
+    assert_eq!(fixture.aliases(d), ["A", "B", "C"]);
+    assert_eq!(fixture.aliases(b), ["A", "C", "D"]);
+    assert_eq!(
+        fixture.number("select count(distinct alias_group) from artist_aliases"),
+        1
+    );
+
+    // Saving the same group again changes nothing but its number
+    fixture.set_aliases(b, &[a, c, d]).unwrap();
+    assert_eq!(fixture.aliases(a), ["B", "C", "D"]);
+}
+
+#[test]
+fn leaving_a_group_leaves_the_others_together() {
+    let fixture = Fixture::new();
+    let [a, b, c] = ["A", "B", "C"].map(|name| fixture.artist(name, &[]));
+    fixture.set_aliases(a, &[b, c]).unwrap();
+
+    fixture.set_aliases(a, &[]).unwrap();
+    assert!(fixture.aliases(a).is_empty());
+    assert_eq!(fixture.aliases(b), ["C"]);
+    assert_eq!(fixture.aliases(c), ["B"]);
+
+    // A group of two loses both
+    fixture.set_aliases(b, &[]).unwrap();
+    assert!(fixture.aliases(c).is_empty());
+    assert_eq!(fixture.number("select count(*) from artist_aliases"), 0);
+}
+
+#[test]
+fn an_artist_given_without_its_own_aliases_leaves_them_behind() {
+    let fixture = Fixture::new();
+    let [a, b, c, d] = ["A", "B", "C", "D"].map(|name| fixture.artist(name, &[]));
+    fixture.set_aliases(a, &[b]).unwrap();
+    fixture.set_aliases(c, &[d]).unwrap();
+
+    // C comes without D, which is left alone, so it loses its group
+    fixture.set_aliases(a, &[b, c]).unwrap();
+    assert_eq!(fixture.aliases(a), ["B", "C"]);
+    assert!(fixture.aliases(d).is_empty());
+    assert_eq!(fixture.number("select count(*) from artist_aliases"), 3);
+
+    // Removing two of A's aliases leaves them aliases of each other
+    fixture.set_aliases(a, &[b, c, d]).unwrap();
+    fixture.set_aliases(a, &[d]).unwrap();
+    assert_eq!(fixture.aliases(a), ["D"]);
+    assert_eq!(fixture.aliases(b), ["C"]);
+    assert_eq!(fixture.aliases(c), ["B"]);
+}
+
+#[test]
+fn aliases_left_out_stay_and_wrong_ones_are_refused() {
+    let fixture = Fixture::new();
+    let [a, b, c] = ["A", "B", "C"].map(|name| fixture.artist(name, &[]));
+    fixture.set_aliases(a, &[b]).unwrap();
+
+    // Left out, they stay as they are
+    fixture
+        .update(
+            a,
+            ArtistInput {
+                name: "A2".into(),
+                ..ArtistInput::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(fixture.aliases(b), ["A2"]);
+
+    // Given twice, an alias is kept once
+    fixture.set_aliases(a, &[b, c, b]).unwrap();
+    assert_eq!(fixture.aliases(a), ["B", "C"]);
+
+    assert_eq!(
+        invalid(fixture.set_aliases(a, &[b, a])),
+        "An artist can't be its own alias"
+    );
+    assert_eq!(
+        not_found(fixture.set_aliases(a, &[b, 999])),
+        "There's no artist 999"
+    );
+
+    // A refused save changes nothing, its rename included
+    let refused = fixture.update(
+        a,
+        ArtistInput {
+            name: "A3".into(),
+            aliases: Some(vec![999]),
+            ..ArtistInput::default()
+        },
+    );
+    assert_eq!(not_found(refused), "There's no artist 999");
+    assert_eq!(fixture.catalog.get_artist(a).unwrap().unwrap().name, "A2");
+    assert_eq!(fixture.aliases(a), ["B", "C"]);
+}
+
+#[test]
+fn deleting_an_artist_takes_it_out_of_its_group() {
+    let fixture = Fixture::new();
+    let [a, b, c] = ["A", "B", "C"].map(|name| fixture.artist(name, &[]));
+    fixture.set_aliases(a, &[b, c]).unwrap();
+    assert!(fixture.catalog.artist_blockers(a).unwrap().is_empty());
+
+    fixture.catalog.delete_artist(a).unwrap();
+    assert_eq!(fixture.aliases(b), ["C"]);
+
+    // The last one goes with the one before it
+    fixture.catalog.delete_artist(b).unwrap();
+    assert!(fixture.aliases(c).is_empty());
+    assert_eq!(fixture.number("select count(*) from artist_aliases"), 0);
+}
+
+#[test]
+fn the_table_keeps_an_artist_in_one_group_of_two_or_more() {
+    let fixture = Fixture::new();
+    let [a, b, c] = ["A", "B", "C"].map(|name| fixture.artist(name, &[]));
+    fixture.sql(&format!(
+        "insert into artist_aliases (artist_id, alias_group) values ({a}, 1), ({b}, 1)"
+    ));
+    let refuse = |sql: String| {
+        fixture
+            .store
+            .conn()
+            .execute(&sql, [])
+            .unwrap_err()
+            .to_string()
+    };
+    assert_eq!(
+        refuse(format!(
+            "insert into artist_aliases (artist_id, alias_group) values ({a}, 2)"
+        )),
+        "UNIQUE constraint failed: artist_aliases.artist_id"
+    );
+    assert_eq!(
+        refuse(format!(
+            "insert into artist_aliases (artist_id, alias_group) values ({c}, 0)"
+        )),
+        "CHECK constraint failed: alias_group"
+    );
+    assert_eq!(
+        refuse("insert into artist_aliases (artist_id, alias_group) values (999, 1)".into()),
+        "FOREIGN KEY constraint failed"
+    );
+
+    // Deleting a row that leaves one deletes that one too
+    fixture.sql(&format!("delete from artist_aliases where artist_id = {a}"));
+    assert_eq!(fixture.number("select count(*) from artist_aliases"), 0);
+
+    // And so does deleting its artist
+    fixture.sql(&format!(
+        "insert into artist_aliases (artist_id, alias_group) values ({b}, 3), ({c}, 3)"
+    ));
+    fixture.sql(&format!("delete from artists where id = {c}"));
+    assert_eq!(fixture.number("select count(*) from artist_aliases"), 0);
+}
