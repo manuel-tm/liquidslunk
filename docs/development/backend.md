@@ -32,7 +32,7 @@ Each rule on this page has a test.
 | CLI | clap |
 | Screenshots | tauri-plugin-wdio-webdriver, behind the `webdriver` feature |
 
-tauri-specta, specta and specta-typescript are release candidates, so their versions are pinned exactly in `src-tauri/Cargo.toml`. The Rust version is pinned in `mise.toml`.
+tauri-specta, specta and specta-typescript are release candidates, so their versions are pinned exactly in `src-tauri/Cargo.toml`. ICU4X is held at 2.3 in `crates/slunk/Cargo.toml`, for its CLDR data ([Languages](#languages)). The Rust version is pinned in `mise.toml`.
 
 rusqlite's bundled SQLite turns foreign keys on for every new connection, unlike better-sqlite3. Code that needs them off, like the migration runner, sets the pragma itself.
 
@@ -317,6 +317,8 @@ ICU4X's canonicalizer does most of the work. `canonical_locale()` adds what V8 a
 ```sh
 node crates/slunk/tests/fixtures/languages/generate.ts
 ```
+
+ICU4X's answer depends on its data the same way, so it's held at 2.3, whose CLDR 48 is Node 26's: `~2.3` in `crates/slunk/Cargo.toml`, for `icu_locale`, `icu_properties` and `icu_collator`, which move together. ICU4X 2.4 has CLDR 49, which canonicalizes four codes unlike Node: `fat` stays `fat` rather than `ak`, and `mrd`, `shl` and `yol` become `mgp`, `mrh` and `enm`. Moving to it means keeping those four in `canonical_locale()`, as with `jaw`, and the test shows any more.
 
 `script_language()` gives the language a name's script gives away, for a name added as it was credited ([Releases](#releases)): kana are `ja`, and Hangul `ko`. Han characters could be Chinese or Japanese, so they give none.
 

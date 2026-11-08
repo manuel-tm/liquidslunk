@@ -47,7 +47,7 @@
   "devDependencies": {
     "@eslint/js": "^10",
     "@tauri-apps/cli": "^2.12.3",
-    "@types/node": "^24",
+    "@types/node": "^26",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6",
