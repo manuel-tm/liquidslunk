@@ -85,7 +85,11 @@ crates/slunk/                the domain and its database, with no Tauri dependen
     paths.rs                 Node's path functions, ported
     file_types.rs            a file's type, from its extension
     repository.rs            the records the media context stores
-    audio/                   an audio file's duration and tags
+    audio/                   an audio file's duration and tags, and a FLAC
+                             file as an MP4
+      flac.rs                a FLAC file's frames, found in one pass
+      mp4.rs                 the MP4 that holds them, never whole
+    audio_source.rs          what the audio route serves, and the MP4s kept
   src/catalog/               the catalog context: artists, labels, lists,
                              releases, tracks
     mod.rs                   Catalog: lists, artists, labels, pictures, deletes
@@ -224,6 +228,30 @@ node crates/slunk/tests/fixtures/audio/generate.ts
 ```
 
 `expected.json` was written while slunk's backend was in the repository, and isn't written again: the files hold the same audio and tags each time they're made. A new fixture needs its expected values added by hand.
+
+### Serving FLAC as MP4
+
+WebKit seeks a FLAC file by estimate. It doesn't use the file's seek table, so a seek plays from somewhere else than the time it shows, by seconds or by minutes: in a 7:07 track, a seek to 10 seconds before its end played from about 3:02, while the element held its time at the end. The same frames in an MP4 seek exactly, by the MP4's table of samples, as WAV does. So the audio route ([Serving files](#serving-files)) serves a FLAC file as an MP4 that holds its frames. Nothing is decoded or converted: the frames are the file's, byte for byte, so the same FLAC plays, at its own bit depth and sample rate, and Core Audio decodes the MP4 to the same PCM as the file. It only reads the file.
+
+- **Finding the frames** (`media/audio/flac.rs`) takes one pass over the file. An ID3v2 tag before it is skipped, and STREAMINFO is kept. A frame starts with a sync code, `0xFFF8`, or `0xFFF9` with variable block sizes, but the same two bytes turn up inside frames. So a sync code starts the next frame only when:
+  - its header is valid, its CRC-8 matches, and it agrees with STREAMINFO: its channels, and its sample rate and bit depth when it gives them;
+  - its number follows the last frame's: the next frame number, or with variable block sizes, the sample after the last frame's last;
+  - the bytes since the last frame started end with a matching CRC-16.
+
+  Sync codes are looked for eight bytes at a time, and the CRC-16 is worked out eight bytes at a time, only as far as where a frame could end.
+- **The last frame** ends at the end of the file, or right before an ID3v1 tag that ends it, where its CRC-16 matches. Anything else after it can't be told from the frame: a CRC-16 comes to 0 by chance about every 64 KB, so a matching one inside a frame cut off would look like its end.
+- **It fails** when there's no STREAMINFO, no frame where the metadata ends, a frame that isn't followed by the next one or by the end, or frames whose samples don't add up to STREAMINFO's total, when it gives one. The file is then served as it is, and seeks by estimate, and the app logs why, once.
+- **The MP4** (`media/audio/mp4.rs`) follows Xiph's encapsulation of FLAC in the ISO base media file format, as Core Audio writes it: `ftyp`, then `moov` with one audio track whose samples are the frames, then `mdat`'s own header. The sample entry is `fLaC`, with STREAMINFO in its `dfLa` box. `stts` has each frame's samples, in runs, `stsz` each frame's size, and `stsc` and `stco` put the frames in chunks of about a second.
+  - Every timescale is the sample rate. WebKit takes the length from `mvhd` and `tkhd`, so in milliseconds, it would be cut to one.
+  - The sample entry's rate is 16.16 fixed point, so a rate above 65,535 Hz is halved until it fits, as Core Audio writes it: 48,000 for 96 and 192 kHz. The real one is STREAMINFO's, and `mdhd`'s timescale.
+  - Times and lengths take version 1 of the boxes, in 64 bits, when the samples don't fit in 32. An MP4 over 4 GB has `co64` and a 64-bit `mdat` size.
+  - There are no tags, no cover and no edit list. FLAC has no encoder delay or padding, so every sample in the frames plays.
+- **It's never whole** (`FlacMp4`). Only its header is kept: 20 KB for a 7-minute track, and 100 KB for a 34-minute one. A range is cut where the header ends: what's before comes from the header, and what's after is read from the file, at the same distance from its first frame.
+- **The MP4s kept** (`media/audio_source.rs`). The media context keeps the last 16 files' MP4s, in memory, never on disk. Each is kept under its file's id, path, size and modification time, so a file that's changed or relinked is read again. The first request makes it, and any that come meanwhile wait for it, with a `OnceLock`. A file that isn't FLAC is remembered as such, so it isn't read again. They go when the library switches, with the media context.
+- **What it costs:** the one pass, before the file's first byte is served. In a release build, from the system's cache, it took 25 to 40 ms for a 41 MB track, and 78 ms for a 143 MB one. The player loads the next track ahead ([frontend.md](frontend.md#nearly-gapless)), so its MP4 is made while the current one plays.
+- **In a debug build,** the pass takes about 70 times as long: 2.8 s for 39 MB, 13.5 s for 204 MB. WebKit gives up on a file whose first bytes take more than 10 seconds to come, as if its format weren't supported. So in a debug build, a FLAC file of more than about 150 MB fails to play the first time, and plays the next, once its MP4 is kept. Check playback timing in a release build.
+
+`tests/flac_mp4.rs` builds FLAC streams with verbatim frames, whose samples are their bytes as they are, so a frame can hold anything, like the next frame's header with a valid CRC-8. It covers finding the frames, variable block sizes, tags before and after, files cut off or that don't add up, the MP4's boxes, ranges across its header, MP4s over 4 GB, high sample rates, and the MP4s kept. On macOS, `afconvert` decodes the MP4 to the same audio as the FLAC file, byte for byte, for a built file and for one Core Audio encoded itself.
 
 ## The catalog context
 
@@ -762,6 +790,8 @@ Each failure is an `invalid` error, in words. An I/O or locking error adds that 
 - An unknown id, no open library, or a file missing on disk gets a 404.
 - The content type comes from the extension, by mime_guess, except `audio/mp4` for `m4a`, as slunk's backend sent it.
 - Range requests get a 206 with `Content-Range`, so audio can seek. A response is a whole body in memory, so a range with no end (`bytes=0-`) gets 1 MB, and the media element asks for the rest as it plays. A request with no range gets the whole file.
+
+It also serves `slunk://localhost/audio/:id`, or `http://slunk.localhost/audio/:id`, by file id, for what the app's audio plays. A FLAC file, known by its first bytes, after any ID3v2 tag, and not by its extension, is served as an MP4 that holds its frames, which WebKit seeks exactly ([Serving FLAC as MP4](#serving-flac-as-mp4)), as `audio/mp4`, with ranges as above. Any other file, and a FLAC file whose frames can't be found, is served as `/files/:id` serves it.
 
 The app's CSP allows `slunk:` and `http://slunk.localhost` in `img-src` and `media-src`. A page's `fetch()` can't read them: they're for media elements. Scripts and workers come only from the app's own files, by `default-src 'self'`: the player's worker is one of them, bundled by Vite ([frontend.md](frontend.md#nearly-gapless)).
 

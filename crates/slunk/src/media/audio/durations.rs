@@ -41,7 +41,7 @@ pub fn flac(path: &Path) -> Option<i64> {
 }
 
 /// Skips the ID3v2 tags at the start of a file, as music-metadata did.
-fn skip_id3v2<R: Read + Seek>(file: &mut R) -> Option<()> {
+pub(super) fn skip_id3v2<R: Read + Seek>(file: &mut R) -> Option<()> {
     loop {
         let mut header = [0; 10];
         let start = file.stream_position().ok()?;

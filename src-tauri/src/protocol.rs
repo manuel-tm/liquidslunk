@@ -2,10 +2,16 @@
 //! file's bytes, read-only, for `<img>` and `<audio>`, as slunk's
 //! `GET /raw/files/:id` served them. An unknown id, or a file missing on disk,
 //! gets a 404. Range requests get a 206, so audio can seek.
+//!
+//! `slunk://localhost/audio/:id` is what the app's audio plays: a FLAC file
+//! as an MP4 that holds its frames, which WebKit seeks exactly, and any other
+//! file as `/files/:id` serves it (backend.md, "Serving FLAC as MP4").
 
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
+
+use slunk::media::{AudioSource, FlacMp4};
 
 use tauri::http::{Request, Response, StatusCode, header};
 use tauri::{Manager, Runtime, UriSchemeContext, UriSchemeResponder};
@@ -34,21 +40,56 @@ pub fn handle<R: Runtime>(
     });
 }
 
+/// What a request asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Route {
+    /// A file's bytes
+    File(i64),
+    /// A file as the app's audio plays it
+    Audio(i64),
+}
+
+fn route(path: &str) -> Option<Route> {
+    let id = |id: &str| id.parse::<i64>().ok();
+    if let Some(rest) = path.strip_prefix("/files/") {
+        id(rest).map(Route::File)
+    } else if let Some(rest) = path.strip_prefix("/audio/") {
+        id(rest).map(Route::Audio)
+    } else {
+        None
+    }
+}
+
 fn respond(libraries: &Libraries, request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
-    let Some(id) = request
-        .uri()
-        .path()
-        .strip_prefix("/files/")
-        .and_then(|id| id.parse::<i64>().ok())
-    else {
+    let Some(route) = route(request.uri().path()) else {
         return status(StatusCode::NOT_FOUND);
     };
     let Ok(library) = libraries.library() else {
         return status(StatusCode::NOT_FOUND);
     };
+    let range = request.headers().get(header::RANGE);
     // Only the lookup holds the connection; the file is read after
-    match library.media.file_path(id) {
-        Ok(Some(path)) => serve(&path, request.headers().get(header::RANGE)),
+    let (id, found) = match route {
+        Route::File(id) => (
+            id,
+            library
+                .media
+                .file_path(id)
+                .map(|path| path.map(AudioSource::File)),
+        ),
+        Route::Audio(id) => (
+            id,
+            library.media.audio_source(id, |path, error| {
+                eprintln!(
+                    "Can't serve {} as MP4, so it's served as it is: {error}",
+                    path.display()
+                );
+            }),
+        ),
+    };
+    match found {
+        Ok(Some(AudioSource::File(path))) => serve(&path, range),
+        Ok(Some(AudioSource::Mp4(mp4))) => serve_mp4(&mp4, range),
         Ok(None) => status(StatusCode::NOT_FOUND),
         Err(error) => {
             eprintln!("Can't look up file {id}: {error}");
@@ -64,14 +105,39 @@ fn serve(path: &Path, range: Option<&header::HeaderValue>) -> Response<Vec<u8>> 
     let Ok(length) = file.metadata().map(|metadata| metadata.len()) else {
         return status(StatusCode::NOT_FOUND);
     };
-    let content_type = content_type(path);
-    let range = range.and_then(|value| value.to_str().ok());
+    ranged(length, &content_type(path), range, |start, end| {
+        let mut body = vec![0; (end - start + 1) as usize];
+        file.seek(SeekFrom::Start(start))?;
+        file.read_exact(&mut body)?;
+        Ok(body)
+    })
+}
 
+/// A FLAC file as an MP4: its header, then its frames, read from the file.
+fn serve_mp4(mp4: &FlacMp4, range: Option<&header::HeaderValue>) -> Response<Vec<u8>> {
+    ranged(mp4.len(), "audio/mp4", range, |start, end| {
+        mp4.read(start, end)
+    })
+}
+
+/// A body of `length` bytes, or the range of it asked for. `read` reads
+/// from `start` to `end`, both included.
+fn ranged(
+    length: u64,
+    content_type: &str,
+    range: Option<&header::HeaderValue>,
+    read: impl FnOnce(u64, u64) -> io::Result<Vec<u8>>,
+) -> Response<Vec<u8>> {
+    let range = range.and_then(|value| value.to_str().ok());
     let Some(range) = range else {
-        let mut body = Vec::with_capacity(length as usize);
-        if file.read_to_end(&mut body).is_err() {
+        let body = if length == 0 {
+            Ok(Vec::new())
+        } else {
+            read(0, length - 1)
+        };
+        let Ok(body) = body else {
             return status(StatusCode::INTERNAL_SERVER_ERROR);
-        }
+        };
         return Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, content_type)
@@ -88,10 +154,9 @@ fn serve(path: &Path, range: Option<&header::HeaderValue>) -> Response<Vec<u8>> 
             .body(Vec::new())
             .unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR));
     };
-    let mut body = vec![0; (end - start + 1) as usize];
-    if file.seek(SeekFrom::Start(start)).is_err() || file.read_exact(&mut body).is_err() {
+    let Ok(body) = read(start, end) else {
         return status(StatusCode::INTERNAL_SERVER_ERROR);
-    }
+    };
     Response::builder()
         .status(StatusCode::PARTIAL_CONTENT)
         .header(header::CONTENT_TYPE, content_type)
@@ -174,6 +239,34 @@ mod tests {
         assert_eq!(parse_range("bytes=x-1", 100), None);
         assert_eq!(parse_range("items=0-1", 100), None);
         assert_eq!(parse_range("bytes=0-", 0), None);
+    }
+
+    #[test]
+    fn routes_are_a_file_or_its_audio_by_id() {
+        assert_eq!(route("/files/12"), Some(Route::File(12)));
+        assert_eq!(route("/audio/12"), Some(Route::Audio(12)));
+        assert_eq!(route("/audio/"), None);
+        assert_eq!(route("/audio/x"), None);
+        assert_eq!(route("/covers/12"), None);
+        assert_eq!(route("/files/12/x"), None);
+    }
+
+    #[test]
+    fn ranges_of_a_body_are_read_as_asked() {
+        let bytes: Vec<u8> = (0..=255).collect();
+        let read = |start: u64, end: u64| Ok(bytes[start as usize..=end as usize].to_vec());
+        let whole = ranged(256, "audio/mp4", None, read);
+        assert_eq!(whole.status(), StatusCode::OK);
+        assert_eq!(whole.body(), &bytes);
+        let value = header::HeaderValue::from_static("bytes=10-19");
+        let part = ranged(256, "audio/mp4", Some(&value), read);
+        assert_eq!(part.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(part.body(), &bytes[10..20]);
+        assert_eq!(part.headers()[header::CONTENT_RANGE], "bytes 10-19/256");
+        assert_eq!(part.headers()[header::CONTENT_TYPE], "audio/mp4");
+        let outside = header::HeaderValue::from_static("bytes=300-");
+        let refused = ranged(256, "audio/mp4", Some(&outside), read);
+        assert_eq!(refused.status(), StatusCode::RANGE_NOT_SATISFIABLE);
     }
 
     #[test]

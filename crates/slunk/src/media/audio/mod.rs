@@ -9,6 +9,9 @@
 //! Durations are lofty's, in whole milliseconds, except where lofty works
 //! them out differently from music-metadata: `durations` does those as
 //! music-metadata did.
+//!
+//! `flac` and `mp4` serve a FLAC file as an MP4 that holds its frames, which
+//! WebKit seeks exactly (backend.md, "Serving FLAC as MP4").
 
 use std::path::Path;
 use std::time::Duration;
@@ -29,6 +32,8 @@ use lofty::tag::ItemValue;
 use crate::text::{is_js_space, trim};
 
 mod durations;
+pub mod flac;
+pub mod mp4;
 
 /// What an audio file says about itself.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
