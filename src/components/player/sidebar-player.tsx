@@ -124,8 +124,9 @@ function NowPlaying({ track }: { track: PlayerTrack | null }) {
 
 /**
  * The time played and the track's length, with a bar between them. It doesn't
- * seek (frontend.md, "The player"). The length is the element's once it has
- * read the file, and the catalog's until then.
+ * seek: WebKit seeks FLAC files by estimate (frontend.md, "The player"). The
+ * length is the element's once it has read the file, and the catalog's until
+ * then.
  */
 function Played({ track }: { track: PlayerTrack | null }) {
   const { time, duration: read } = usePlayerTime()

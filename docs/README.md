@@ -91,7 +91,13 @@ And at the affected section:
    > **Status: complete.** All of this design's phases (§9, phases 0 to 6) were built by 2027-01-15.
    ```
 
-6. **Leave it alone.** A finished design doc is never edited again, not even to add an appendix: it's a record of what was planned and built. A later change to what it describes is made in the code and documented here, like any other change. A change that needs planning gets a new design doc.
+6. **Or cancel it,** when it won't be built, or built any further, whether it's in design or being built: a status line under its title with the reason in a sentence, a section at its end that says why in full, and its row in [design/README.md](design/README.md). That section also says what became of any phase built: it's either reverted, or kept and documented here like any other code. For example (made up too):
+
+   ```markdown
+   > **Status: canceled.** Canceled on 2027-02-03, after phase 0: the sidecar couldn't be signed ([Why it's canceled](#why-its-canceled)).
+   ```
+
+7. **Leave it alone.** A complete or canceled design doc is never edited again, not even to add an appendix: it's a record of what was planned, and what was built or why it wasn't. A later change to what it describes is made in the code and documented here, like any other change. A change that needs planning, or a canceled topic taken up again, gets a new design doc.
 
 A design doc is only ever edited by the work on its own topic. Every other design doc is read-only, whatever its status: it's read for context, but never edited, not even to fix a typo, a stale name or a broken link.
 
@@ -113,4 +119,4 @@ The docs outside `design/` must always match the code.
 - **Update them in the same change as the code.** Any change that affects something documented updates the docs with it: requirements and setup, commands and scripts, project structure, conventions, and behavior.
 - **A doc that no longer matches the code is a bug.** Fix it when you find it, even if your change didn't cause it.
 
-`design/` is the exception. A design doc is only edited while its design is in progress: freely while it's being designed, and through appendices while its phases are being built. Once it's complete, it isn't edited again. Its index, [design/README.md](design/README.md), isn't a design doc: it's updated whenever a design doc is added or changes status.
+`design/` is the exception. A design doc is only edited while its design is in progress: freely while it's being designed, and through appendices while its phases are being built. Once it's complete or canceled, it isn't edited again. Its index, [design/README.md](design/README.md), isn't a design doc: it's updated whenever a design doc is added or changes status.

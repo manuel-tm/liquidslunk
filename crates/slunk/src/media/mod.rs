@@ -4,15 +4,12 @@
 //! - `library`: the library on disk, read-only.
 //! - `paths`: Node's path functions, which slunk's paths were made with.
 //! - `file_types`: a file's type, from its extension.
-//! - `audio`: an audio file's duration and embedded tags, and a FLAC file
-//!   as an MP4.
-//! - `audio_source`: what the audio route serves of a file, with the MP4s
-//!   it keeps.
+//! - `audio`: an audio file's duration and embedded tags.
 //! - `check`: the library check's file part, and its fixes.
 //! - `repository`: the records `repo::files` and `repo::file_links` store.
 
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use rusqlite::Connection;
@@ -23,17 +20,13 @@ use crate::repo::{file_links, files};
 use crate::{Error, Result};
 
 pub mod audio;
-mod audio_source;
 mod check;
 pub mod file_types;
 pub mod library;
 pub mod paths;
 pub mod repository;
 
-pub use audio::flac::FlacError;
-pub use audio::mp4::FlacMp4;
 pub use audio::{Audio, AudioTags};
-pub use audio_source::AudioSource;
 pub use check::{ChangedFile, FileCheck, FileMove, MissingFile, UnregisteredFolder};
 pub use file_types::{FileType, file_type_of};
 pub use library::{DiskFile, DiskFolder, DiskSubfolder, FileFacts, Library};
@@ -88,16 +81,11 @@ pub struct FolderFile {
 pub struct Media {
     store: Arc<Store>,
     library: Library,
-    mp4s: audio_source::Mp4s,
 }
 
 impl Media {
     pub fn new(store: Arc<Store>, library: Library) -> Media {
-        Media {
-            store,
-            library,
-            mp4s: audio_source::Mp4s::default(),
-        }
+        Media { store, library }
     }
 
     pub fn library(&self) -> &Library {
@@ -221,21 +209,6 @@ impl Media {
     pub fn file_path(&self, id: i64) -> Result<Option<PathBuf>> {
         let path = files::path(&self.store.conn(), id)?;
         Ok(path.map(|path| self.library.absolute(&path)))
-    }
-
-    /// What the audio route serves of a registered file, or `None` for an
-    /// unknown id: a FLAC file as an MP4, and anything else as it is. When a
-    /// FLAC file's frames can't be found, `failed` hears why, once, and it's
-    /// served as it is. Only the lookup holds the connection.
-    pub fn audio_source(
-        &self,
-        id: i64,
-        failed: impl FnOnce(&Path, &FlacError),
-    ) -> Result<Option<AudioSource>> {
-        let Some(path) = self.file_path(id)? else {
-            return Ok(None);
-        };
-        Ok(Some(self.mp4s.source(id, path, failed)))
     }
 
     /// A folder's subfolders and files, marking what's registered.

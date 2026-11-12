@@ -1,6 +1,6 @@
 # Seeking
 
-> **Status: being built.**
+> **Status: canceled.** Canceled on 2026-11-12, after phase 0 was built and reverted: gapless playback regressed, and WebKit falls short at seeking FLAC, the format of almost every file in the library ([Why it's canceled](#why-its-canceled)).
 
 The player shows how far a track has played, but can't go anywhere in it. Seeking was in the player's design (2_player.md §4.3), and was taken out while it was built (2_player.md Appendix B): WebKit seeks a FLAC file by estimate, so a seek could play from somewhere else than the time it showed (2_player.md Appendix A). The library is almost all FLAC. This design makes seeks in FLAC exact, then gives the player its seek bar back, and a way to skip back and forward.
 
@@ -105,8 +105,6 @@ Out of scope:
 
 ### 4.3 Indexing a FLAC file
 
-> Changed during implementation, see [Appendix A](#appendix-a-the-last-frame-ends-at-the-files-end-or-before-an-id3v1-tag).
-
 A FLAC file is its metadata blocks, then its frames: each frame a header, then a block of samples, then a CRC. The MP4 needs each frame's size and number of samples, so the file is indexed once, in one pass.
 
 - **The metadata.** An ID3v2 tag before it is skipped. STREAMINFO is kept, for the MP4's header (§4.4). The rest, tags, pictures, the seek table and padding, isn't needed.
@@ -121,8 +119,6 @@ A FLAC file is its metadata blocks, then its frames: each frame a header, then a
 - **It fails** when there's no STREAMINFO, when there's no frame where the metadata ends, or when a frame isn't followed by the next one, or by the end. The file is then served as it is (§4.2).
 
 ### 4.4 The MP4
-
-> Changed during implementation, see [Appendix B](#appendix-b-high-sample-rates-are-halved-as-core-audio-writes-them).
 
 The MP4 follows Xiph's specification for FLAC in the ISO base media file format, as Core Audio writes it: one audio track, each FLAC frame one sample.
 
@@ -162,8 +158,6 @@ mdat                   the file's frames, byte for byte
 - **A request with no range** gets the whole MP4, as `/files/:id` gets the whole file.
 
 ### 4.6 The index, in memory
-
-> Changed during implementation, see [Appendix D](#appendix-d-webkit-waits-10-seconds-for-a-files-first-bytes).
 
 - **Kept, never written.** The app keeps the indexes of the last 16 files it indexed, each with its header: 20 KB for a 7-minute track, 100 KB for the 34-minute one. They're never written to disk.
 - **Made once.** The element asks for many ranges of each file, and `audio_seekable` asks about it too (§4.7). Whichever comes first indexes it, and every other, even one that comes at the same time, waits for that index and uses it.
@@ -266,8 +260,6 @@ The preview, the browser's own `<audio controls>`, plays from `audioUrl()` (§4.
 
 ## 6. Testing
 
-> Changed during implementation, see [Appendix C](#appendix-c-the-tests-build-their-flac-streams).
-
 - **Rust,** in `crates/slunk/tests/`:
   - indexing: each frame's offset, size and samples, against what `afinfo` counts; a file with an ID3v2 tag before it, and one with an ID3v1 tag after it; a sync code inside a frame; a file cut off inside a frame; a stream with variable block sizes, built in the test; and a file that isn't FLAC;
   - the MP4: its boxes read back; its samples, sizes and chunk offsets against the index; and `mdat` against the file's frames;
@@ -316,8 +308,6 @@ Each phase ends with something usable and documented, and every check in AGENTS.
 
 ## 8. Risks and checks
 
-> Changed during implementation, see [Appendix D](#appendix-d-webkit-waits-10-seconds-for-a-files-first-bytes).
-
 Each is checked early in the phase that needs it. Anything that changes this design is recorded as an appendix.
 
 Phase 0:
@@ -354,42 +344,13 @@ The first draft left these open. They were settled on 2026-11-12:
 2. **A VBR MP3 or AAC in ADTS,** which may seek by estimate: the player doesn't seek in them (§4.7, §5.4).
 3. **The remembered time:** yes, as 2_player.md first planned (§5.6).
 
-## Appendix A: The last frame ends at the file's end, or before an ID3v1 tag
+## Why it's canceled
 
-- **Date:** 2026-11-12
-- **Affects:** §4.3 Indexing a FLAC file
-- **Was:** the last frame ends at the end of the file, or before an ID3v1 tag, or before whatever follows it that isn't a frame. A sync code starts the next frame when its header is valid with its CRC-8, its number follows the last frame's, and the CRC-16 matches.
-- **Now:**
-  - The last frame ends at the end of the file, or right before an ID3v1 tag that ends it, where its CRC-16 matches. A file with anything else after its last frame, or cut off inside it, fails, and is served as it is.
-  - A frame's header must also agree with STREAMINFO: its channels, and its sample rate and bit depth when it gives them.
-  - When STREAMINFO gives a total of samples, the frames must add up to it, or the file fails.
-- **Why:** a CRC-16 comes to 0 by chance about once every 64 KB. Ending the last frame wherever its CRC-16 last matched would have taken a file cut off inside a frame of 15 KB about one time in four, with its last frame cut short. The total catches a frame missed or found twice, at no cost.
+On 2026-11-12, phase 0 was built, checked, and reverted, code and docs, and the rest of this design was canceled.
 
-## Appendix B: High sample rates are halved, as Core Audio writes them
-
-- **Date:** 2026-11-12
-- **Affects:** §4.4 The MP4
-- **Was:** a sample rate above 65,535 Hz is written in the sample entry as the specification says.
-- **Now:** it's halved until it fits: 48,000 for 96 and 192 kHz. The real rate is STREAMINFO's, and `mdhd`'s timescale. A 96 kHz and a 192 kHz file, made with `afconvert`, played through the audio route, and seeked as exactly as WAV did, within 12 ms, at 100 seconds before their end and across a frame.
-- **Why:** it's what Core Audio writes in its own FLAC-in-MP4 files at both rates, and its decoder is the one that reads them.
-
-## Appendix C: The tests build their FLAC streams
-
-- **Date:** 2026-11-12
-- **Affects:** §6 Testing
-- **Was:** a few seconds of noise as FLAC, made by `generate.ts`, as a new fixture with its expected values added by hand.
-- **Now:** `tests/flac_mp4.rs` builds FLAC streams with verbatim frames, whose samples are their bytes as they are. On macOS, it also has `afconvert` encode ten seconds of noise when it runs, and checks that Core Audio decodes the MP4 of each to the same audio as the FLAC file. There's no new fixture in `tests/fixtures/audio/`, whose FLAC files are indexed too.
-- **Why:** a built stream can hold what an encoder can't be made to write: a sync code, and a whole valid header for the next frame, inside a frame; variable block sizes; a file cut off at a chosen byte; a total that doesn't add up. Core Audio's encoder still covers real frames.
-
-## Appendix D: WebKit waits 10 seconds for a file's first bytes
-
-- **Date:** 2026-11-12
-- **Affects:** §4.6 The index, in memory, §8 Risks and checks
-- **Was:** the first track waits for its index. Phase 0 measures that from a cold disk, and if it's too long, a fragmented MP4 could be served before the whole file is indexed.
-- **Now:**
-  - In a release build, from the system's cache, indexing took 25 to 40 ms for a 41 MB track, and 78 ms for a 143 MB one. All 431 FLAC files in `dev-library/music/` were indexed, and each one's frames were as many as `afinfo` counts packets.
-  - A debug build takes about 70 times as long: 2.8 s for 39 MB, and 13.5 s for 204 MB.
-  - WebKit gives up on a file whose first bytes take more than 10 seconds to come, with error 4, "not supported": after 10,082 ms, for a 204 MB file the debug build was indexing. So in a debug build, a FLAC file of more than about 150 MB fails the first time it's played, and plays the next time, once its MP4 is kept. A release build is far from it, from an internal disk.
-  - A cold disk wasn't measured: `purge` needs an administrator, and macOS's no-cache flag still read the file from memory. A disk slower than about 20 MB/s would bring a 200 MB file near the limit, in a release build. If that comes up, the fragmented MP4 (§9) is still the way forward.
-- **Why:** in the first run of the checks, in a debug build, the 96 and 192 kHz files failed to load.
+- **What was built.** Phase 0 served FLAC as MP4, wrapped as it's served (§4), and the player and the file page's preview played from it. In the app, seeks landed where WAV's did, within about 10 ms, in FLAC at 16 and 24 bits from 44.1 to 192 kHz, and in AIFF. By ear, seeking worked as it does in VLC.
+- **Gapless playback regressed.** By ear, in a release build, tracks that played without a gap before (3_gapless.md) had one again. The checks had found WebKit as quick to start an MP4 as a FLAC file, 304 to 305 ms each time, so the cause was something else. It wasn't looked for.
+- **WebKit falls short at FLAC,** the format of almost every file in the library. It seeks FLAC by estimate, by minutes (§2), and seeking exactly took giving it every FLAC file in another format, made from an index of the whole file. That cost each track's first play a read of the whole file: tens of milliseconds in a release build, but seconds in a debug build, and WebKit gives up on a file whose first bytes take more than 10 seconds.
+- **For playing files without seeking,** as the player has since 2_player.md, WebKit is fine. So the player stays as it is: it plays each file as it is, gaplessly, and doesn't seek (2_player.md Appendix B).
+- **Exact seeking is still wanted, done the full way:** the app playing audio itself, as VLC does, reading FLAC's frame headers to find where a seek lands, and decoding from that sample (2_player.md §3, B). That would also bring true gapless playback, instead of nearly gapless. It needs a design of its own, with a new number.
 

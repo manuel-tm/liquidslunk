@@ -37,7 +37,9 @@ The full process is in [docs/README.md](docs/README.md#how-we-work).
   - `> **Status: in design.**`: edit it freely;
   - `> **Status: being built.**`: only appendices (below);
   - `> **Status: complete.**`: don't touch it, not even to add an appendix. It's a record of what was planned. A later change to what it describes goes in the code and the rest of `docs/`, and a change that needs planning gets a new design doc.
+  - `> **Status: canceled.**`: don't touch it either. It's a record of a design that won't be built, and why. Taking its topic up again takes a new design doc.
 - **Mark a design complete** when all its phases are built: a status line under its title, and its row in `docs/design/README.md`. That's the last edit the doc gets.
+- **Cancel a design** when it won't be built, or built any further, in design or while it's being built: a status line under its title with the reason in a sentence, a section at its end that says why in full, and what became of any phase built, and its row in `docs/design/README.md`. A phase built is either reverted, or kept and documented like any other code. That's the last edit the doc gets.
 - **When the code shows a design has to change,** while its phases are being built:
   - Don't rewrite the design text. Add an appendix at the end of that design doc, plus a one-line note at the affected section.
   - If it changes a design decision (not just a detail), ask before going ahead.

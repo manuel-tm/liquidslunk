@@ -15,7 +15,7 @@ Each design doc plans one topic, numbered in the order it's written: `N_topic.md
 | [3_gapless.md](3_gapless.md) | Gapless playback: the next track loaded ahead in a second element, and started just before the current one ends | Complete |
 | [4_external_libraries.md](4_external_libraries.md) | External libraries: a selection of the library, converted, tagged and given covers from the catalog, and synced to a folder or to an iPod with video (5th and 5.5th generations) | Complete |
 | [5_artist_aliases.md](5_artist_aliases.md) | Artist aliases: artists that are the same person or band under another name, like deadmau5 and testpilot, kept as groups in one table and shown on the artist page | Complete |
-| [6_seeking.md](6_seeking.md) | Seeking: exact seeks in FLAC, which WebKit seeks by estimate, by serving it as MP4, wrapped as it's served; seeking only in files that seek exactly; the seek bar, skipping back and forward, Now Playing's scrubber, and a remembered queue's time | Being built |
+| [6_seeking.md](6_seeking.md) | Seeking: exact seeks in FLAC, which WebKit seeks by estimate, by serving it as MP4, wrapped as it's served; seeking only in files that seek exactly; the seek bar, skipping back and forward, Now Playing's scrubber, and a remembered queue's time | Canceled |
 
 This README isn't a design doc. It's updated whenever a design doc is added or changes status.
 
@@ -28,7 +28,10 @@ A doc's status is its status line, right under its title. The index above mirror
 | `> **Status: in design.**` | Anything |
 | `> **Status: being built.**` | Only appendices, each with a one-line note at the section it affects |
 | `> **Status: complete.**` | Nothing. It's an archive. |
+| `> **Status: canceled.**` | Nothing. It's an archive of a design that won't be built, and why. |
 
-When a doc moves to the next status, its status line and its row above are updated. Marking it complete is the last edit it gets.
+When a doc moves to the next status, its status line and its row above are updated. Marking it complete or canceled is the last edit it gets.
+
+A design is canceled when it won't be built, or built any further, whether it's in design or being built. Its status line gives the reason in a sentence, and a section at its end says why in full, with what became of any phase built: reverted, or kept and documented like any other code. Taking its topic up again takes a new design doc, with the next free number.
 
 The full process, with examples of an appendix and a status line, is in [docs/README.md](../README.md#how-we-work).

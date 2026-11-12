@@ -143,14 +143,3 @@ export function fileUrl(id: number | string): string {
     ? `http://slunk.localhost/files/${id}`
     : `slunk://localhost/files/${id}`
 }
-
-/**
- * A registered file as the app's audio plays it: a FLAC file as an MP4,
- * which WebKit seeks exactly, and any other file as it is (frontend.md,
- * "Files").
- */
-export function audioUrl(id: number | string): string {
-  return WINDOWS
-    ? `http://slunk.localhost/audio/${id}`
-    : `slunk://localhost/audio/${id}`
-}

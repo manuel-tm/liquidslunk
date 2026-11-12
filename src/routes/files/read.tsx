@@ -26,14 +26,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import type { FileDetails as File } from "@/bindings"
 import { openFile, revealFile } from "@/lib/files"
 import { formatDateTime, formatSize } from "@/lib/format"
-import {
-  audioUrl,
-  call,
-  fileUrl,
-  idParam,
-  queryClient,
-  useCommand,
-} from "@/lib/query"
+import { call, fileUrl, idParam, queryClient, useCommand } from "@/lib/query"
 import { NotFound } from "@/routes/not-found"
 
 /** `/files/:id`: a file, whether it's on disk, and what uses it. */
@@ -108,12 +101,7 @@ function Preview({ file }: { file: File }) {
           />
         )}
         {file.type === "music" && file.onDisk && (
-          <audio
-            controls
-            preload="metadata"
-            src={audioUrl(file.id)}
-            className="w-full"
-          />
+          <audio controls preload="metadata" src={src} className="w-full" />
         )}
         <div className="flex flex-wrap gap-2">
           <Button

@@ -21,7 +21,7 @@ import {
   type PlayerTrack,
 } from "@/bindings"
 import { shownName } from "@/lib/credited"
-import { audioUrl, fileUrl, useCommand } from "@/lib/query"
+import { fileUrl, useCommand } from "@/lib/query"
 import {
   currentEntry,
   type Entry,
@@ -252,7 +252,7 @@ export function PlayerProvider({
   // current entry does, never on a fetch, so a save never interrupts what
   // plays.
   const currentKey = current?.key ?? null
-  const currentSrc = track && audioUrl(track.file.id)
+  const currentSrc = track && fileUrl(track.file.id)
   useEffect(() => {
     elements.follow(
       currentKey === null ? null : { key: currentKey, src: currentSrc },
@@ -265,7 +265,7 @@ export function PlayerProvider({
   const ahead = upNext(queue)
   const nextKey = ahead?.key ?? null
   const nextTrack = ahead && tracks.get(ahead.trackId)
-  const nextSrc = nextTrack ? audioUrl(nextTrack.file.id) : null
+  const nextSrc = nextTrack ? fileUrl(nextTrack.file.id) : null
   useEffect(() => {
     elements.setAhead(nextKey === null ? null : { key: nextKey, src: nextSrc })
   }, [elements, nextKey, nextSrc, swaps])
