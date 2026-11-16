@@ -25,8 +25,8 @@ It covers:
 - **The player seeks** (§7), exactly, in every format it plays, with 6_seeking.md's seek bar, skips, Now Playing scrubber and remembered time.
 - **Formats:** FLAC, WAV, AIFF, Apple Lossless, AAC-LC in M4A and in ADTS, MP3 and Ogg Vorbis. HE-AAC, Opus, APE, WavPack, DSF, DFF, WMA and Musepack are skipped with a toast, as WebKit's failures are now (§4.2).
 - **What stays:** the sidebar's player and its controls, the queue sheet, the shortcuts and `usePlayer()`. The file page's preview stays WebKit's own player.
-- **What goes:** the two `<audio>` elements, the handoff and its worker, Media Session, `set_controls_menu` and `PlayerControl`, and the queue in `localStorage`.
-- **Nothing changes in the database.** The one new file is the remembered player, beside the settings (§5.5).
+- **What goes:** the two `<audio>` elements, the handoff and its worker, Media Session, `set_controls_menu` and `PlayerControl`.
+- **Nothing changes in the database, and no new file is written.** The page still remembers the player in `localStorage`, and hands it to Rust as the library opens (§5.5).
 - **Three phases:** **0** The engine → **1** The player plays natively → **2** Seeking.
 
 ## 2. What was measured
@@ -104,7 +104,8 @@ Where a track starts in the stream is a marker beside the samples. The callback 
 ### 4.5 The volume, and fades
 
 - **The volume and mute** are a gain in the callback. A change moves over 10 ms, never in one step, so it doesn't click. The system's volume is the system's.
-- **Where the app cuts the audio, it fades.** Pausing fades out over 10 ms, then stops, and playing fades back in. Next, Previous, a jump and a seek fade the old position out. A seek fades the new position in.
+- **Where the app cuts the audio, it fades.** Pausing fades out, then stops, and playing fades back in. Next, Previous, a jump and a seek fade the old position out. A seek fades the new position in.
+- **The fade's length is a setting:** Off, 10 ms, 50 ms or 200 ms, and 10 ms until it's changed. It's chosen in the Controls menu (§6.4), and remembered for every library, with the volume (§5.5). Off cuts the audio where it is, which can click.
 - **A track's own start isn't faded.** It plays from its first sample, as the album has it.
 
 ### 4.6 In the background
@@ -139,6 +140,7 @@ The commands, in `commands/player.rs`:
 | Command | Does |
 |---|---|
 | `player_state` | The player's state, for the page as it mounts |
+| `player_restore({ queue, volume, muted, shuffle, repeat, fade })` | What the page remembers, as the library opens (§5.5) |
 | `player_play({ trackIds, start? })` | A new queue, playing from `start`, or shuffled from a random track |
 | `player_play_next({ trackIds })`, `player_add_to_queue({ trackIds })` | Right after the current track, or at the end; with nothing queued, a queue, paused |
 | `player_toggle`, `player_set_playing({ playing })` | Play and pause |
@@ -146,10 +148,11 @@ The commands, in `commands/player.rs`:
 | `player_move({ key, by })`, `player_remove({ key })`, `player_clear` | Changing it |
 | `player_set_shuffle({ shuffle })`, `player_set_repeat({ repeat })` | Shuffle and repeat |
 | `player_set_volume({ volume, muted })` | The volume, in hundredths, as now |
+| `player_set_fade({ fade })` | The fade's length (§4.5): `off`, `10`, `50` or `200` |
 | `player_seek({ seconds })` | Phase 2 (§7) |
 
 The events, typed by tauri-specta like `PlayerControl` is now:
-- **`PlayerState`,** whenever anything in it changes: the entries in the order they play, the current one, whether it plays, whether it waits for data, shuffle, repeat, the volume and mute.
+- **`PlayerState`,** whenever anything in it changes: the entries in the order they play, the current one, whether it plays, whether it waits for data, shuffle, repeat, the volume, mute and the fade's length.
 - **`PlayerTime`,** four times a second while a track plays, and at once after a change of track, a pause or a seek: the time played, and the track's length.
 - **`PlayerFailed`,** when a track can't play: its id, its file's path, and why.
 
@@ -162,16 +165,17 @@ A command returns once the player has taken it. What it changed comes back throu
 
 ### 5.5 What it remembers
 
-- **For each library:** the queue (its tracks in the order they play, the current one, and while shuffled, their order before) and, from phase 2, the time played. **For every library:** the volume, mute, shuffle and repeat. That's what `localStorage` holds now (2_player.md §5.7).
-- **Where:** `player.json` in the app's config folder, beside `settings.json`, or `player.dev.json` for a debug build. It's keyed by the library's path, and written as the settings are, a temporary file then a rename. It's written a second after a change, and as the library closes.
-- **Why not `localStorage`:** a suspended page can't write it, and the player needs it as the library opens, before the page asks.
-- **Why not the database:** it's not the library's data, and changing the schema is a one-way door (2_player.md §5.7).
-- **Carried over once.** At the first launch with native playback, if the player remembers nothing for the library, the page hands it what `localStorage` holds, then removes it.
-- **It comes back paused** at the current track's start, or from phase 2, at its time.
+- **The page remembers the player in `localStorage`, as now** (2_player.md §5.7), under the same keys:
+  - **for each library:** the queue, its tracks in the order they play, the current one, and while shuffled, their order before; and from phase 2, the time played;
+  - **for every library:** the volume, mute, shuffle, repeat, and the fade's length, which is new.
+- **The page writes it from the player's events:** the queue at each `PlayerState`, and from phase 2, the time as 6_seeking.md §5.6 has it.
+- **As the library opens,** the player starts empty. The provider mounts, reads `localStorage`, and hands it to the player with `player_restore`. The player comes back paused at the current track's start, or from phase 2, at its time. A queue an older version remembered comes back as it does now.
+- **Changes made while the page is suspended** are written when it runs again: a track that ends, a media key, the menu, the time played. If the app quits or crashes before then, the queue comes back as it was when the page last ran. That's accepted, since it's only a convenience.
+- **Not a file beside the settings,** and not the database: it's not the library's data, and changing the schema is a one-way door (2_player.md §5.7).
 
 ### 5.6 The library
 
-The player belongs to the open library. Switching or closing it saves the player, then stops it. Opening a library restores its player, paused. At Welcome, nothing plays, and the Controls menu's items are off.
+The player belongs to the open library. Switching or closing it stops the player, and the page has already remembered it. Opening a library starts an empty player, which the page restores (§5.5). At Welcome, nothing plays, and the Controls menu's items are off.
 
 ## 6. Now Playing, the media keys and the Controls menu
 
@@ -201,7 +205,7 @@ The page sets no Media Session, and plays no element of the player, so WebKit sh
 ### 6.4 The Controls menu
 
 - **The menu reads the player's state directly,** and its items call the player. `set_controls_menu` and the `PlayerControl` event go.
-- **Its items and key equivalents stay as they are,** and phase 2 adds Skip Back and Skip Forward (§7).
+- **Its items and key equivalents stay as they are.** Phase 1 adds Fade, a submenu after Repeat, like it: Off, 10 ms, 50 ms and 200 ms, the current one checked (§4.5). Phase 2 adds Skip Back and Skip Forward (§7).
 - **The page's shortcuts** call the commands. WebKit still gives the page a key first (2_player.md Appendix E).
 
 ## 7. Seeking
@@ -217,12 +221,13 @@ As 6_seeking.md §5 planned it, with what changes:
 - **A seek** drops the buffer, and the decoder starts again at the sample. The old position fades out and the new one fades in (§4.5).
 - **The join with the next track doesn't change.** The decoder reaches it again, and joins it as before.
 - **The seek bar, the skips and their shortcuts** (⇧⌘← and ⇧⌘→, by 10 seconds) are as 6_seeking.md §5.1 and §5.3 have them. So are the Controls menu's Skip Back and Skip Forward, and Now Playing's scrubber (§6.2).
-- **The remembered time** is as 6_seeking.md §5.6 has it, in `player.json` (§5.5): written on pause, after a seek, and every 5 seconds while playing.
+- **The remembered time** is as 6_seeking.md §5.6 has it, in `localStorage` (§5.5): written on pause, after a seek, and every 5 seconds while playing.
 - **Previous** goes by the time played, as now.
 
 ## 8. The frontend
 
-- **`PlayerProvider` keeps `usePlayer()` and `usePlayerTime()`,** so the components don't change, but the seek bar (phase 2). It reads `player_state` as it mounts, listens for `PlayerState` and `PlayerTime`, and calls the commands. It still fetches `player_tracks` for what the player shows.
+- **`PlayerProvider` keeps `usePlayer()` and `usePlayerTime()`,** so the components don't change, but the seek bar (phase 2). It restores the player as it mounts (§5.5), listens for `PlayerState` and `PlayerTime`, and calls the commands. It still fetches `player_tracks` for what the player shows.
+- **Remembering** stays in the page: `localStorage`, written from the events (§5.5).
 - **`waiting`** is the engine's: true while the decoder hasn't the data to play. It shows as now.
 - **Toasts:** `PlayerFailed` shows "Can't play …" with the file's path, as now.
 - **One sound at a time:** the provider still listens for `play` on the document. A preview that starts pauses the player, and when the player starts, it pauses any element playing in the page.
@@ -231,8 +236,7 @@ As 6_seeking.md §5 planned it, with what changes:
   - the two `<audio>` elements, `elements.ts` and `ticks.worker.ts`;
   - the queue's reducer and its tests, which move to Rust (§5.2);
   - Media Session;
-  - `setControlsMenu` and the `PlayerControl` listener;
-  - the queue, volume, shuffle and repeat in `localStorage`, once handed over (§5.5).
+  - `setControlsMenu` and the `PlayerControl` listener.
 
 ## 9. The backend
 
@@ -241,7 +245,7 @@ As 6_seeking.md §5 planned it, with what changes:
   - the decoder, with its trimming and resampling;
   - the ring buffer and the callback;
   - the output;
-  - the player, which ties them together and remembers;
+  - the player, which ties them together;
   - their tests.
 
   It knows a track by its id, and asks the app for its file's path through a function it's given, so it doesn't depend on `crates/slunk`.
@@ -269,10 +273,10 @@ As 6_seeking.md §5 planned it, with what changes:
   - repeat one;
   - a track that fails between two that play;
   - a 48 kHz track between two at 44.1 kHz, resampled, with no gap;
-  - **the volume and fades:** no step between two samples larger than the music's own;
+  - **the volume and fades:** no step between two samples larger than the music's own; each fade as long as its setting; and with fades off, a cut where it's made;
   - **seeking** (phase 2): a seek to any sample plays what decoding from the start plays from there, in every format.
 - **Fixtures with sound.** The audio fixtures are silence, and a join can't be checked on silence. `generate.ts` makes a few seconds of a tone and of noise, in each format, cut into consecutive tracks, with afconvert, as it makes the other fixtures. The tests that only need PCM write their own WAV files.
-- **The app's tests:** the commands, as the other commands are tested; the remembered player, written and read back; and tracks deleted.
+- **The app's tests:** the commands, as the other commands are tested; `player_restore`, with a queue the page saved and one an older version saved; and tracks deleted.
 - **In the app:** the checks (§12). The join of the two songs in `dev-library/two-songs/` is recorded with a process tap on the app's own process, and lined up with the decoded files as in §2.
 
 ## 11. Phases
@@ -292,14 +296,13 @@ Each phase ends with something usable and documented, and every check in AGENTS.
   - Every file in `dev-library/music/` decodes to the sample count the catalog has.
 
 **Phase 1: The player plays natively**
-- The queue in Rust, with its tests; the player for each library; the commands and events; the remembered player, and handing over `localStorage`; tracks deleted.
-- Now Playing and the remote commands; the Controls menu from the player.
+- The queue in Rust, with its tests; the player for each library; the commands and events; remembering in `localStorage`, and `player_restore`; tracks deleted.
+- Now Playing and the remote commands; the Controls menu from the player, with its Fade submenu.
 - The provider on the commands and events, and what goes (§8).
 - Phase 1's checks (§12).
 - Docs:
   - `frontend.md`'s player: how it plays, and Now Playing. "Nearly gapless" goes;
-  - `backend.md`: the commands, the events, the player, the menu bar, and what it reads and writes;
-  - `player.json` in `docs/README.md`'s "What liquidslunk writes" and in AGENTS.md.
+  - `backend.md`: the commands, the events, the player, the menu bar, and what it reads.
 - *Exit:*
   - Everything 2_player.md's player does, played natively: the queue, shuffle, repeat, failures, the remembered queue, the volume, the shortcuts and the Controls menu.
   - Now Playing shows the track and its cover, and its buttons and the media keys work, with the window hidden for minutes too.
@@ -333,7 +336,7 @@ Phase 1:
 - **Now Playing from a debug build,** whose Info.plist has no bundle identifier, and from a release build: the name, the icon and the cover it shows. Then the media keys, after another app has played, and after the file page's preview has.
 - **WebKit leaves Now Playing alone** once no element of the player plays (§6.3).
 - **The page suspended.** With the window hidden for minutes, keys and the menu act at once and the queue goes on. When the window shows again, the page catches up from `PlayerState`.
-- **A library switched, and the app quit, while it plays:** the player is saved, and comes back paused.
+- **A library switched, and the app quit, while it plays:** the player comes back paused, where the page last remembered it.
 
 Phase 2:
 - **Seek times,** in the longest MP3 and FLAC files there are. An MP3 scans its frames, so a seek near its end takes longest.
@@ -348,12 +351,14 @@ Phase 2:
 - **rodio.** Its queue joins sources without silence. But it decodes inside the audio callback, its time isn't corrected for the output's latency, and it's on symphonia 0.5, which trims only MP3.
 - **Decoding in Rust and playing through Web Audio.** Every sample would cross the IPC, and the page could still be suspended.
 - **The queue staying in the page,** with Rust only playing what it's told (§5.1).
+- **Remembering the player in a file beside the settings,** written by Rust, so that changes made while the page is suspended are saved too (§5.5). It's another file the app writes, for a convenience.
 - **Switching the device's rate to each file's,** for bit-perfect output. It changes the output for every app, and a switch drops audio, so a join across it couldn't be gapless (§4.4).
 - **souvlaki, for Now Playing.** It's built on the older `objc` crate. objc2-media-player is generated from Apple's headers, like the objc2 crates Tauri already uses.
 
-## 14. Open questions
+## 14. Settled questions
 
-1. **Where the player is remembered:** `player.json` beside the settings, as §5.5 proposes, or the page's `localStorage`, as now, handed to Rust as the library opens. A suspended page couldn't save the queue as it changes.
-2. **The queue `localStorage` remembers now:** handed over once (§5.5), or left behind, so the first launch starts empty.
-3. **Formats symphonia doesn't decode** (§4.2): skipped, as §4.2 has it, or decoded through adapters: `rusty_aac` for HE-AAC, libopus for Opus, and crates for APE and WavPack. The library has none of them.
-4. **Fades** where the app cuts the audio (§4.5): 10 ms on pause, play, skips and seeks, or hard cuts.
+The first draft left these open. They were settled on 2026-11-16:
+1. **Formats symphonia doesn't decode** (§4.2) are skipped, with a toast. The library has none of them.
+2. **Fades** where the app cuts the audio: yes, and their length is a setting, in the Controls menu, 10 ms until it's changed (§4.5, §6.4).
+3. **Where the player is remembered:** in the page's `localStorage`, as now, handed to Rust as the library opens (§5.5). A file beside the settings isn't wanted. Changes made while the page is suspended can be lost if the app quits before it runs again.
+4. **Carrying the remembered queue over** to a new place isn't needed: it stays where it is.
