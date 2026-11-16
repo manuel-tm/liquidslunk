@@ -32,8 +32,8 @@ pub struct Renderer {
     /// How far a fade is, from 0, silent, to 1
     fade: f32,
     /// A cut under way: what plays fades out, then the stream goes on from
-    /// here, fading in or not
-    cut: Option<(u64, bool)>,
+    /// here
+    cut: Option<u64>,
     /// Frames still to drop, when a skip found them not written yet
     dropping: u64,
     /// Where the next marker is due
@@ -116,13 +116,13 @@ impl Renderer {
             if self.dropping > 0 {
                 self.drop_frames(self.dropping);
             }
-            if let Some((to, fade_in)) = self.cut
+            if let Some(to) = self.cut
                 && (self.fade <= 0.0 || self.position >= to)
             {
                 self.cut = None;
                 self.primed = false;
                 self.drop_frames(to.saturating_sub(self.position));
-                self.fade = if fade_in || !playing { 0.0 } else { 1.0 };
+                self.fade = if playing { 1.0 } else { 0.0 };
                 self.next_at = self.front_at();
             }
             if self.position >= self.next_at {
@@ -212,8 +212,8 @@ impl Renderer {
             .iter()
             .rposition(|marker| matches!(marker, Marker::Cut { .. }));
         if let Some(index) = last {
-            if let Marker::Cut { to, fade_in } = queued[index] {
-                self.cut = Some((to, fade_in));
+            if let Marker::Cut { to } = queued[index] {
+                self.cut = Some(to);
             }
             self.consume(index + 1);
         }
@@ -253,7 +253,7 @@ impl Renderer {
                     if from < self.position {
                         // It came late, after what it drops began to play:
                         // that fades out, as at a cut
-                        self.cut = Some((to, false));
+                        self.cut = Some(to);
                     } else {
                         self.drop_frames(to.saturating_sub(self.position));
                     }
@@ -267,7 +267,10 @@ impl Renderer {
     }
 
     fn apply(&mut self, marker: Marker) {
-        if let Marker::Start { at, entry } = marker {
+        if let Marker::Start { at, entry, fade_in } = marker {
+            if fade_in {
+                self.fade = 0.0;
+            }
             let _ = self.played.push(Played::Started { entry, at });
         }
     }

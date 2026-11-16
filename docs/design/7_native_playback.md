@@ -141,7 +141,7 @@ The callback runs on Core Audio's real-time thread, and the decoder works second
 
 ### 5.3 Commands and events
 
-> Changed during implementation, see [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found).
+> Changed during implementation, see [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found) and [Appendix C](#appendix-c-seeking-as-built-and-what-phase-2s-checks-found).
 
 The commands, in `commands/player.rs`:
 
@@ -173,7 +173,7 @@ A command returns once the player has taken it. What it changed comes back throu
 
 ### 5.5 What it remembers
 
-> Changed during implementation, see [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found).
+> Changed during implementation, see [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found) and [Appendix C](#appendix-c-seeking-as-built-and-what-phase-2s-checks-found).
 
 - **The page remembers the player in `localStorage`, as now** (2_player.md §5.7), under the same keys:
   - **for each library:** the queue, its tracks in the order they play, the current one, and while shuffled, their order before; and from phase 2, the time played;
@@ -191,7 +191,7 @@ The player belongs to the open library. Switching or closing it stops the player
 
 ### 6.1 Now Playing
 
-> Changed during implementation, see [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found).
+> Changed during implementation, see [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found) and [Appendix C](#appendix-c-seeking-as-built-and-what-phase-2s-checks-found).
 
 - **Set from Rust,** through objc2-media-player, on the main thread.
 - **What it shows:**
@@ -223,6 +223,8 @@ The page sets no Media Session, and plays no element of the player, so WebKit sh
 - **The page's shortcuts** call the commands. WebKit still gives the page a key first (2_player.md Appendix E).
 
 ## 7. Seeking
+
+> Changed during implementation, see [Appendix C](#appendix-c-seeking-as-built-and-what-phase-2s-checks-found).
 
 As 6_seeking.md §5 planned it, with what changes:
 - **Every format seeks exactly,** so there are no tracks that don't seek (6_seeking.md §5.4 goes), and `seekable` doesn't join `set_controls_menu`:
@@ -281,7 +283,7 @@ As 6_seeking.md §5 planned it, with what changes:
 
 ## 10. Testing
 
-> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found) and [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found).
+> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found), [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found) and [Appendix C](#appendix-c-seeking-as-built-and-what-phase-2s-checks-found).
 
 - **Rust,** in `crates/slunk-player/tests/`, with a fake output that keeps every sample it's given:
   - **the queue:** `lib/queue.test.ts`'s cases, ported;
@@ -342,7 +344,7 @@ Each phase ends with something usable and documented, and every check in AGENTS.
 
 ## 12. Risks and checks
 
-> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found) and [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found).
+> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found), [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found) and [Appendix C](#appendix-c-seeking-as-built-and-what-phase-2s-checks-found).
 
 Each is checked early in the phase that needs it. Anything that changes this design is recorded as an appendix.
 
@@ -445,3 +447,33 @@ The first draft left these open. They were settled on 2026-11-16:
     - **Resting.** Two seconds after a pause, Core Audio's IO thread is gone.
     - **Not checked yet:** Now Playing and the media keys, in a debug and a release build, after another app and the file page's preview have played, and with the window hidden for minutes; WebKit leaving Now Playing alone; the two songs by ear in the app; an Ogg Vorbis track, since this Mac has neither an Ogg file nor an encoder.
 - **Why:** building phase 1 settled these. The design's player took the engine's events as they came, and a race between a command and a join could have the queue and the engine disagree; epochs and anchored changes make them agree. The time a track is heard is what the player shows. The rest keeps the device and the media keys free while nothing plays, and the events' types plain.
+
+## Appendix C: Seeking as built, and what phase 2's checks found
+
+- **Date:** 2026-11-16
+- **Affects:** §5.3 Commands and events, §5.5 What it remembers, §6.1 Now Playing, §7 Seeking, §10 Testing, §12 Risks and checks
+- **Was:**
+  - `player_seek({ seconds })`; the skips are the menu's and the shortcuts', with no command of their own (§5.3).
+  - The page writes the remembered time from the player's events, as 6_seeking.md §5.6 has it (§5.5), and Appendix B has the queue to remember in `PlayerState.remembered`.
+  - Now Playing is set again after a seek (§6.1).
+  - A seek drops the buffer, and the decoder starts again at the sample; the old position fades out, and the new one fades in. The seek bar's end, and a skip in a track's last 10 seconds, go to the track's end (§7).
+  - The seeking test plays what decoding from the start plays, in every format (§10).
+- **Now:**
+  - **How a seek is exact.** The file's reader seeks to the packet, with symphonia's accurate seek, and the decoder drops what comes before the sample, by each packet's timestamp. Codecs whose packets lean on the ones before start earlier: AAC one packet, as §7 has it; MP3 three frames, to fill its filter bank, past the frames its reader goes back to for the bytes a frame takes; Ogg Vorbis 8,192 frames, its longest block. A file whose reader can't seek is decoded again from its start. In the tests, AAC sought without its packet before differs from decoding from the start, even at its first sample.
+  - **The fade in is the track's own,** a flag on its `Start` marker, not the cut's. So a seek past a track's end, which leaves it nothing to play, goes on to the next track at its own start, unfaded.
+  - **A seek is a play of the current entry from there,** with what follows it: `Track::from(time)`. Its position counts from that time.
+  - **Paused, nothing is loaded.** A seek parks the entry at its time, the time says so, and it plays from there once it plays. A remembered time parks it too, and so does an output lost while it plays.
+  - **The track's end is the catalog's length,** which the library gives the player, so the bar's end and a skip in the last 10 seconds go on as at a track's end, playing or paused as it was. Without a length, the engine finds the end.
+  - **The commands:** `player_seek({ ms })`, in milliseconds, as the time is, since specta types a float as `number | null` (Appendix B); and `player_skip_back` and `player_skip_forward`, for the page's ⇧⌘← and ⇧⌘→. The menu's items and Now Playing's scrubber call the player directly.
+  - **What's remembered is an event of its own,** `PlayerRemembered`, which Rust writes with the time: when the queue changes, after each command, every 5 seconds while it plays, and as the output rests after a pause. `PlayerState` no longer has it, so the time moving doesn't send the whole state, and the page writes it without rendering. The page writes it as it is, as before.
+  - **Now Playing's time** is set again when it's more than a quarter of a second from where macOS would have it, not a second, so a seek of one second, the bar's step, is set too.
+  - **Tests** (§10): `tests/seek.rs` seeks each format's fixture around where its packets and frames meet, at its end and past it, and checks each against decoding from the start. New fixtures hold half a second of the signal, in FLAC, Apple Lossless, and AAC in M4A and in ADTS. The MP3 fixture is silence, so it checks where seeks land. The engine's and the player's tests seek too: while paused and while playing, exact to the sample, and joined to the next track.
+  - **`decode --seeks`** checks seeking in a library's files: at a tenth, half and nine tenths of each, and a second before its end, against decoding from the start.
+  - **What the checks found:**
+    - **The library.** Each of the 433 files in `dev-library/music/`, FLAC, MP3 and AAC, seeks exactly. The formats library's files do too, Apple Lossless, AAC in ADTS, WAV, AIFF, and CBR and VBR MP3 among them.
+    - **Seek times** (§12), a seek and its first packet, from the system's cache, in a release build: at most 0.3 ms in the library; 0.1 ms a second before the end of its longest FLAC file, 34 minutes; 3.6 ms near the end of a 29-minute MP3 made of ten copies of its MP3, since this Mac encodes none.
+    - **In the app,** driven through WebDriver, muted: each of the formats library's eight formats sought while paused, played from there, sought again while playing, and played to its end. On a FLAC track, the bar's keys sought playing and paused, and End went on to the next track, playing or paused as it was. A drag held the bar where it was dragged while the track played on, and sought where it was let go; a press on the bar sought there. ⇧⌘→ and ⇧⌘← skipped 10 seconds, back no further than the start, and forward past the end to the next track, or on the last, to the queue's end. With the bar's thumb focused, ⇧⌘→ moved it 10 seconds, once. The time was remembered every 5 seconds while it played, and at a pause; after a restart, the queue came back paused at its time, and played from there.
+    - **Real input** couldn't reach the window, which macOS had hidden, so the press and the drag were sent as pointer events in the page.
+    - **Checked by the user, the same day,** in a release build: seeking works, and tracks still join with no gap heard. Once a drag was let go, the bar went back to where it was for a moment: right after a seek, the player said the time where the engine still was, before it had taken the seek. Until a loaded entry is heard, its time is now where it was loaded from, as the player's test checks.
+    - **Not checked yet:** Now Playing's scrubber, and its time after a seek made in the app; the menu's Skip Back and Skip Forward, which need Accessibility access to click; a seek into a track's last seconds by ear; an Ogg Vorbis file, which there's none of.
+- **Why:** building phase 2 settled these. symphonia's readers land on a packet, not a sample. The page writing the time itself would have needed the time and the queue to agree, as a track changes; Rust writing both keeps them together. A paused seek loading nothing keeps a paused queue reading nothing, as Appendix B has it.

@@ -34,8 +34,9 @@ pub fn show(app: &AppHandle, info: Option<Info>) {
 }
 
 /// Has the player take Now Playing's buttons and the media keys: play,
-/// pause, play/pause, next and previous. The skips and seeks are off, so Now
-/// Playing shows previous and next. On the main thread, once.
+/// pause, play/pause, next and previous, and its scrubber, which seeks. The
+/// skips and seeks forward and back are off, so Now Playing shows previous
+/// and next. On the main thread, once.
 pub fn setup(app: &AppHandle) {
     #[cfg(target_os = "macos")]
     macos::setup(app);
@@ -57,11 +58,12 @@ mod macos {
     use objc2_core_foundation::CGSize;
     use objc2_foundation::{NSDictionary, NSNumber, NSString};
     use objc2_media_player::{
-        MPMediaItemArtwork, MPMediaItemPropertyAlbumTitle, MPMediaItemPropertyArtist,
-        MPMediaItemPropertyArtwork, MPMediaItemPropertyPlaybackDuration, MPMediaItemPropertyTitle,
-        MPNowPlayingInfoCenter, MPNowPlayingInfoPropertyElapsedPlaybackTime,
-        MPNowPlayingInfoPropertyPlaybackRate, MPNowPlayingPlaybackState, MPRemoteCommand,
-        MPRemoteCommandCenter, MPRemoteCommandEvent, MPRemoteCommandHandlerStatus,
+        MPChangePlaybackPositionCommandEvent, MPMediaItemArtwork, MPMediaItemPropertyAlbumTitle,
+        MPMediaItemPropertyArtist, MPMediaItemPropertyArtwork, MPMediaItemPropertyPlaybackDuration,
+        MPMediaItemPropertyTitle, MPNowPlayingInfoCenter,
+        MPNowPlayingInfoPropertyElapsedPlaybackTime, MPNowPlayingInfoPropertyPlaybackRate,
+        MPNowPlayingPlaybackState, MPRemoteCommand, MPRemoteCommandCenter, MPRemoteCommandEvent,
+        MPRemoteCommandHandlerStatus,
     };
     use slunk_player::Command;
     use tauri::AppHandle;
@@ -192,11 +194,27 @@ mod macos {
                 remote.setEnabled(true);
                 remote.addTargetWithHandler(&handler);
             }
+            // The scrubber: its event says where to
+            let app = app.clone();
+            let scrub = RcBlock::new(move |event: NonNull<MPRemoteCommandEvent>| {
+                let event: &MPRemoteCommandEvent = event.as_ref();
+                let Some(change) = event.downcast_ref::<MPChangePlaybackPositionCommandEvent>()
+                else {
+                    return MPRemoteCommandHandlerStatus::CommandFailed;
+                };
+                if crate::player::tell(&app, Command::Seek(change.positionTime())) {
+                    MPRemoteCommandHandlerStatus::Success
+                } else {
+                    MPRemoteCommandHandlerStatus::NoActionableNowPlayingItem
+                }
+            });
+            let position = center.changePlaybackPositionCommand();
+            position.setEnabled(true);
+            position.addTargetWithHandler(&scrub);
             center.skipForwardCommand().setEnabled(false);
             center.skipBackwardCommand().setEnabled(false);
             center.seekForwardCommand().setEnabled(false);
             center.seekBackwardCommand().setEnabled(false);
-            center.changePlaybackPositionCommand().setEnabled(false);
         }
     }
 }

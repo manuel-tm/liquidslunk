@@ -1,35 +1,48 @@
 //! A track's decoder: a file, decoded to interleaved stereo, every sample of
-//! its music and nothing else (backend.md, "Decoding").
+//! its music and nothing else, from its start or from any sample of it
+//! (backend.md, "Decoding", and "Seeking").
 
 use std::borrow::Cow;
 use std::fs::File;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use lofty::config::ParseOptions;
 use lofty::file::AudioFile;
 use lofty::mp4::{AtomData, AtomIdent, Mp4File};
 use symphonia::core::audio::{Channels, Position};
-use symphonia::core::codecs::audio::well_known::CODEC_ID_AAC;
-use symphonia::core::codecs::audio::{AudioDecoder, AudioDecoderOptions};
-use symphonia::core::errors::Error as SymphoniaError;
+use symphonia::core::codecs::audio::well_known::{CODEC_ID_AAC, CODEC_ID_MP3, CODEC_ID_VORBIS};
+use symphonia::core::codecs::audio::{AudioCodecId, AudioDecoder, AudioDecoderOptions};
+use symphonia::core::errors::{Error as SymphoniaError, SeekErrorKind};
 use symphonia::core::formats::probe::Hint;
-use symphonia::core::formats::{FormatOptions, FormatReader, TrackType};
+use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo, TrackType};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
+use symphonia::core::units::{TimeBase, Timestamp};
 
 use crate::Error;
 
 /// A file being decoded.
 pub struct TrackDecoder {
+    path: PathBuf,
     format: Box<dyn FormatReader>,
     decoder: Box<dyn AudioDecoder>,
+    codec: AudioCodecId,
     track_id: u32,
+    time_base: Option<TimeBase>,
     rate: u32,
+    /// An AAC file's encoder delay, before its music: what its samples are
+    /// counted from
+    delay: u64,
+    /// Its samples, when the file says how many it holds: an AAC file's,
+    /// without its encoder's padding
+    samples: Option<u64>,
     /// Frames still to drop from the start: an AAC file's encoder delay
     skip: u64,
-    /// Frames left to give, when the file says how many it holds: an AAC
-    /// file's samples, without its encoder's padding
+    /// Frames left to give, when the file says how many it holds
     left: Option<u64>,
+    /// After a seek, the frame of the file to give from: what's decoded
+    /// before it is dropped
+    until: Option<i64>,
     /// The decoder's output, interleaved as decoded
     scratch: Vec<f32>,
 }
@@ -55,31 +68,88 @@ impl TrackDecoder {
             .default_track(TrackType::Audio)
             .ok_or_else(|| Error::Unsupported("it has no audio".into()))?;
         let track_id = track.id;
+        let time_base = track.time_base;
         let params = track
             .codec_params
             .as_ref()
             .and_then(|params| params.audio())
             .ok_or_else(|| Error::Unsupported("it has no audio".into()))?;
         let rate = params.sample_rate.unwrap_or(0);
-        let is_aac = params.codec == CODEC_ID_AAC;
+        let codec = params.codec;
+        let is_aac = codec == CODEC_ID_AAC;
         let decoder = symphonia::default::get_codecs()
             .make_audio_decoder(params, &AudioDecoderOptions::default())
             .map_err(unsupported)?;
         // symphonia doesn't trim AAC in MP4: its encoder's delay and padding
         // are in iTunSMPB, as an iPod sync reads them
-        let (skip, left) = match is_aac.then(|| itunsmpb(path)).flatten() {
+        let (delay, samples) = match is_aac.then(|| itunsmpb(path)).flatten() {
             Some((delay, samples)) => (delay, Some(samples)),
             None => (0, None),
         };
         Ok(Self {
+            path: path.to_path_buf(),
             format,
             decoder,
+            codec,
             track_id,
+            time_base,
             rate,
-            skip,
-            left,
+            delay,
+            samples,
+            skip: delay,
+            left: samples,
+            until: None,
             scratch: Vec::new(),
         })
+    }
+
+    /// Goes to frame `frame` of the music, at the file's rate: what's
+    /// decoded next starts there, sample for sample as decoding from the
+    /// start would have it. False when the music ends before it.
+    ///
+    /// The file's reader finds the packet, which is exact in every format
+    /// it knows, and the decoder starts a little before it, for the codecs
+    /// whose packets lean on the ones before, and drops what comes before
+    /// the frame. A file that can't seek is decoded again from its start.
+    pub fn seek(&mut self, frame: u64) -> Result<bool, Error> {
+        if self.samples.is_some_and(|samples| frame >= samples) {
+            self.left = Some(0);
+            return Ok(false);
+        }
+        let target = frame + self.delay;
+        let from = target.saturating_sub(preroll(self.codec));
+        let to = SeekTo::Timestamp {
+            ts: Timestamp::new(self.ts_of(from as i64)),
+            track_id: self.track_id,
+        };
+        match self.format.seek(SeekMode::Accurate, to) {
+            Ok(_) => {
+                self.decoder.reset();
+                self.skip = 0;
+                self.left = self.samples.map(|samples| samples - frame);
+                self.until = Some(target as i64);
+                Ok(true)
+            }
+            Err(SymphoniaError::SeekError(SeekErrorKind::OutOfRange)) => {
+                self.left = Some(0);
+                Ok(false)
+            }
+            // FLAC's reader looks for a frame at the music's end, and finds
+            // the file's
+            Err(SymphoniaError::IoError(error))
+                if error.kind() == std::io::ErrorKind::UnexpectedEof =>
+            {
+                self.left = Some(0);
+                Ok(false)
+            }
+            Err(_) => {
+                let mut again = Self::open(&self.path)?;
+                again.skip += frame;
+                again.left = again.left.map(|left| left.saturating_sub(frame));
+                *self = again;
+                Ok(true)
+            }
+        }
     }
 
     /// The file's sample rate, once known: AAC in MP4 may say only as it
@@ -119,10 +189,22 @@ impl TrackDecoder {
             let channels = spec.channels().count().max(1);
             let mut frames = self.scratch.len() / channels;
             let mut first = 0;
+            if let Some(until) = self.until {
+                // Where what's decoded starts: the packet's first frame,
+                // after what the decoder trims of an encoder's delay
+                let at = self.frames_of(packet.pts.get())
+                    + self.frames_of(packet.trim_start.get() as i64);
+                let dropped = (until - at).clamp(0, frames as i64) as usize;
+                if at + frames as i64 >= until {
+                    self.until = None;
+                }
+                first = dropped;
+                frames -= dropped;
+            }
             if self.skip > 0 {
                 let dropped = (self.skip as usize).min(frames);
                 self.skip -= dropped as u64;
-                first = dropped;
+                first += dropped;
                 frames -= dropped;
             }
             if let Some(left) = self.left.as_mut() {
@@ -137,6 +219,49 @@ impl TrackDecoder {
             to_stereo(samples, spec.channels(), out);
             return Ok(true);
         }
+    }
+}
+
+impl TrackDecoder {
+    /// A timestamp of the track, in frames at its rate: they're the same
+    /// unless its time base isn't one over its rate.
+    fn frames_of(&self, ts: i64) -> i64 {
+        match self.time_base {
+            Some(base)
+                if self.rate > 0 && (base.numer.get(), base.denom.get()) != (1, self.rate) =>
+            {
+                (i128::from(ts) * i128::from(base.numer.get()) * i128::from(self.rate)
+                    / i128::from(base.denom.get())) as i64
+            }
+            _ => ts,
+        }
+    }
+
+    /// Frames at its rate, as a timestamp of the track.
+    fn ts_of(&self, frames: i64) -> i64 {
+        match self.time_base {
+            Some(base)
+                if self.rate > 0 && (base.numer.get(), base.denom.get()) != (1, self.rate) =>
+            {
+                (i128::from(frames) * i128::from(base.denom.get())
+                    / (i128::from(base.numer.get()) * i128::from(self.rate))) as i64
+            }
+            _ => frames,
+        }
+    }
+}
+
+/// How far before a seek's frame the decoder starts, so the frame decodes as
+/// it would from the start: a codec whose packets overlap needs the one
+/// before. MP3's reader already goes back to the frames whose bytes a frame
+/// takes; three more fill its filter bank. Vorbis's longest block is 8,192
+/// frames.
+fn preroll(codec: AudioCodecId) -> u64 {
+    match codec {
+        CODEC_ID_AAC => 1024,
+        CODEC_ID_MP3 => 3 * 1152,
+        CODEC_ID_VORBIS => 8192,
+        _ => 0,
     }
 }
 

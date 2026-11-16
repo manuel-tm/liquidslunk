@@ -673,6 +673,15 @@ export const commands = {
 	playerNext: () => typedError<null, CommandError>(__TAURI_INVOKE("player_next")),
 	/**  The previous track, or in a track's first 3 seconds, its start. */
 	playerPrevious: () => typedError<null, CommandError>(__TAURI_INVOKE("player_previous")),
+	/**
+	 *  To a time in the current track, playing or paused as it was. At the
+	 *  track's end, the queue goes on, as at its end.
+	 */
+	playerSeek: (args: SeekArgs) => typedError<null, CommandError>(__TAURI_INVOKE("player_seek", { args })),
+	/**  10 seconds back, or to the track's start. */
+	playerSkipBack: () => typedError<null, CommandError>(__TAURI_INVOKE("player_skip_back")),
+	/**  10 seconds on, or in a track's last 10 seconds, its end. */
+	playerSkipForward: () => typedError<null, CommandError>(__TAURI_INVOKE("player_skip_forward")),
 	/**  Plays an entry: the current one from its start. */
 	playerJump: (args: EntryArgs) => typedError<null, CommandError>(__TAURI_INVOKE("player_jump", { args })),
 	playerMove: (args: MoveArgs) => typedError<null, CommandError>(__TAURI_INVOKE("player_move", { args })),
@@ -689,6 +698,7 @@ export const commands = {
 /** Events */
 export const events = {
 	playerFailed: makeEvent<PlayerFailed>("player-failed"),
+	playerRemembered: makeEvent<PlayerRemembered>("player-remembered"),
 	playerState: makeEvent<PlayerState>("player-state"),
 	playerTime: makeEvent<PlayerTime>("player-time"),
 };
@@ -1883,6 +1893,16 @@ export type PlayerFailed = {
 };
 
 /**
+ *  The queue to remember for the library, with the time heard of its
+ *  current track: when the queue changes, at a pause or a seek, and every 5
+ *  seconds while it plays.
+ */
+export type PlayerRemembered = {
+	/**  As JSON, for `player_restore`; null with nothing queued */
+	queue: string | null,
+};
+
+/**
  *  The player, as it is: whenever anything in it changes, and from
  *  `player_state`.
  */
@@ -1900,16 +1920,11 @@ export type PlayerState = {
 	volume: number,
 	muted: boolean,
 	fade: Fade,
-	/**
-	 *  The queue to remember for the library, as JSON, for
-	 *  `player_restore`; null with nothing queued
-	 */
-	remembered: string | null,
 };
 
 /**
  *  How far into the current track it is: four times a second while it
- *  plays, and at once after a change of track or a pause.
+ *  plays, and at once after a change of track, a pause or a seek.
  */
 export type PlayerTime = {
 	/**  Milliseconds heard: played, less the output's latency */
@@ -2340,6 +2355,11 @@ export type SavedLibrary = {
 	 *  isn't.
 	 */
 	found: boolean,
+};
+
+export type SeekArgs = {
+	/**  Milliseconds into the current track */
+	ms: number,
 };
 
 export type SetFadeArgs = {

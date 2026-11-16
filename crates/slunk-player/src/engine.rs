@@ -35,8 +35,8 @@ pub struct Track {
     /// What the player calls it; a track queued twice is two entries
     pub entry: u64,
     pub path: PathBuf,
-    /// Frames of the file to leave out from its start
-    pub start: u64,
+    /// Where in it to start: a seek, which is exact to the sample
+    pub start: Duration,
 }
 
 impl Track {
@@ -44,9 +44,20 @@ impl Track {
         Self {
             entry,
             path: path.into(),
-            start: 0,
+            start: Duration::ZERO,
         }
     }
+
+    /// The same track, from `start` into it.
+    pub fn from(mut self, start: Duration) -> Self {
+        self.start = start;
+        self
+    }
+}
+
+/// `time` in frames at `rate`, to the nearest.
+fn frames_in(time: Duration, rate: u32) -> u64 {
+    ((time.as_nanos() * u128::from(rate) + 500_000_000) / 1_000_000_000) as u64
 }
 
 /// What the engine says happened.
@@ -98,7 +109,8 @@ impl Fade {
 pub struct Position {
     /// The entry playing
     pub entry: Option<u64>,
-    /// Frames of it played, at the output's rate
+    /// How far into it, at the output's rate: from where it started, and
+    /// played since
     pub frames: u64,
     pub rate: u32,
 }
@@ -169,7 +181,8 @@ impl Engine {
         (engine, renderer)
     }
 
-    /// Plays `tracks` in order from now, after what plays fades out. Its
+    /// Plays `tracks` in order from now, after what plays fades out. The
+    /// first fades in when it starts past its start, as after a seek. Its
     /// events are of a new epoch.
     pub fn play(&self, tracks: Vec<Track>) {
         self.epoch.fetch_add(1, Ordering::Relaxed);
@@ -228,10 +241,11 @@ impl Engine {
     pub fn position(&self) -> Position {
         let entry = self.shared.entry.load(Ordering::Acquire);
         let start = self.shared.entry_start.load(Ordering::Acquire);
+        let from = self.shared.entry_from.load(Ordering::Acquire);
         let heard = self.shared.heard.load(Ordering::Acquire);
         Position {
             entry: (entry != NONE).then_some(entry),
-            frames: heard.saturating_sub(start),
+            frames: from + heard.saturating_sub(start),
             rate: self.rate,
         }
     }
@@ -273,6 +287,8 @@ impl Drop for Engine {
 struct Placed {
     entry: u64,
     at: u64,
+    /// Where in the track that frame is, at the output's rate
+    from: u64,
 }
 
 /// The entry playing, which `set_upcoming()` names.
@@ -287,8 +303,6 @@ struct Head {
 struct Decoding {
     track: Track,
     decoder: TrackDecoder,
-    /// Frames still to leave out from its start
-    skip: u64,
 }
 
 struct Worker {
@@ -407,10 +421,7 @@ impl Worker {
         self.playing = 0;
         self.head = None;
         self.starts.clear();
-        let _ = self.markers.push(Marker::Cut {
-            to: self.written,
-            fade_in: false,
-        });
+        let _ = self.markers.push(Marker::Cut { to: self.written });
         self.shared.entry.store(NONE, Ordering::Release);
     }
 
@@ -495,6 +506,8 @@ impl Worker {
             };
             self.playing = index;
             self.head = Some(Head { entry, heard: true });
+            let from = self.placed[index].from;
+            self.shared.entry_from.store(from, Ordering::Release);
             self.shared.entry_start.store(at, Ordering::Release);
             self.shared.entry.store(entry, Ordering::Release);
             self.emit(Event::Started { entry });
@@ -529,18 +542,10 @@ impl Worker {
         };
         self.scratch.clear();
         match decoding.decoder.next(&mut self.scratch) {
-            Ok(true) => {
-                let mut frames = &self.scratch[..];
-                if decoding.skip > 0 {
-                    let dropped = (decoding.skip as usize).min(frames.len() / CHANNELS);
-                    decoding.skip -= dropped as u64;
-                    frames = &frames[dropped * CHANNELS..];
-                }
-                match self.converter.as_mut() {
-                    Some(converter) => converter.push(frames, &mut self.pending),
-                    None => self.pending.extend_from_slice(frames),
-                }
-            }
+            Ok(true) => match self.converter.as_mut() {
+                Some(converter) => converter.push(&self.scratch, &mut self.pending),
+                None => self.pending.extend_from_slice(&self.scratch),
+            },
             Ok(false) => self.current = None,
             Err(error) => {
                 let entry = decoding.track.entry;
@@ -562,16 +567,24 @@ impl Worker {
                     continue;
                 }
             };
-            // AAC in MP4 says its rate only once it decodes
+            // AAC in MP4 says its rate only once it decodes, and a seek is
+            // in frames at its rate
             self.scratch.clear();
-            let first = match decoder.next(&mut self.scratch) {
+            let mut first = decoder.next(&mut self.scratch);
+            let rate = decoder.rate();
+            if first.is_ok() && !track.start.is_zero() {
+                self.scratch.clear();
+                first = decoder
+                    .seek(frames_in(track.start, rate))
+                    .and_then(|found| Ok(found && decoder.next(&mut self.scratch)?));
+            }
+            let first = match first {
                 Ok(first) => first,
                 Err(error) => {
                     self.fail(track.entry, error);
                     continue;
                 }
             };
-            let rate = decoder.rate();
             // A converter at the same rate goes on across the join
             let continues = self
                 .converter
@@ -598,32 +611,27 @@ impl Worker {
                 Some(converter) => self.converter_start + converter.output_at(converter.taken()),
                 None => self.written + self.pending_frames(),
             };
+            // A track from past its start fades in, unless it has nothing
+            // there, and what follows starts at once
             self.outbox.push_back((
                 Marker::Start {
                     at,
                     entry: track.entry,
+                    fade_in: first && !track.start.is_zero(),
                 },
                 0,
             ));
             self.placed.push(Placed {
                 entry: track.entry,
                 at,
+                from: frames_in(track.start, self.rate),
             });
-            let mut decoding = Decoding {
-                skip: track.start,
-                track,
-                decoder,
-            };
             if first {
-                let mut frames = &self.scratch[..];
-                let dropped = (decoding.skip as usize).min(frames.len() / CHANNELS);
-                decoding.skip -= dropped as u64;
-                frames = &frames[dropped * CHANNELS..];
                 match self.converter.as_mut() {
-                    Some(converter) => converter.push(frames, &mut self.pending),
-                    None => self.pending.extend_from_slice(frames),
+                    Some(converter) => converter.push(&self.scratch, &mut self.pending),
+                    None => self.pending.extend_from_slice(&self.scratch),
                 }
-                self.current = Some(decoding);
+                self.current = Some(Decoding { track, decoder });
             }
             self.set_done(false);
             return true;

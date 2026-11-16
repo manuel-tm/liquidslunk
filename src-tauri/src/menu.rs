@@ -5,7 +5,7 @@
 
 use std::sync::{Mutex, PoisonError};
 
-use slunk_player::{Command, VOLUME_STEP};
+use slunk_player::{Command, SKIP, VOLUME_STEP};
 use tauri::menu::{
     CheckMenuItem, IsMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu,
     WINDOW_SUBMENU_ID,
@@ -21,6 +21,9 @@ enum Control {
     Toggle,
     Next,
     Previous,
+    /// 10 seconds on, as ⇧⌘→ does
+    SkipForward,
+    SkipBack,
     /// Shuffle on or off
     Shuffle,
     Repeat(Repeat),
@@ -32,10 +35,12 @@ enum Control {
 
 impl Control {
     /// Every control, with a menu item each.
-    const ALL: [Self; 13] = [
+    const ALL: [Self; 15] = [
         Self::Toggle,
         Self::Next,
         Self::Previous,
+        Self::SkipForward,
+        Self::SkipBack,
         Self::Shuffle,
         Self::Repeat(Repeat::Off),
         Self::Repeat(Repeat::All),
@@ -54,6 +59,8 @@ impl Control {
             Self::Toggle => "controls.toggle",
             Self::Next => "controls.next",
             Self::Previous => "controls.previous",
+            Self::SkipForward => "controls.skipForward",
+            Self::SkipBack => "controls.skipBack",
             Self::Shuffle => "controls.shuffle",
             Self::Repeat(Repeat::Off) => "controls.repeat.off",
             Self::Repeat(Repeat::All) => "controls.repeat.all",
@@ -79,6 +86,8 @@ impl Control {
             Self::Toggle => Command::Toggle,
             Self::Next => Command::Next,
             Self::Previous => Command::Previous,
+            Self::SkipForward => Command::Skip(SKIP),
+            Self::SkipBack => Command::Skip(-SKIP),
             Self::Shuffle => Command::SetShuffle(!shown.shuffle),
             Self::Repeat(mode) => Command::SetRepeat(mode.into()),
             Self::Fade(fade) => Command::SetFade(fade.into()),
@@ -115,7 +124,7 @@ impl Controls {
 /// The Controls menu's items, in the app's state.
 pub struct ControlsMenu {
     toggle: MenuItem<Wry>,
-    /// Next, Previous, Volume Up and Volume Down
+    /// Next, Previous, the skips, Volume Up and Volume Down
     others: Vec<MenuItem<Wry>>,
     shuffle: CheckMenuItem<Wry>,
     repeat: Submenu<Wry>,
@@ -189,6 +198,12 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let toggle = item(Control::Toggle, "Play", None)?;
     let next = item(Control::Next, "Next", Some("CmdOrCtrl+Right"))?;
     let previous = item(Control::Previous, "Previous", Some("CmdOrCtrl+Left"))?;
+    let skip_forward = item(
+        Control::SkipForward,
+        "Skip Forward",
+        Some("Shift+CmdOrCtrl+Right"),
+    )?;
+    let skip_back = item(Control::SkipBack, "Skip Back", Some("Shift+CmdOrCtrl+Left"))?;
     let volume_up = item(Control::VolumeUp, "Volume Up", Some("CmdOrCtrl+Up"))?;
     let volume_down = item(Control::VolumeDown, "Volume Down", Some("CmdOrCtrl+Down"))?;
     let shuffle = CheckMenuItem::with_id(
@@ -234,6 +249,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &toggle,
             &next,
             &previous,
+            &skip_forward,
+            &skip_back,
             &PredefinedMenuItem::separator(app)?,
             &shuffle,
             &repeat,
@@ -253,7 +270,14 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     menu.insert(&controls, window)?;
     app.manage(ControlsMenu {
         toggle,
-        others: vec![next, previous, volume_up, volume_down],
+        others: vec![
+            next,
+            previous,
+            skip_forward,
+            skip_back,
+            volume_up,
+            volume_down,
+        ],
         shuffle,
         repeat,
         repeats,
@@ -311,5 +335,6 @@ mod tests {
             Control::Fade(Fade::Ms50).command(&shown),
             Command::SetFade(slunk_player::Fade::Ms50)
         );
+        assert_eq!(Control::SkipBack.command(&shown), Command::Skip(-10.0));
     }
 }

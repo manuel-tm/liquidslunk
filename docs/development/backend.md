@@ -152,7 +152,8 @@ crates/slunk/                the domain and its database, with no Tauri dependen
 crates/slunk-cli/            the database commands (npm run db:*)
 crates/slunk-player/         the audio engine and the player, with no Tauri
                              dependency
-  src/decode.rs              a file, decoded to stereo and trimmed
+  src/decode.rs              a file, decoded to stereo and trimmed, and
+                             seeking in it
   src/convert.rs             resampling, across joins
   src/stream.rs              what the decoder and the callback share
   src/render.rs              the callback: markers, the volume, fades, what's
@@ -163,8 +164,10 @@ crates/slunk-player/         the audio engine and the player, with no Tauri
   src/player.rs              the player: the queue on a thread of its own,
                              and the engine following it
   examples/play.rs           plays files in order
-  examples/decode.rs         decodes files, and counts their frames
+  examples/decode.rs         decodes files, counts their frames, and checks
+                             seeking in them
   tests/engine.rs            the engine's rules
+  tests/seek.rs              seeking, in each format
   tests/queue.rs             the queue's rules
   tests/player.rs            the queue played through the engine
   tests/common/              the fixtures' signal, as the tests work it out
@@ -611,7 +614,7 @@ gives `Ryo Fukui/1976 - Scenery/01 It Could Happen to You.flac`, and `…/2-01 �
   - a decoder thread opens files, decodes them, trims them and resamples them. It writes interleaved 32-bit float stereo into a lock-free ring buffer (rtrb), up to 2 seconds ahead of what plays;
   - the output's real-time callback plays the ring through a `Renderer`, which never allocates, locks or waits;
   - the engine's owner, the player's thread, sends it commands through `Engine`, and hears its events, on the decoder thread: an entry was heard, an entry failed, or everything was heard.
-- **A `Track`** is an entry, which the events name, and its file. A track queued twice is two entries.
+- **A `Track`** is an entry, which the events name, its file, and where in it to start: from its start, or from a time into it (`Track::from`), as after a seek ([Seeking](#seeking)). A track queued twice is two entries.
 - **Epochs.** Each `play()` and `stop()` starts an epoch, and every event is stamped with the epoch it belongs to (`Stamped`). One of an older epoch is about what no longer plays: a track heard just before Next, say. The owner compares it with `Engine::epoch()`, and drops it.
 
 ### Decoding
@@ -629,6 +632,30 @@ gives `Ryo Fukui/1976 - Scenery/01 It Could Happen to You.flac`, and `…/2-01 �
   - channels without positions give their first two.
 - **Errors:** a packet that can't be decoded is left out. A file that breaks off ends there, and fails.
 
+### Seeking
+
+`TrackDecoder::seek(frame)` goes to a frame of a track's music, at its file's rate. What it decodes next is what decoding from the start decodes from there, sample for sample, in every format.
+- **The file's reader finds the packet,** with symphonia's accurate seek:
+  - FLAC by its frames' headers, narrowed by its seek table when it has one;
+  - M4A by its sample tables;
+  - WAV and AIFF by arithmetic;
+  - MP3 and AAC in ADTS by reading their frames' headers, from where the reader is, or from the start for a seek back;
+  - Ogg by its pages.
+- **The decoder drops what comes before the frame,** by each packet's timestamp, after what symphonia trims of an encoder's delay.
+- **Codecs whose packets lean on the ones before start earlier,** so the frame decodes as it does from the start:
+  - AAC a packet earlier, 1,024 frames, since its first packet after a seek lacks the overlap the one before gives it;
+  - MP3 three frames earlier, to fill its filter bank. Its reader already goes back to the frames that hold the bytes a frame takes;
+  - Ogg Vorbis 8,192 frames, its longest block. There's no Ogg file here to check it with.
+
+  FLAC, Apple Lossless, WAV and AIFF need nothing before.
+- **AAC in M4A** is sought in the file's own frames, its encoder's delay before its music, and still ends at its `iTunSMPB`'s count of samples.
+- **At its end, or past it,** there's nothing: `seek()` returns false. A file whose reader can't seek is decoded again from its start, and what's before the frame dropped.
+- **How long it takes,** a seek and the first packet after it, from the system's cache, in a release build:
+  - 0.1 ms, a second before the end of a 34-minute FLAC file, the library's longest;
+  - 3.6 ms near the end of a 29-minute MP3 made of copies of the library's MP3. An MP3's reader reads every frame's header up to where it's going, so that's the slowest.
+
+  Each of the 433 files in `dev-library/music/`, FLAC, MP3 and AAC, seeks exactly, in 0.3 ms at most, by `decode --seeks` ([Checking it](#checking-it)).
+
 ### Joining tracks
 
 - **One stream.** When a track ends, the decoder opens the next one and writes its first sample right after the last one's. A `Start` marker beside the samples says where each entry begins. The renderer reports it as it renders that frame, and the decoder thread says the entry started once it's heard.
@@ -638,7 +665,12 @@ gives `Ryo Fukui/1976 - Scenery/01 It Could Happen to You.flac`, and `…/2-01 �
   - From the first entry that differs, a `Skip` marker drops what's written, unheard, and the new entry is written after it. Markers queued before a skip that it covers go with it.
   - A skip that reaches the renderer after the skipped track began to play fades that track out, as a cut does.
 - **A track that can't play,** because it can't be opened, isn't a format the engine decodes, or breaks off, stops what was to follow it: the engine says `Failed`, and waits for `set_upcoming()` to say what follows instead. So the owner's rules decide, and a track after one that failed still joins where the failed one would have started.
-- **`play()` starts a new queue.** A `Cut` marker fades out what plays and drops what's buffered. The new track starts from its first sample, unfaded.
+- **`play()` starts a new queue.** A `Cut` marker fades out what plays and drops what's buffered. The new track starts from its first sample, unfaded, or from a time into it, where its decoder seeks to ([Seeking](#seeking)):
+  - its `Start` marker then fades it in;
+  - `position()` counts from that time;
+  - from past its end, it has nothing to play, and what follows starts at once, at its own start, unfaded.
+
+  A seek is a `play()` of the current entry from there, with what follows it, so a seek into a track's last seconds joins the next track as playing into them does.
 - **Sample rates.** The stream is at the output's rate. A file at another rate goes through a resampler, rubato's synchronous FFT one (`convert.rs`).
   - One resampler runs across consecutive tracks at the same rate, so nothing is flushed at a join between them.
   - Its startup delay is trimmed, so output frame `k` is input time `k / ratio`, and a join's place in the stream is arithmetic.
@@ -648,6 +680,7 @@ gives `Ryo Fukui/1976 - Scenery/01 It Could Happen to You.flac`, and `…/2-01 �
 - **Fades** (`Fade`: off, 10, 50 or 200 ms) apply where the engine cuts the audio:
   - pausing fades out, then holds the stream, and playing fades back in;
   - a cut fades out what plays;
+  - a track from a time into it fades in, as after a seek;
   - a track's own start isn't faded;
   - with fades off, the audio is cut where it is.
 - **Underruns,** frames played as silence for want of samples, count only in the middle of a stream: not while a new track's first samples are on their way, and not after the end.
@@ -670,21 +703,30 @@ gives `Ryo Fukui/1976 - Scenery/01 It Could Happen to You.flac`, and `…/2-01 �
 - **Shuffling** takes its seed from the step, so a step always does the same. It's mulberry32, with a Fisher–Yates shuffle.
 - **What follows** the current entry: `up_next()`, the entry a track that ends goes on to, and `following()`, the entries after it one after another, by the same rules, without coming round to it again. With repeat one, or one entry on repeat all, that's the current one again.
 - **The engine's steps:** `Started` (the current entry was heard, which counts the failures again from 0), `Handoff` (what was up next was heard, joined to the current one's end: as `Ended`, but it doesn't restart, even the same entry), `Ended` (the current track ended with nothing joined to it) and `Failed`.
-- **Remembered** as JSON (`remembered()`), which the page keeps: `{ trackIds, current, unshuffled }`, the order before shuffling as indexes into `trackIds`, or null. `Queue::restored()` reads it back, paused, with the shuffle and repeat it's given, and gives an empty queue for anything that isn't one: no tracks, an id that isn't a positive integer, a current one out of range, an order that doesn't have each index once.
+- **Remembered** as JSON (`remembered(time)`), which the page keeps: `{ trackIds, current, unshuffled, time }`, the order before shuffling as indexes into `trackIds`, or null, and the seconds heard of the current entry, to the millisecond. `Queue::restored()` reads it back, paused, with the shuffle and repeat it's given, and gives an empty queue for anything that isn't one: no tracks, an id that isn't a positive integer, a current one out of range, an order that doesn't have each index once. `restored_time()` reads its time: 0 without one, as an older version remembered it, or with one that isn't a positive number.
 
 ### The player
 
 `player.rs` is the player: the queue, on a thread of its own, and the engine, which it makes follow the queue. The app makes one for each library as it opens ([The app's player](#the-apps-player)).
-- **Commands** (`Command`) come through `Player::send()`, and are taken in order: Play, Play next, Add to queue, toggle, play or pause, Next, Previous, a jump, a move, a removal, Clear, shuffle, repeat, the volume, the fade's length, Prune, and Restore. A command returns once it's sent.
-- **What changes** goes to the owner, through `Options::notify`, on the player's thread: `State` whenever anything in it changes, `Time` four times a second while a track plays and at once after a change of track or a pause, and `Failed` for a track that can't play.
+- **Commands** (`Command`) come through `Player::send()`, and are taken in order: Play, Play next, Add to queue, toggle, play or pause, Next, Previous, a seek, a skip, a jump, a move, a removal, Clear, shuffle, repeat, the volume, the fade's length, Prune, and Restore. A command returns once it's sent.
+- **What changes** goes to the owner, through `Options::notify`, on the player's thread:
+  - `State` whenever anything in it changes;
+  - `Time` four times a second while a track plays, and at once after a change of track, a pause or a seek;
+  - `Failed` for a track that can't play;
+  - `Remembered`, the queue to remember with the time heard (`Queue::remembered()`), when it changes: after a command or a step of the engine's, every 5 seconds while it plays, and as the output rests after a pause. It isn't part of `State`, so the time moving doesn't change the state.
 - **The engine follows the queue:**
   - When the current entry changes, or restarts, and the queue plays, the engine plays it from its start, with what follows it. A paused entry isn't loaded until it plays, so nothing is read for a queue that only waits.
   - When what follows changes, the engine is given it, as far as 3 entries, so even short tracks join.
   - When the engine says an entry was heard, the queue takes the step: the current one heard again, or what followed it joined to its end (`Handoff`). After each, the engine is given what follows again.
+- **Seeking.** `Seek` goes to a time in the current entry, and `Skip` by a number of seconds from the time heard, back no further than its start: Skip Back and Skip Forward are 10 seconds (`SKIP`).
+  - Playing, the engine plays the entry from there, with what follows it. Until it's heard from there, the time is the seek's: the engine may not have taken the seek yet, and still say where it was.
+  - Paused, nothing is loaded: the entry is parked there, the time says so, and it plays from there once it plays. A remembered time parks it too, and so does an output lost while it plays.
+  - At the track's length or past it, the queue goes on as at a track's end, playing or paused as it was: the next track, the same one with repeat one, or after the last, the queue stops. The length is the library's, so it's the one the page shows. Without one, the engine finds the end, and what follows plays.
+  - Previous goes by the time heard, so after a seek into a track's first 3 seconds, it goes to the previous track.
 - **Failures.** A track that can't play as the queue reaches it is `Failed`, and the queue goes on. One that fails while it's decoded ahead is set aside, and the engine is given what follows without it, so the next one joins where it would have started. It's skipped, and its failure said, once the queue reaches it, so it's never current.
-- **Restore** brings back what the page remembers, once: the queue, paused, and the volume, mute, shuffle, repeat and fade. Later ones are ignored, so a page that mounts again keeps the player as it is.
+- **Restore** brings back what the page remembers, once: the queue, paused at its time, and the volume, mute, shuffle, repeat and fade. Later ones are ignored, so a page that mounts again keeps the player as it is.
 - **Prune** drops the entries of tracks that are gone, asking the library which are still there.
-- **The library** is a trait (`Library`): a track's file, by its id, and which tracks are still there. A track the library doesn't have plays as a missing file does.
+- **The library** is a trait (`Library`): a track's file, by its id, its length, and which tracks are still there. A track the library doesn't have plays as a missing file does.
 - **The volume** is kept in hundredths, from 0 to 1, and a change of it unmutes. Volume Up and Down change it by 10%.
 - **Waiting:** while it plays, the engine has had nothing to play for a quarter of a second: a file opening, or a disk that can't keep up.
 - **The output** is opened as something first plays, at the default device's rate, and paused once nothing has played for 2 seconds, so the device rests. When it's lost, the player pauses, and makes the engine and the output again at the next play.
@@ -699,14 +741,17 @@ gives `Ryo Fukui/1976 - Scenery/01 It Could Happen to You.flac`, and `…/2-01 �
   - a track repeated joins its own start;
   - a track that fails stops what was to follow it, and what's given instead joins where it would have played;
   - a track at another rate is resampled to exactly where the next one starts;
+  - a track from a time into it plays from that sample, says where it is from there, fades in, and joins the next one; from past its end, the next one plays;
   - the fades and the volume;
   - events are stamped with their play.
+- **`tests/seek.rs`** seeks each format's fixture across it, around where its packets and frames meet, and at and past its end, and checks what each seek decodes against decoding from the start: FLAC, Apple Lossless, WAV and AIFF, which are the signal, AAC in M4A and in ADTS, and the MP3, which is silence, for where its seeks land.
 - **`tests/queue.rs`** has the queue's rules, step by step.
-- **`tests/player.rs`** plays the queue through the engine, with a device thread that renders it about six times as fast as it would play: the queue moving on as each track is heard, joined to the sample past a track that can't play, every track failing, repeat one, what's remembered coming back once, deleted tracks, and the volume.
+- **`tests/player.rs`** plays the queue through the engine, with a device thread that renders it about six times as fast as it would play: the queue moving on as each track is heard, joined to the sample past a track that can't play, every track failing, repeat one, seeking while paused and while playing, exact to the sample, skipping back to a track's start and forward past its end, a seek to the end of the last track, what's remembered coming back once, at its time, deleted tracks, and the volume.
 - **`tests/fixtures/`** holds tracks cut from one continuous signal, a triangle wave in integer arithmetic, so a test works out the same samples:
   - FLAC and Apple Lossless, made by afconvert;
   - AAC, for its delay;
-  - an MP3 written by hand with a LAME tag, since this Mac has no MP3 encoder.
+  - an MP3 written by hand with a LAME tag, since this Mac has no MP3 encoder;
+  - half a second of the signal, to seek in: FLAC, Apple Lossless, and AAC in M4A and in ADTS.
 
   `generate.ts` makes them, on macOS:
 
@@ -717,11 +762,11 @@ gives `Ryo Fukui/1976 - Scenery/01 It Could Happen to You.flac`, and `…/2-01 �
 
   ```sh
   cargo run -p slunk-player --release --example play -- [--volume 0.5] [--fade 10] [--start SECONDS] a.flac b.flac
-  cargo run -p slunk-player --release --example decode -- a.flac b.m4a
+  cargo run -p slunk-player --release --example decode -- [--seeks] a.flac b.m4a
   ```
 
-  - `play` plays files in order to the default output. It prints its events with the wall clock's time, to line a recording of the output up with. `--start` begins the first file that many seconds in, decoding its start and leaving it out.
-  - `decode` prints each file's rate and frames.
+  - `play` plays files in order to the default output. It prints its events with the wall clock's time, to line a recording of the output up with. `--start` begins the first file that many seconds in, as a seek does.
+  - `decode` prints each file's rate and frames. With `--seeks`, it also seeks each file at a tenth, half and nine tenths of it, and a second before its end, checks what each seek decodes against decoding from the start, and prints the longest a seek took.
 
 ## The database
 
@@ -843,7 +888,7 @@ The frontend calls the backend through Tauri commands, in `src-tauri/src/command
   - `mod.rs`: `languages`, and what they share: the DTOs of what a release refers to, and `Related`, which loads it;
 - `library_check.rs` ([The library check](#the-library-check)): `library_check`, and its fixes, `relink_files` and `rehash_files`;
 - `external.rs` ([The external libraries context](#the-external-libraries-context)): `external_libraries`, each with whether it's connected; `external_library`, its page, with what's in it, what that takes, and a sample track for its template; `create_external_library`, `update_external_library` and `delete_external_library`; its rules, `external_library_rules` and `set_external_library_rules`, each with what it names; the catalog pages', `add_to_external_library`, `remove_from_external_library` and `external_memberships`; `external_library_tracks`, what's in one, a page at a time, as the track list shows tracks; `exported_tags`, a track's tags as an external library writes them, with its cover, and its path by a template, the default one unless one is given, where a template that can't be used is `invalid`, with the reason, and a track that isn't there is null; and syncing ([Syncing a folder library](#syncing-a-folder-library), [Syncing an iPod](#syncing-an-ipod)): `sync_plan`, what a sync would do, with its labels, what's left out, whether it fits, and on an iPod, the iPod and its tracks from somewhere else; `sync`, which runs it by its id, with its progress through a `Channel`, and `erase` on an iPod with tracks from somewhere else, and returns how it went; `cancel_sync`; `eject_external_library`; `locate_external_library`; and `mounted_ipods`, the iPods mounted now, with their model, free space and the external library each belongs to. `external_library` says whether its destination is connected, missing, another external library's or one of several iPods, what's free there, whether it ejects, whether it's syncing, and an iPod library's iPod, and `delete_external_library` takes `removeFiles`;
-- `player.rs` ([The app's player](#the-apps-player)): `player_state`, `player_restore`, `player_play`, `player_play_next`, `player_add_to_queue`, `player_toggle`, `player_set_playing`, `player_next`, `player_previous`, `player_jump`, `player_move`, `player_remove`, `player_clear`, `player_set_shuffle`, `player_set_repeat`, `player_set_volume` and `player_set_fade`;
+- `player.rs` ([The app's player](#the-apps-player)): `player_state`, `player_restore`, `player_play`, `player_play_next`, `player_add_to_queue`, `player_toggle`, `player_set_playing`, `player_next`, `player_previous`, `player_seek`, `player_skip_back`, `player_skip_forward`, `player_jump`, `player_move`, `player_remove`, `player_clear`, `player_set_shuffle`, `player_set_repeat`, `player_set_volume` and `player_set_fade`;
 - `tagging.rs` ([The tagging context](#the-tagging-context)): `tags`, `tag`, `tag_options`, `tags_by_ref`, `tag_values`, `tag_value_options`, `create_tag`, `update_tag` and `delete_tag`, which name a tag by its `type` and id; a release's tags, `release_tags` and `set_release_tags`; and the bulk edits, `set_tag_on_releases` and `remove_tag_from_releases`.
 
 Their conventions:
@@ -914,21 +959,23 @@ The app's CSP allows `slunk:` and `http://slunk.localhost` in `img-src` and `med
 `player.rs` gives each library its player ([The player](#the-player)), made as the library opens, in `Libraries::open_checked()`, and kept in the `Library`. Closing or switching the library stops it at once, even while a command still holds the library, and the Controls menu and Now Playing then show nothing.
 - **It reads the library's files** by their absolute paths, from the track's file record, read-only, on the engine's decoder thread. Nothing goes through the file protocol.
 - **Commands** (`commands/player.rs`) hand the open library's player a command, and return once it's taken: `noLibrary` without one. What changed comes back through `PlayerState`. `player_state` returns the player as it is, for the page as it mounts.
-- **Events,** typed by tauri-specta, so they're in the bindings as `events.playerState`, `events.playerTime` and `events.playerFailed`:
-  - `PlayerState`: the entries in the order they play, the current one's index, whether it plays and waits, shuffle, repeat, the volume in hundredths from 0 to 100, mute, the fade's length (`"off"`, `"10"`, `"50"` or `"200"`), and `remembered`, the queue for the page to remember, as JSON;
+- **Events,** typed by tauri-specta, so they're in the bindings as `events.playerState`, `events.playerTime`, `events.playerFailed` and `events.playerRemembered`:
+  - `PlayerState`: the entries in the order they play, the current one's index, whether it plays and waits, shuffle, repeat, the volume in hundredths from 0 to 100, mute, and the fade's length (`"off"`, `"10"`, `"50"` or `"200"`);
   - `PlayerTime`: the milliseconds heard of the current track;
-  - `PlayerFailed`: the track's id, its file's path, and why, as the end of a sentence ("its file can't be read: …").
+  - `PlayerFailed`: the track's id, its file's path, and why, as the end of a sentence ("its file can't be read: …");
+  - `PlayerRemembered`: the queue for the page to remember, as JSON, with its time, or null with nothing queued.
 
-  The volume and the time are whole numbers, since specta types a float that's sent as `number | null`, JSON having no NaN.
-- **`player_restore`** takes what the page remembers, as the library opens: the queue as `remembered` was, which the player reads and checks, the volume in hundredths, mute, shuffle, repeat and the fade. Only the first call for a library counts ([The player](#the-player)).
+  The volume and the times are whole numbers, since specta types a float that's sent as `number | null`, JSON having no NaN. So `player_seek` takes milliseconds too.
+- **`player_restore`** takes what the page remembers, as the library opens: the queue as `PlayerRemembered` said it, which the player reads and checks, the volume in hundredths, mute, shuffle, repeat and the fade. Only the first call for a library counts ([The player](#the-player)).
+- **Seeking.** `player_seek` goes to a time in the current track, and `player_skip_back` and `player_skip_forward` 10 seconds back or on. A track's length, for a seek to its end, is the catalog's `duration_ms` ([The player](#the-player)).
 - **Deleted tracks.** `delete_track` and `set_release_tracks`, which can remove tracks, have the player prune its queue.
 - **A save** can change what Now Playing shows. `on_library()` compares SQLite's count of changes on the connection before and after a command's work, and when it moved, Now Playing reads the current track again.
 
 ### The menu bar
 
 `menu.rs` builds the menu bar: Tauri's default menu, with a Controls menu between View and Window, as in Music. Its items call the open library's player, and show it as it is, whenever it says it changed.
-- **Its items:** Play, or Pause while the player plays; Next and Previous; Shuffle, checked while it's on; Repeat, a submenu of Off, All and One, the current one checked; Fade, a submenu of Off, 10 ms, 50 ms and 200 ms, the fade's length checked; and Volume Up and Volume Down. They're all off while nothing is queued, but Fade, which is on whenever a library is open. At Welcome, and at launch until a library opens, they're all off.
-- **Key equivalents:** ⌘→ for Next, ⌘← for Previous, ⌘↑ and ⌘↓ for the volume. Play has none, since Space would take it from every field. WebKit gives the page a key first, and the menu gets it only if the page leaves it: a field moves its caret, and the page handles the rest itself ([The player](frontend.md#the-player)).
+- **Its items:** Play, or Pause while the player plays; Next and Previous; Skip Forward and Skip Back, 10 seconds on or back; Shuffle, checked while it's on; Repeat, a submenu of Off, All and One, the current one checked; Fade, a submenu of Off, 10 ms, 50 ms and 200 ms, the fade's length checked; and Volume Up and Volume Down. They're all off while nothing is queued, but Fade, which is on whenever a library is open. At Welcome, and at launch until a library opens, they're all off.
+- **Key equivalents:** ⌘→ for Next, ⌘← for Previous, ⇧⌘→ and ⇧⌘← for the skips, ⌘↑ and ⌘↓ for the volume. Play has none, since Space would take it from every field. WebKit gives the page a key first, and the menu gets it only if the page leaves it: a field moves its caret, and the page handles the rest itself ([The player](frontend.md#the-player)).
 - **A click** hands the player its command: Shuffle turns shuffle to what the menu doesn't show, and Volume Up and Down change the volume by 10%. A check item checks or unchecks itself when it's clicked, so the click handler puts it back as it was, and the player then says what's changed.
 - **What the items show** comes from each `PlayerState`, through `menu::show()`, which changes the items on the main thread, where the menu is, in the order it's told. The items are in the app's state, as `ControlsMenu`. The player's thread only posts to the main thread, never waits for it, so stopping the player on the main thread, as the app quits, can't deadlock.
 
@@ -936,8 +983,8 @@ The app's CSP allows `slunk:` and `http://slunk.localhost` in `img-src` and `med
 
 `now_playing.rs` sets macOS's Now Playing from the player, through objc2-media-player, on the main thread. It works with the page suspended, since it's all in Rust.
 - **What it shows:** the title, who performs it, as the player names them, joined with commas, the release, its cover, read from its file once per track, the length, the time heard, and the rate, 1 or 0, from which macOS moves the time itself. Its state is Playing or Paused, and Stopped with nothing queued.
-- **When it's set:** once the player has played since the library opened, so opening a library doesn't take the media keys from the app that played last. Then at each change of track, at play and pause, when the time moves more than a second from where macOS would have it, as after Previous, and when a save changes the track's data.
-- **Its buttons and the media keys:** `setup()`, as the app starts, has `MPRemoteCommandCenter`'s play, pause, play/pause, next and previous hand the open library's player its command. The skips, seeks and scrubber are off, so Now Playing shows previous and next. The keyboard's media keys and headphones' buttons reach the same handlers while liquidslunk played last.
+- **When it's set:** once the player has played since the library opened, so opening a library doesn't take the media keys from the app that played last. Then at each change of track, at play and pause, when the time moves more than a quarter of a second from where macOS would have it, as after a seek or Previous, and when a save changes the track's data.
+- **Its buttons and the media keys:** `setup()`, as the app starts, has `MPRemoteCommandCenter`'s play, pause, play/pause, next and previous hand the open library's player its command, and its scrubber, `changePlaybackPositionCommand`, seek. The skips and the seeks forward and back are off, so Now Playing shows previous and next, not skips. The keyboard's media keys and headphones' buttons reach the same handlers while liquidslunk played last.
 - **Elsewhere** than macOS, there's none.
 
 ### Opening files

@@ -4,7 +4,7 @@
 //! `crate::player`.
 
 use serde::Deserialize;
-use slunk_player::Command;
+use slunk_player::{Command, SKIP};
 use specta::Type;
 use tauri::{AppHandle, Manager};
 
@@ -139,6 +139,35 @@ pub async fn player_next(app: AppHandle) -> Result<(), CommandError> {
 #[specta::specta]
 pub async fn player_previous(app: AppHandle) -> Result<(), CommandError> {
     tell(&app, Command::Previous)
+}
+
+#[derive(Debug, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SeekArgs {
+    /// Milliseconds into the current track
+    pub ms: u64,
+}
+
+/// To a time in the current track, playing or paused as it was. At the
+/// track's end, the queue goes on, as at its end.
+#[tauri::command]
+#[specta::specta]
+pub async fn player_seek(app: AppHandle, args: SeekArgs) -> Result<(), CommandError> {
+    tell(&app, Command::Seek(args.ms as f64 / 1000.0))
+}
+
+/// 10 seconds back, or to the track's start.
+#[tauri::command]
+#[specta::specta]
+pub async fn player_skip_back(app: AppHandle) -> Result<(), CommandError> {
+    tell(&app, Command::Skip(-SKIP))
+}
+
+/// 10 seconds on, or in a track's last 10 seconds, its end.
+#[tauri::command]
+#[specta::specta]
+pub async fn player_skip_forward(app: AppHandle) -> Result<(), CommandError> {
+    tell(&app, Command::Skip(SKIP))
 }
 
 /// An entry, by its key.

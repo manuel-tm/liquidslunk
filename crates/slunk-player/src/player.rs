@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use crate::Error;
 use crate::engine::{Engine, Event, Fade, Stamped, Track};
 use crate::output::{Output, default_config};
-use crate::queue::{Entry, Queue, Repeat, Step};
+use crate::queue::{self, Entry, Queue, Repeat, Step};
 use crate::render::Renderer;
 
 /// Entries given to the engine to follow the current one, so even short
@@ -30,8 +30,12 @@ const WAITING_AFTER: Duration = Duration::from_millis(250);
 /// How long the output runs on once nothing plays: long enough for a fade
 /// and the output's latency to be heard.
 const RESTING_AFTER: Duration = Duration::from_secs(2);
+/// How often what's remembered takes the time, while a track plays.
+const REMEMBER_EVERY: Duration = Duration::from_secs(5);
 /// Volume Up and Volume Down's step.
 pub const VOLUME_STEP: f64 = 0.1;
+/// Skip Back and Skip Forward's step, in seconds.
+pub const SKIP: f64 = 10.0;
 
 /// What the player asks of the library.
 pub trait Library: Send + 'static {
@@ -39,6 +43,9 @@ pub trait Library: Send + 'static {
     fn path(&self, track_id: i64) -> Option<PathBuf>;
     /// Which of these tracks are still there.
     fn existing(&self, track_ids: &[i64]) -> Vec<i64>;
+    /// A track's length, as the library shows it, which a seek to its end
+    /// or past it goes on from. Without one, the engine finds the end.
+    fn duration(&self, track_id: i64) -> Option<Duration>;
 }
 
 /// Where the player plays.
@@ -76,8 +83,6 @@ pub struct State {
     pub volume: f64,
     pub muted: bool,
     pub fade: Fade,
-    /// The queue to remember, as `Queue::remembered()` writes it
-    pub remembered: Option<String>,
 }
 
 impl State {
@@ -99,7 +104,6 @@ impl Default for State {
             volume: 1.0,
             muted: false,
             fade: Fade::default(),
-            remembered: None,
         }
     }
 }
@@ -120,14 +124,19 @@ pub enum Update {
     /// Seconds of the current track heard
     Time(f64),
     Failed(Failure),
+    /// The queue to remember, as `Queue::remembered()` writes it, with the
+    /// time: when the queue changes, at a pause or a seek, and every 5
+    /// seconds while it plays
+    Remembered(Option<String>),
 }
 
 /// What the player is told to do.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     /// What its owner remembers, once, as the library opens: a queue as
-    /// `Queue::remembered()` writes it, which comes back paused, and the
-    /// settings. Later ones are ignored: the player has its own by then.
+    /// `Queue::remembered()` writes it, which comes back paused at its time,
+    /// and the settings. Later ones are ignored: the player has its own by
+    /// then.
     Restore {
         queue: Option<String>,
         volume: f64,
@@ -146,6 +155,13 @@ pub enum Command {
     SetPlaying(bool),
     Next,
     Previous,
+    /// To this many seconds into the current track, playing or paused as
+    /// it was. At its end or past it, the queue goes on, as at a track's
+    /// end.
+    Seek(f64),
+    /// By this many seconds, back when negative: as `Seek`, from the time
+    /// heard, and back no further than the track's start
+    Skip(f64),
     Jump(u64),
     Move {
         key: u64,
@@ -203,6 +219,7 @@ impl Player {
             sender: messages.clone(),
             shown: shown.clone(),
             loaded: None,
+            parked: None,
             upcoming: Vec::new(),
             failed_ahead: HashMap::new(),
             volume: 1.0,
@@ -210,6 +227,8 @@ impl Player {
             fade: Fade::default(),
             restored: false,
             published: None,
+            remembered: None,
+            remembered_at: Instant::now(),
             told: None,
             told_at: Instant::now(),
             starved_since: None,
@@ -273,6 +292,18 @@ struct Loaded {
     restarts: u64,
     /// Whether it has been heard
     heard: bool,
+    /// Seconds into it that it was loaded from
+    from: f64,
+}
+
+/// Where the current entry plays from once it's loaded, when that isn't
+/// its start: a seek while paused, a remembered time, or where it was when
+/// the output was lost.
+#[derive(Debug, Clone, Copy)]
+struct Parked {
+    key: u64,
+    restarts: u64,
+    time: f64,
 }
 
 struct Worker {
@@ -287,6 +318,7 @@ struct Worker {
     sender: Sender<Message>,
     shown: Arc<Mutex<Shown>>,
     loaded: Option<Loaded>,
+    parked: Option<Parked>,
     /// What the engine was last given to follow the loaded entry, by key
     upcoming: Vec<u64>,
     /// Entries given to follow it that couldn't play, with why: they're
@@ -297,6 +329,9 @@ struct Worker {
     fade: Fade,
     restored: bool,
     published: Option<State>,
+    /// What was last said to remember, and when
+    remembered: Option<String>,
+    remembered_at: Instant,
     /// The time last said, and when
     told: Option<f64>,
     told_at: Instant,
@@ -346,6 +381,12 @@ impl Worker {
                 }
                 self.restored = true;
                 self.queue = Queue::restored(queue.as_deref(), shuffle, repeat);
+                let time = queue::restored_time(queue.as_deref());
+                if let Some(entry) = self.queue.current_entry()
+                    && time > 0.0
+                {
+                    self.park(entry, time);
+                }
                 self.set_volume(volume, muted);
                 self.set_fade(fade);
             }
@@ -366,6 +407,8 @@ impl Worker {
                 let time = self.heard_time();
                 self.queue.step(Step::Previous { time });
             }
+            Command::Seek(time) => self.seek(time),
+            Command::Skip(by) => self.seek((self.heard_time() + by).max(0.0)),
             Command::Jump(key) => self.queue.step(Step::Jump { key }),
             Command::Move { key, by } => self.queue.step(Step::Move { key, by }),
             Command::Remove(key) => self.queue.step(Step::Remove { key }),
@@ -383,6 +426,7 @@ impl Worker {
         self.follow();
         self.publish();
         self.tell_time();
+        self.remember();
     }
 
     fn engine_event(&mut self, stamped: Stamped) {
@@ -399,6 +443,45 @@ impl Worker {
         self.follow();
         self.publish();
         self.tell_time();
+        self.remember();
+    }
+
+    /// Goes to `time` in the current entry, playing or paused as it was:
+    /// played from there, or with nothing loaded while paused, parked
+    /// there. At the track's end, or past it, the queue goes on as at its
+    /// end, which is the engine's to find without a length.
+    fn seek(&mut self, time: f64) {
+        let Some(entry) = self.queue.current_entry() else {
+            return;
+        };
+        let time = time.max(0.0);
+        let ends = self
+            .library
+            .duration(entry.track_id)
+            .is_some_and(|duration| time >= duration.as_secs_f64());
+        if ends {
+            let playing = self.queue.playing;
+            self.queue.step(Step::Ended);
+            if !playing {
+                self.queue.step(Step::SetPlaying(false));
+            }
+            return;
+        }
+        self.park(entry, time);
+        if self.queue.playing {
+            self.load(entry);
+        } else {
+            self.unload();
+        }
+    }
+
+    /// Has the entry play from `time` once it's loaded.
+    fn park(&mut self, entry: Entry, time: f64) {
+        self.parked = Some(Parked {
+            key: entry.key,
+            restarts: self.queue.restarts,
+            time,
+        });
     }
 
     /// An entry was heard: the current one, from its start, or one that
@@ -438,10 +521,15 @@ impl Worker {
 
     fn heard(&mut self, entry: u64) {
         self.queue.step(Step::Started);
+        let from = self
+            .loaded
+            .filter(|loaded| loaded.key == entry)
+            .map_or(0.0, |loaded| loaded.from);
         self.loaded = Some(Loaded {
             key: entry,
             restarts: self.queue.restarts,
             heard: true,
+            from,
         });
     }
 
@@ -505,14 +593,22 @@ impl Worker {
     }
 
     /// The engine follows the queue: it plays the current entry from its
-    /// start once it changes, or restarts, and what follows it as that
-    /// changes. A paused entry is loaded only once it plays.
+    /// start once it changes, or restarts, or from where it's parked, and
+    /// what follows it as that changes. A paused entry is loaded only once
+    /// it plays.
     fn follow(&mut self) {
         let Some(entry) = self.queue.current_entry() else {
             self.failed_ahead.clear();
+            self.parked = None;
             self.unload();
             return;
         };
+        if self
+            .parked
+            .is_some_and(|parked| parked.key != entry.key || parked.restarts != self.queue.restarts)
+        {
+            self.parked = None;
+        }
         let moved = self
             .loaded
             .is_none_or(|loaded| loaded.key != entry.key || loaded.restarts != self.queue.restarts);
@@ -536,16 +632,21 @@ impl Worker {
         }
     }
 
-    /// Plays an entry from its start, with what follows it.
+    /// Plays an entry from its start, or from where it's parked, with what
+    /// follows it.
     fn load(&mut self, entry: Entry) {
         if let Err(error) = self.wake() {
             return self.fail_output(entry, error);
         }
         self.failed_ahead.clear();
+        let from = self
+            .parked
+            .take()
+            .filter(|parked| parked.key == entry.key && parked.restarts == self.queue.restarts)
+            .map_or(0.0, |parked| parked.time);
         let following: Vec<Entry> = self.queue.following().take(AHEAD).collect();
-        let tracks = std::iter::once(entry)
-            .chain(following.iter().copied())
-            .map(|entry| self.track(entry))
+        let tracks = std::iter::once(self.track(entry).from(Duration::from_secs_f64(from)))
+            .chain(following.iter().map(|entry| self.track(*entry)))
             .collect();
         self.upcoming = following.iter().map(|entry| entry.key).collect();
         if let Some(audio) = &self.audio {
@@ -555,6 +656,7 @@ impl Worker {
             key: entry.key,
             restarts: self.queue.restarts,
             heard: false,
+            from,
         });
     }
 
@@ -683,6 +785,9 @@ impl Worker {
             if self.told_at.elapsed() >= TIME_EVERY {
                 self.tell_time();
             }
+            if self.remembered_at.elapsed() >= REMEMBER_EVERY {
+                self.remember();
+            }
         } else if !self.resting {
             let since = *self.idle_since.get_or_insert_with(Instant::now);
             if since.elapsed() >= RESTING_AFTER {
@@ -694,6 +799,11 @@ impl Worker {
     /// The output's device is gone, with none to follow: the player pauses,
     /// and makes the engine and its output again at the next play.
     fn lose_output(&mut self) {
+        // It plays from where it was, at the next play
+        let time = self.heard_time();
+        if let Some(entry) = self.queue.current_entry() {
+            self.park(entry, time);
+        }
         self.audio = None;
         self.loaded = None;
         self.upcoming.clear();
@@ -703,6 +813,7 @@ impl Worker {
         self.queue.step(Step::SetPlaying(false));
         self.publish();
         self.tell_time();
+        self.remember();
     }
 
     /// Pauses the output, so the device rests while nothing plays.
@@ -713,6 +824,7 @@ impl Worker {
         self.resting = true;
         // What's heard has caught up with where it paused
         self.tell_time();
+        self.remember();
     }
 
     fn set_volume(&mut self, volume: f64, muted: bool) {
@@ -756,16 +868,30 @@ impl Worker {
         }
     }
 
-    /// Seconds of the current entry heard.
+    /// Seconds of the current entry heard: where it was loaded from until
+    /// it's heard, and where it's parked while it isn't loaded.
     fn heard_time(&self) -> f64 {
-        let (Some(audio), Some(loaded)) = (&self.audio, self.loaded) else {
-            return 0.0;
+        let Some(loaded) = self.loaded else {
+            return self
+                .parked
+                .filter(|parked| {
+                    self.queue.current_entry().map(|entry| entry.key) == Some(parked.key)
+                        && parked.restarts == self.queue.restarts
+                })
+                .map_or(0.0, |parked| parked.time);
         };
-        let position = audio.engine.position();
-        if position.entry != Some(loaded.key) {
-            return 0.0;
+        // Until it's heard, the engine may not have taken the load yet, and
+        // still be where it was: in the same entry, after a seek or a
+        // restart
+        if !loaded.heard {
+            return loaded.from;
         }
-        position.frames as f64 / f64::from(position.rate)
+        match self.audio.as_ref().map(|audio| audio.engine.position()) {
+            Some(position) if position.entry == Some(loaded.key) => {
+                position.frames as f64 / f64::from(position.rate)
+            }
+            _ => 0.0,
+        }
     }
 
     /// Says the player's state, when it changed.
@@ -780,7 +906,6 @@ impl Worker {
             volume: self.volume,
             muted: self.muted,
             fade: self.fade,
-            remembered: self.queue.remembered(),
         };
         if self.published.as_ref() == Some(&state) {
             return;
@@ -788,6 +913,17 @@ impl Worker {
         lock(&self.shown).state = state.clone();
         self.published = Some(state.clone());
         (self.notify)(Update::State(state));
+    }
+
+    /// Says the queue to remember, with the time heard, when it changed.
+    fn remember(&mut self) {
+        self.remembered_at = Instant::now();
+        let remembered = self.queue.remembered(self.heard_time());
+        if self.remembered == remembered {
+            return;
+        }
+        self.remembered = remembered.clone();
+        (self.notify)(Update::Remembered(remembered));
     }
 
     /// Says the time, when it changed.

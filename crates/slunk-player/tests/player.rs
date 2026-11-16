@@ -1,7 +1,7 @@
 //! The player (backend.md, "The player"): the queue played through the
 //! engine, moving on as each track is heard, skipping tracks that can't
-//! play, coming back from what was remembered, and losing deleted tracks. A
-//! device thread renders the engine faster than real time.
+//! play, seeking, coming back from what was remembered, and losing deleted
+//! tracks. A device thread renders the engine faster than real time.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -10,18 +10,41 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use slunk_player::queue::Repeat;
-use slunk_player::{Command, Device, Fade, Library, Options, Player, State, Update};
+use slunk_player::{Command, Device, Fade, Library, Options, Player, SKIP, State, Update};
 
 mod common;
-use common::{RATE, TRACKS, fixture, signal};
+use common::{RATE, TRACKS, fixture, pcm, signal, write_wav};
 
-/// A library of tracks by id, which a test can delete from.
+/// A track's file, and its length, if the library has one.
+type Known = (PathBuf, Option<Duration>);
+
+/// A library of tracks by id, which a test can add to and delete from.
 #[derive(Clone, Default)]
-struct Tracks(Arc<Mutex<HashMap<i64, PathBuf>>>);
+struct Tracks(Arc<Mutex<HashMap<i64, Known>>>);
+
+impl Tracks {
+    fn add(&self, id: i64, path: PathBuf, frames: Option<usize>) {
+        let duration = frames.map(frames_time);
+        self.0.lock().unwrap().insert(id, (path, duration));
+    }
+}
+
+/// Frames at the fixtures' rate, as a time.
+fn frames_time(frames: usize) -> Duration {
+    Duration::from_secs_f64(frames as f64 / f64::from(RATE))
+}
 
 impl Library for Tracks {
     fn path(&self, track_id: i64) -> Option<PathBuf> {
-        self.0.lock().unwrap().get(&track_id).cloned()
+        self.0
+            .lock()
+            .unwrap()
+            .get(&track_id)
+            .map(|(path, _)| path.clone())
+    }
+
+    fn duration(&self, track_id: i64) -> Option<Duration> {
+        self.0.lock().unwrap().get(&track_id)?.1
     }
 
     fn existing(&self, track_ids: &[i64]) -> Vec<i64> {
@@ -42,18 +65,20 @@ struct Harness {
     updates: Receiver<Update>,
     states: Vec<State>,
     failed: Vec<i64>,
+    /// The times said, in seconds
+    times: Vec<f64>,
+    /// What was said to remember
+    remembered: Vec<Option<String>>,
 }
 
 /// A player of tracks 1, 2 and 3, joined from one signal, and 9, missing.
 fn start() -> Harness {
     let tracks = Tracks::default();
-    {
-        let mut paths = tracks.0.lock().unwrap();
-        paths.insert(1, fixture("join-1.flac"));
-        paths.insert(2, fixture("join-2.flac"));
-        paths.insert(3, fixture("join-3.flac"));
-        paths.insert(9, fixture("missing.flac"));
+    for (index, frames) in TRACKS.iter().enumerate() {
+        let path = fixture(&format!("join-{}.flac", index + 1));
+        tracks.add(index as i64 + 1, path, Some(*frames));
     }
+    tracks.add(9, fixture("missing.flac"), None);
     let (renderers, given) = mpsc::channel();
     let (sender, updates) = mpsc::channel();
     let player = Player::start(Options {
@@ -94,27 +119,66 @@ fn start() -> Harness {
         updates,
         states: Vec::new(),
         failed: Vec::new(),
+        times: Vec::new(),
+        remembered: Vec::new(),
     }
 }
 
 impl Harness {
     /// Takes updates until the player's state is as wanted.
     fn until(&mut self, wanted: impl Fn(&State) -> bool) -> State {
-        let deadline = Instant::now() + Duration::from_secs(5);
         loop {
-            let left = deadline.saturating_duration_since(Instant::now());
-            match self.updates.recv_timeout(left) {
-                Ok(Update::State(state)) => {
-                    self.states.push(state.clone());
-                    if wanted(&state) {
-                        return state;
-                    }
-                }
-                Ok(Update::Failed(failure)) => self.failed.push(failure.track_id),
-                Ok(Update::Time(_)) => {}
-                Err(_) => panic!("never so: {:#?}", self.states.last()),
+            if let Update::State(state) = self.next_update()
+                && wanted(&state)
+            {
+                return state;
             }
         }
+    }
+
+    /// Takes updates until the time said is as wanted.
+    fn until_time(&mut self, wanted: impl Fn(f64) -> bool) -> f64 {
+        loop {
+            if let Update::Time(time) = self.next_update()
+                && wanted(time)
+            {
+                return time;
+            }
+        }
+    }
+
+    /// Takes updates until what's said to remember is as wanted.
+    fn until_remembered(&mut self, wanted: impl Fn(&str) -> bool) -> String {
+        loop {
+            if let Update::Remembered(Some(saved)) = self.next_update()
+                && wanted(&saved)
+            {
+                return saved;
+            }
+        }
+    }
+
+    fn next_update(&mut self) -> Update {
+        let update = self
+            .updates
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap_or_else(|_| panic!("nothing more: {:#?}", self.states.last()));
+        match &update {
+            Update::State(state) => self.states.push(state.clone()),
+            Update::Failed(failure) => self.failed.push(failure.track_id),
+            Update::Time(time) => self.times.push(*time),
+            Update::Remembered(saved) => self.remembered.push(saved.clone()),
+        }
+        update
+    }
+
+    /// What played, without the silence before the first track and after
+    /// the last.
+    fn played(&self) -> Vec<f32> {
+        let heard = self.heard.lock().unwrap().clone();
+        let first = heard.iter().position(|sample| *sample != 0.0).unwrap();
+        let last = heard.iter().rposition(|sample| *sample != 0.0).unwrap();
+        heard[first / 2 * 2..(last / 2 + 1) * 2].to_vec()
     }
 
     /// The current track of each state seen, once each in a row.
@@ -156,14 +220,8 @@ fn the_queue_plays_joined_to_the_sample_past_a_track_that_cant_play() {
     });
     harness.until(|state| state.playing);
     harness.until(|state| !state.playing);
-    // What played, without the silence before the first track and after
-    // the last: the fixtures' signal, every sample of it, and nothing else
-    let heard = harness.heard.lock().unwrap().clone();
-    let first = heard.iter().position(|sample| *sample != 0.0).unwrap();
-    let last = heard.iter().rposition(|sample| *sample != 0.0).unwrap();
-    let frames = |samples: usize| samples / 2;
-    let played = &heard[frames(first) * 2..(frames(last) + 1) * 2];
-    assert!(played == signal(0, TRACKS.iter().sum()));
+    // The fixtures' signal, every sample of it, and nothing else
+    assert!(harness.played() == signal(0, TRACKS.iter().sum()));
     assert_eq!(harness.failed, [9]);
 }
 
@@ -286,4 +344,113 @@ fn the_volume_is_in_hundredths_and_a_change_unmutes() {
     }
     let state = harness.until(|state| state.volume < 0.6);
     assert_eq!((state.volume, state.muted), (0.5, false));
+}
+
+/// The fixtures' frames in `seconds`, as the engine counts them.
+fn frames_in(seconds: f64) -> usize {
+    (seconds * f64::from(RATE)).round() as usize
+}
+
+#[test]
+fn a_seek_while_paused_plays_from_there_and_joins_the_next() {
+    let mut harness = start();
+    harness.player.send(Command::SetFade(Fade::Off));
+    harness.player.send(Command::Add(vec![1, 2]));
+    harness.until(|state| state.current.is_some());
+    harness.player.send(Command::Seek(0.05));
+    // The time is the seek's at once, though nothing is loaded
+    harness.until_time(|time| time == 0.05);
+    harness.player.send(Command::SetPlaying(true));
+    harness.until(|state| state.playing);
+    harness.until(|state| !state.playing);
+    let from = frames_in(0.05);
+    assert!(harness.played() == signal(from, TRACKS[0] + TRACKS[1] - from));
+}
+
+#[test]
+fn a_seek_while_playing_plays_from_there_exactly() {
+    let dir = tempfile::tempdir().unwrap();
+    let long = dir.path().join("long.wav");
+    let frames = 6 * RATE as usize;
+    write_wav(&long, RATE, 2, &pcm(0, frames));
+    let mut harness = start();
+    harness.tracks.add(4, long, Some(frames));
+    harness.player.send(Command::SetFade(Fade::Off));
+    harness.player.send(Command::Play {
+        track_ids: vec![4],
+        start: None,
+    });
+    harness.until_time(|time| time > 0.2);
+    harness.player.send(Command::Seek(5.0));
+    // The seek says its time at once, and remembers it, though the engine
+    // may not have taken it yet: never where it was before
+    let saved = harness.until_remembered(|_| true);
+    assert!(saved.ends_with(r#""time":5.0}"#), "{saved}");
+    assert_eq!(harness.times.last(), Some(&5.0));
+    let seeked = harness.times.len() - 1;
+    harness.until(|state| !state.playing);
+    // It was cut where it was, and played on from 5 seconds' first sample
+    let from = frames_in(5.0);
+    assert!(harness.played().ends_with(&signal(from, frames - from)));
+    // Its time went on from there, to the end
+    assert!(
+        harness.times[seeked..]
+            .windows(2)
+            .all(|pair| pair[1] >= pair[0])
+    );
+}
+
+#[test]
+fn skipping_goes_no_further_back_than_the_start_and_forward_to_the_next() {
+    let mut harness = start();
+    harness.player.send(Command::Add(vec![1, 2, 3]));
+    harness.until(|state| state.current.is_some());
+    harness.player.send(Command::Seek(0.05));
+    harness.until_time(|time| time == 0.05);
+    harness.player.send(Command::Skip(-SKIP));
+    harness.until_time(|time| time == 0.0);
+    // Past the track's end, the next one, still paused
+    harness.player.send(Command::Skip(SKIP));
+    let next = harness.until(|state| state.current == Some(1));
+    assert!(!next.playing);
+}
+
+#[test]
+fn a_seek_to_the_last_tracks_end_stops_the_queue_as_its_end_does() {
+    let mut harness = start();
+    harness.player.send(Command::Play {
+        track_ids: vec![3],
+        start: None,
+    });
+    harness.until(|state| state.playing);
+    harness.player.send(Command::Seek(1.0));
+    let stopped = harness.until(|state| !state.playing);
+    assert_eq!(stopped.current, Some(0));
+    assert_eq!(harness.player.time(), 0.0);
+}
+
+#[test]
+fn comes_back_at_its_remembered_time_and_remembers_where_it_is() {
+    let mut harness = start();
+    harness.player.send(Command::SetFade(Fade::Off));
+    harness.player.send(Command::Restore {
+        queue: Some(r#"{"trackIds":[1,2],"current":1,"unshuffled":null,"time":0.1}"#.into()),
+        volume: 1.0,
+        muted: false,
+        shuffle: false,
+        repeat: Repeat::Off,
+        fade: Fade::Off,
+    });
+    harness.until_time(|time| time == 0.1);
+    harness.until_remembered(|saved| {
+        saved == r#"{"trackIds":[1,2],"current":1,"unshuffled":null,"time":0.1}"#
+    });
+    harness.player.send(Command::Toggle);
+    harness.until(|state| state.playing);
+    harness.until(|state| !state.playing);
+    let from = TRACKS[0] + frames_in(0.1);
+    assert!(harness.played() == signal(from, TRACKS[0] + TRACKS[1] - from));
+    // Stopped at the end, it's remembered at the last track's start
+    harness
+        .until_remembered(|saved| saved.ends_with(r#""current":1,"unshuffled":null,"time":0.0}"#));
 }

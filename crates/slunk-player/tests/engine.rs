@@ -3,67 +3,14 @@
 //! changing, resampling, the volume and the fades. A fake output keeps every
 //! frame the renderer gives it.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
-use slunk_player::{Engine, Event, Fade, Renderer, Stamped, Track, TrackDecoder};
+use slunk_player::{Engine, Event, Fade, Renderer, Stamped, Track};
 
 mod common;
-use common::{RATE, TRACKS, fixture, offset, pcm, signal};
-
-/// A whole file, decoded as the engine decodes it.
-fn decode(path: &Path) -> Vec<f32> {
-    let mut decoder = TrackDecoder::open(path).unwrap();
-    let mut out = Vec::new();
-    while decoder.next(&mut out).unwrap() {}
-    out
-}
-
-/// A WAV file of 16-bit interleaved samples.
-fn write_wav(path: &Path, rate: u32, channels: u16, samples: &[i16]) {
-    let data: Vec<u8> = samples.iter().flat_map(|s| s.to_le_bytes()).collect();
-    let mut bytes = Vec::new();
-    bytes.extend_from_slice(b"RIFF");
-    bytes.extend_from_slice(&(36 + data.len() as u32).to_le_bytes());
-    bytes.extend_from_slice(b"WAVEfmt ");
-    bytes.extend_from_slice(&16u32.to_le_bytes());
-    bytes.extend_from_slice(&1u16.to_le_bytes());
-    bytes.extend_from_slice(&channels.to_le_bytes());
-    bytes.extend_from_slice(&rate.to_le_bytes());
-    bytes.extend_from_slice(&(rate * u32::from(channels) * 2).to_le_bytes());
-    bytes.extend_from_slice(&(channels * 2).to_le_bytes());
-    bytes.extend_from_slice(&16u16.to_le_bytes());
-    bytes.extend_from_slice(b"data");
-    bytes.extend_from_slice(&(data.len() as u32).to_le_bytes());
-    bytes.extend_from_slice(&data);
-    fs::write(path, bytes).unwrap();
-}
-
-/// An AIFF file of 16-bit interleaved stereo at 44.1 kHz, whose rate is an
-/// 80-bit extended float: 2^15 × 0xAC44 / 2^15.
-fn write_aiff(path: &Path, samples: &[i16]) {
-    let data: Vec<u8> = samples.iter().flat_map(|s| s.to_be_bytes()).collect();
-    let frames = (samples.len() / 2) as u32;
-    let mut comm = Vec::new();
-    comm.extend_from_slice(&2u16.to_be_bytes());
-    comm.extend_from_slice(&frames.to_be_bytes());
-    comm.extend_from_slice(&16u16.to_be_bytes());
-    comm.extend_from_slice(&[0x40, 0x0e, 0xac, 0x44, 0, 0, 0, 0, 0, 0]);
-    let mut body = b"AIFF".to_vec();
-    body.extend_from_slice(b"COMM");
-    body.extend_from_slice(&(comm.len() as u32).to_be_bytes());
-    body.extend_from_slice(&comm);
-    body.extend_from_slice(b"SSND");
-    body.extend_from_slice(&(8 + data.len() as u32).to_be_bytes());
-    body.extend_from_slice(&[0; 8]);
-    body.extend_from_slice(&data);
-    let mut bytes = b"FORM".to_vec();
-    bytes.extend_from_slice(&(body.len() as u32).to_be_bytes());
-    bytes.extend_from_slice(&body);
-    fs::write(path, bytes).unwrap();
-}
+use common::{RATE, TRACKS, decode, fixture, offset, pcm, signal, write_aiff, write_wav};
 
 /// A second of a constant level, 0.5, in stereo.
 fn level(dir: &Path) -> PathBuf {
@@ -489,6 +436,8 @@ fn a_new_queue_fades_out_what_plays_and_starts_at_its_first_sample() {
     let mut fake = Fake::new(RATE);
     fake.engine.play(vec![Track::new(0, level(dir.path()))]);
     fake.render(1000);
+    // Heard, so the new queue doesn't drop its start as no longer playing
+    fake.wait_for(|event| *event == Event::Started { entry: 0 });
     fake.engine
         .play(vec![Track::new(1, fixture("join-1.flac"))]);
     fake.settle();
@@ -502,4 +451,74 @@ fn a_new_queue_fades_out_what_plays_and_starts_at_its_first_sample() {
     // Then the track, from its first sample, unfaded
     assert!(after[441 * 2..] == signal(0, TRACKS[0])[..]);
     assert_eq!(started(&fake.events), [0, 1]);
+}
+
+/// Frame `frame` of a 44.1 kHz track, as a time.
+fn at_frame(frame: usize) -> Duration {
+    Duration::from_nanos((frame as u64 * 1_000_000_000).div_ceil(u64::from(RATE)))
+}
+
+#[test]
+fn a_track_from_a_time_plays_from_that_sample_and_joins_the_next() {
+    for from in [1, 1000, 4608, TRACKS[0] - 10] {
+        let mut fake = Fake::new(RATE);
+        fake.engine.set_fade(Fade::Off);
+        fake.engine.play(vec![
+            Track::new(0, fixture("join-1.flac")).from(at_frame(from)),
+            Track::new(1, fixture("join-2.m4a")),
+        ]);
+        fake.render_all();
+        assert!(
+            fake.out == signal(from, TRACKS[0] + TRACKS[1] - from),
+            "from {from}"
+        );
+        assert_eq!(started(&fake.events), [0, 1]);
+    }
+}
+
+#[test]
+fn a_track_from_a_time_says_where_it_is_from_there() {
+    let mut fake = Fake::new(RATE);
+    fake.engine.play(vec![
+        Track::new(0, fixture("join-2.flac")).from(at_frame(3000)),
+    ]);
+    fake.render(100);
+    fake.wait_for(|event| *event == Event::Started { entry: 0 });
+    let position = fake.engine.position();
+    assert_eq!(position.entry, Some(0));
+    assert_eq!(position.frames, 3100);
+}
+
+#[test]
+fn a_track_from_past_its_end_goes_on_to_the_next() {
+    let mut fake = Fake::new(RATE);
+    fake.engine.play(vec![
+        Track::new(0, fixture("join-1.flac")).from(at_frame(TRACKS[0] + 1000)),
+        Track::new(1, fixture("join-2.flac")),
+    ]);
+    fake.render_all();
+    // What follows is a track's own start, so it doesn't fade in
+    assert!(fake.out == signal(offset(1), TRACKS[1]));
+    assert_eq!(started(&fake.events), [0, 1]);
+}
+
+#[test]
+fn a_track_from_a_time_fades_in() {
+    let mut fake = Fake::new(RATE);
+    fake.engine.play(vec![
+        Track::new(0, fixture("join-2.flac")).from(at_frame(1000)),
+    ]);
+    fake.render_all();
+    let expected = signal(offset(1) + 1000, TRACKS[1] - 1000);
+    // Over 10 ms, from silence
+    for (index, (sample, full)) in fake.out[..441 * 2]
+        .iter()
+        .zip(&expected)
+        .step_by(2)
+        .enumerate()
+    {
+        let level = (index + 1) as f32 / 441.0;
+        assert!((sample - full * level).abs() < 1e-4, "frame {index}");
+    }
+    assert!(fake.out[441 * 2..] == expected[441 * 2..]);
 }

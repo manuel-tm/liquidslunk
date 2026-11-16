@@ -144,6 +144,9 @@ pub fn builder() -> Builder<Wry> {
             player::player_set_playing,
             player::player_next,
             player::player_previous,
+            player::player_seek,
+            player::player_skip_back,
+            player::player_skip_forward,
             player::player_jump,
             player::player_move,
             player::player_remove,
@@ -157,6 +160,7 @@ pub fn builder() -> Builder<Wry> {
             crate::player::PlayerState,
             crate::player::PlayerTime,
             crate::player::PlayerFailed,
+            crate::player::PlayerRemembered,
         ])
         // Ids are i64. SQLite's stay far below 2^53, so they're numbers.
         .dangerously_cast_bigints_to_number()

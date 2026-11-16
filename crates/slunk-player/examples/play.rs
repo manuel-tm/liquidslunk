@@ -5,8 +5,7 @@
 //!   cargo run -p slunk-player --example play -- [--volume 0.5] [--fade 10]
 //!       [--start SECONDS] a.flac b.flac …
 //!
-//! `--start` begins the first file that many seconds in, decoding its start
-//! and leaving it out. `--fade` is off, 10, 50 or 200 (ms). A file that
+//! `--start` begins the first file that many seconds in, as a seek does. `--fade` is off, 10, 50 or 200 (ms). A file that
 //! can't play stops the files after it, as the engine leaves what follows a
 //! failure to its owner.
 
@@ -14,7 +13,7 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use slunk_player::{Engine, Event, Fade, Output, Track, TrackDecoder, default_config};
+use slunk_player::{Engine, Event, Fade, Output, Track, default_config};
 
 fn main() {
     let mut volume = 1.0f32;
@@ -59,12 +58,12 @@ fn main() {
         .iter()
         .enumerate()
         .map(|(index, path)| {
-            let mut track = Track::new(index as u64, path);
+            let track = Track::new(index as u64, path);
             if index == 0 && start > 0.0 {
-                let file_rate = TrackDecoder::open(path).map(|d| d.rate()).unwrap_or(rate);
-                track.start = (start * f64::from(file_rate)) as u64;
+                track.from(Duration::from_secs_f64(start))
+            } else {
+                track
             }
-            track
         })
         .collect();
 

@@ -21,7 +21,6 @@ import { usePlayer, usePlayerTime } from "@/components/player/provider"
 import { QueueSheet } from "@/components/player/queue-sheet"
 import { Title } from "@/components/titles"
 import { Button } from "@/components/ui/button"
-import { Progress } from "@/components/ui/progress"
 import { Slider } from "@/components/ui/slider"
 import { Spinner } from "@/components/ui/spinner"
 import { shownName } from "@/lib/credited"
@@ -122,23 +121,45 @@ function NowPlaying({ track }: { track: PlayerTrack | null }) {
 }
 
 /**
- * The time heard and the track's length, the catalog's, with a bar between
- * them. It doesn't seek yet (frontend.md, "The player").
+ * The time heard and the track's length, the catalog's, with the seek bar
+ * between them: dragged, it shows where it'll land, and seeks once it's let
+ * go; clicked, or moved by its keys, it seeks at once.
  */
 function Played({ track }: { track: PlayerTrack | null }) {
+  const { seek } = usePlayer()
   const { time } = usePlayerTime()
   const duration = (track?.durationMs ?? 0) / 1000
-  const played = Math.min(time, duration)
+  // Where it's dragged to, which it shows while it's held, then once let go
+  // until the player says the time from there
+  const [held, setHeld] = useState<{
+    value: number
+    /** The time when it was let go, or null while it's held */
+    until: number | null
+  } | null>(null)
+  const holding = held !== null && (held.until === null || held.until === time)
+  const played = holding ? held.value : Math.min(time, duration)
   // Rounded, as the tracklist rounds it
   const length = formatDuration(duration ? duration * 1000 : null)
 
   return (
     <div className="flex flex-col gap-1">
-      <Progress
-        aria-label="Played"
-        value={played}
+      <Slider
+        title="Seek (⇧⌘←, ⇧⌘→)"
+        value={[played]}
+        min={0}
         max={duration || 1}
-        getAriaValueText={() => `${clock(played)} of ${length}`}
+        step={1}
+        largeStep={10}
+        disabled={!duration}
+        thumb={{
+          getAriaLabel: () => "Seek",
+          getAriaValueText: (_, value) => `${clock(value)} of ${length}`,
+        }}
+        onValueChange={(value) => setHeld({ value: first(value), until: null })}
+        onValueCommitted={(value) => {
+          setHeld({ value: first(value), until: time })
+          seek(first(value))
+        }}
       />
       <div className="flex justify-between text-[0.625rem] text-muted-foreground tabular-nums">
         <span>{clock(played)}</span>

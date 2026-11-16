@@ -490,10 +490,12 @@ impl Queue {
 
     /// The queue to remember, as JSON, or none when nothing's queued: its
     /// tracks in the order they play, the current one, and while shuffled,
-    /// their order before, as indexes into `trackIds`.
-    pub fn remembered(&self) -> Option<String> {
+    /// their order before, as indexes into `trackIds`, and `time`, the
+    /// seconds heard of the current one, to the millisecond.
+    pub fn remembered(&self, time: f64) -> Option<String> {
         let current = self.current?;
         let saved = Saved {
+            time: (time.max(0.0) * 1000.0).round() / 1000.0,
             track_ids: self.entries.iter().map(|entry| entry.track_id).collect(),
             current,
             unshuffled: self.unshuffled.as_ref().map(|unshuffled| {
@@ -549,6 +551,14 @@ struct Saved {
     track_ids: Vec<i64>,
     current: usize,
     unshuffled: Option<Vec<usize>>,
+    time: f64,
+}
+
+/// The seconds heard of a remembered queue's current entry: 0 for a queue
+/// remembered without them, by an older version, and for anything that
+/// isn't a queue.
+pub fn restored_time(saved: Option<&str>) -> f64 {
+    saved.and_then(parse_saved).map_or(0.0, |saved| saved.time)
 }
 
 /// A remembered queue, if it is one: tracks' ids, a current one among them,
@@ -587,10 +597,16 @@ fn parse_saved(saved: &str) -> Option<Saved> {
             Some(order)
         }
     };
+    let time = object
+        .get("time")
+        .and_then(Value::as_f64)
+        .filter(|time| time.is_finite() && *time > 0.0)
+        .unwrap_or(0.0);
     Some(Saved {
         track_ids,
         current,
         unshuffled,
+        time,
     })
 }
 

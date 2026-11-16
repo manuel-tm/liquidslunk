@@ -13,15 +13,15 @@ pub const NONE: u64 = u64::MAX;
 /// What the callback does at a point of the stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Marker {
-    /// An entry's first frame is at `at`.
-    Start { at: u64, entry: u64 },
+    /// An entry's first frame is at `at`. It fades in from silence with
+    /// `fade_in`, as after a seek: a track's own start doesn't.
+    Start { at: u64, entry: u64, fade_in: bool },
     /// What's buffered from `at` to `to` isn't wanted: it's dropped unheard.
     /// Markers queued before it, from `at` on, go with it.
     Skip { at: u64, to: u64 },
     /// What plays fades out at once, then what's buffered up to `to` is
-    /// dropped, and markers queued before it with it. What comes at `to`
-    /// fades in when `fade_in`; a track's own start doesn't.
-    Cut { to: u64, fade_in: bool },
+    /// dropped, and markers queued before it with it.
+    Cut { to: u64 },
 }
 
 /// What the callback tells the engine.
@@ -51,6 +51,9 @@ pub struct Shared {
     pub entry: AtomicU64,
     /// Where it starts in the stream
     pub entry_start: AtomicU64,
+    /// Where in its track it starts, at the output's rate: after a seek,
+    /// past its start
+    pub entry_from: AtomicU64,
     /// Frames played as silence for want of samples, while more was coming
     pub underruns: AtomicU64,
     /// Nothing more is coming: what's written is the end
@@ -70,6 +73,7 @@ impl Shared {
             written: AtomicU64::new(0),
             entry: AtomicU64::new(NONE),
             entry_start: AtomicU64::new(0),
+            entry_from: AtomicU64::new(0),
             underruns: AtomicU64::new(0),
             draining: AtomicBool::new(true),
             latency: AtomicU64::new(0),

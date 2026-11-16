@@ -15,7 +15,9 @@ mod stream;
 pub use decode::TrackDecoder;
 pub use engine::{Engine, Event, Fade, Position, Stamped, Track};
 pub use output::{Output, OutputError, default_config};
-pub use player::{Command, Device, Failure, Library, Options, Player, State, Update, VOLUME_STEP};
+pub use player::{
+    Command, Device, Failure, Library, Options, Player, SKIP, State, Update, VOLUME_STEP,
+};
 pub use render::Renderer;
 
 /// Why a track can't play.

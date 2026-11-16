@@ -1,6 +1,7 @@
 // Generates the engine's fixtures (backend.md, "The player engine"): tracks
 // cut from one continuous signal, so a join between them can be checked
-// sample for sample, in the formats a test can't write itself.
+// sample for sample, in the formats a test can't write itself, and half a
+// second of it in each, long enough to seek in.
 //
 // Run from the repository root, on macOS:
 //
@@ -28,6 +29,9 @@ const TRACKS = [5003, 6421, 4900]
 const MP3_FRAMES = 20
 const MP3_DELAY = 576
 const MP3_PADDING = 1000
+// The seeking fixtures' frames: several FLAC and Apple Lossless frames, and
+// many AAC packets
+const SEEK_FRAMES = 22050
 
 const temp = mkdtempSync(join(tmpdir(), "slunk-player-"))
 try {
@@ -43,6 +47,12 @@ try {
       afconvert(source, "m4af", "aac", join(HERE, "aac.m4a"))
     }
   }
+  const source = join(temp, "seek.wav")
+  writeFileSync(source, wav(signal(0, SEEK_FRAMES)))
+  afconvert(source, "flac", "flac", join(HERE, "seek.flac"))
+  afconvert(source, "m4af", "alac", join(HERE, "seek-alac.m4a"))
+  afconvert(source, "m4af", "aac", join(HERE, "seek-aac.m4a"))
+  afconvert(source, "adts", "aac", join(HERE, "seek.aac"))
   writeFileSync(join(HERE, "lame.mp3"), mp3())
 } finally {
   rmSync(temp, { recursive: true, force: true })

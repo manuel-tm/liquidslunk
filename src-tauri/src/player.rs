@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use slunk::catalog::Catalog;
@@ -115,9 +115,6 @@ pub struct PlayerState {
     pub volume: u8,
     pub muted: bool,
     pub fade: Fade,
-    /// The queue to remember for the library, as JSON, for
-    /// `player_restore`; null with nothing queued
-    pub remembered: Option<String>,
 }
 
 impl From<&State> for PlayerState {
@@ -139,18 +136,27 @@ impl From<&State> for PlayerState {
             volume: hundredths(state.volume),
             muted: state.muted,
             fade: state.fade.into(),
-            remembered: state.remembered.clone(),
         }
     }
 }
 
 /// How far into the current track it is: four times a second while it
-/// plays, and at once after a change of track or a pause.
+/// plays, and at once after a change of track, a pause or a seek.
 #[derive(Debug, Clone, Serialize, Type, tauri_specta::Event)]
 #[serde(rename_all = "camelCase")]
 pub struct PlayerTime {
     /// Milliseconds heard: played, less the output's latency
     pub ms: u64,
+}
+
+/// The queue to remember for the library, with the time heard of its
+/// current track: when the queue changes, at a pause or a seek, and every 5
+/// seconds while it plays.
+#[derive(Debug, Clone, Serialize, Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerRemembered {
+    /// As JSON, for `player_restore`; null with nothing queued
+    pub queue: Option<String>,
 }
 
 /// A track that can't play, which the player skipped.
@@ -260,6 +266,12 @@ impl slunk_player::Library for Files {
             Err(_) => track_ids.to_vec(),
         }
     }
+
+    fn duration(&self, track_id: i64) -> Option<Duration> {
+        let track = self.catalog.tracks_by_ids(&[track_id]).ok()?.pop()?;
+        let ms = u64::try_from(track.duration_ms?).ok()?;
+        Some(Duration::from_millis(ms))
+    }
 }
 
 /// Hears the player, on its thread: the webview's events, the Controls
@@ -312,12 +324,16 @@ impl Notifier {
                 }
                 .emit(&self.app);
             }
+            Update::Remembered(queue) => {
+                let _ = PlayerRemembered { queue }.emit(&self.app);
+            }
         }
     }
 
     /// Shows the current track in Now Playing: its data, read again when
     /// the track changes or with `reread`, and its time, when it plays or
-    /// pauses, or has moved from where macOS would have it.
+    /// pauses, or has moved from where macOS would have it, as after a
+    /// seek.
     fn now_playing(&mut self, reread: bool) {
         let Some(state) = &self.state else { return };
         let playing = state.playing;
@@ -350,7 +366,7 @@ impl Notifier {
             } else {
                 0.0
             };
-            was_playing != playing || (time + moving - self.time).abs() > 1.0
+            was_playing != playing || (time + moving - self.time).abs() > NOW_PLAYING_DRIFT
         });
         if !changed && !moved {
             return;
@@ -395,6 +411,12 @@ impl Notifier {
         })
     }
 }
+
+/// How far the time heard can be from where macOS moves Now Playing's on
+/// its own before it's set again: less than a seek moves it by, the
+/// seek bar's step being a second, and more than the time said moves by
+/// between two renders.
+const NOW_PLAYING_DRIFT: f64 = 0.25;
 
 /// Whether two tracks' data shown is the same, whatever their times.
 fn same_track(a: &Info, b: &Info) -> bool {

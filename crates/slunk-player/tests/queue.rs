@@ -2,7 +2,7 @@
 //! shuffle, Play next and Add to queue, moving and removing entries,
 //! failures, what plays next, and what's remembered.
 
-use slunk_player::queue::{Entry, Queue, Repeat, Step};
+use slunk_player::queue::{self, Entry, Queue, Repeat, Step};
 
 /// The queue after these steps, from an empty one.
 fn after(steps: impl IntoIterator<Item = Step>) -> Queue {
@@ -928,15 +928,15 @@ mod remembering_a_queue {
 
     #[test]
     fn remembers_nothing_when_nothings_queued() {
-        assert_eq!(Queue::default().remembered(), None);
+        assert_eq!(Queue::default().remembered(0.0), None);
     }
 
     #[test]
     fn remembers_tracks_the_current_one_and_the_order_before_shuffling() {
         let queue = after([play(&[10, 20, 30], Some(1), 1)]);
         assert_eq!(
-            queue.remembered().unwrap(),
-            r#"{"trackIds":[10,20,30],"current":1,"unshuffled":null}"#
+            queue.remembered(0.0).unwrap(),
+            r#"{"trackIds":[10,20,30],"current":1,"unshuffled":null,"time":0.0}"#
         );
         let shuffled = after([
             Step::SetShuffle {
@@ -953,9 +953,9 @@ mod remembering_a_queue {
             .map(|entry| shuffled.entries.iter().position(|e| e == entry).unwrap())
             .collect();
         assert_eq!(
-            shuffled.remembered().unwrap(),
+            shuffled.remembered(0.0).unwrap(),
             format!(
-                r#"{{"trackIds":{:?},"current":0,"unshuffled":{:?}}}"#,
+                r#"{{"trackIds":{:?},"current":0,"unshuffled":{:?},"time":0.0}}"#,
                 tracks(&shuffled),
                 order
             )
@@ -969,7 +969,7 @@ mod remembering_a_queue {
             play(&[10, 20, 10], Some(2), 1),
             Step::Move { key: 2, by: -1 },
         ]);
-        let back = restored(queue.remembered().as_deref());
+        let back = restored(queue.remembered(0.0).as_deref());
         assert_eq!(tracks(&back), tracks(&queue));
         assert_eq!(back.current, queue.current);
         assert!(!back.playing);
@@ -982,7 +982,7 @@ mod remembering_a_queue {
     #[test]
     fn comes_back_shuffled_able_to_unshuffle() {
         let queue = modes(true, Repeat::All, Some(0));
-        let back = Queue::restored(queue.remembered().as_deref(), true, Repeat::All);
+        let back = Queue::restored(queue.remembered(0.0).as_deref(), true, Repeat::All);
         assert_eq!(tracks(&back), tracks(&queue));
         assert_eq!(back.repeat, Repeat::All);
         let unshuffle = Step::SetShuffle {
@@ -999,7 +999,7 @@ mod remembering_a_queue {
     fn keeps_the_order_it_played_in_when_shuffle_has_been_turned_off_since() {
         let queue = modes(true, Repeat::Off, Some(0));
         assert_eq!(
-            tracks(&restored(queue.remembered().as_deref())),
+            tracks(&restored(queue.remembered(0.0).as_deref())),
             tracks(&queue)
         );
     }
@@ -1013,6 +1013,29 @@ mod remembering_a_queue {
         );
         let before: Vec<Entry> = back.unshuffled.clone().unwrap();
         assert_eq!(before, back.entries);
+    }
+
+    #[test]
+    fn remembers_the_time_heard_to_the_millisecond() {
+        let queue = after([play(&[10, 20], Some(1), 1)]);
+        let saved = queue.remembered(83.12345).unwrap();
+        assert!(saved.ends_with(r#""time":83.123}"#), "{saved}");
+        assert_eq!(queue::restored_time(Some(&saved)), 83.123);
+    }
+
+    #[test]
+    fn comes_back_at_its_start_without_a_time() {
+        // As an older version remembered it, or with a time that isn't one
+        for saved in [
+            r#"{"trackIds":[10,20],"current":1,"unshuffled":null}"#,
+            r#"{"trackIds":[10,20],"current":1,"unshuffled":null,"time":-4}"#,
+            r#"{"trackIds":[10,20],"current":1,"unshuffled":null,"time":"1:23"}"#,
+        ] {
+            assert_eq!(restored(Some(saved)).current, Some(1));
+            assert_eq!(queue::restored_time(Some(saved)), 0.0, "{saved}");
+        }
+        assert_eq!(queue::restored_time(Some("not json")), 0.0);
+        assert_eq!(queue::restored_time(None), 0.0);
     }
 
     #[test]

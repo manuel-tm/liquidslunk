@@ -66,6 +66,15 @@ export type Player = {
   setPlaying: (playing: boolean) => void
   next: () => void
   previous: () => void
+  /**
+   * To `seconds` into the current track, playing or paused as it was. At its
+   * end, the queue goes on, as at a track's end.
+   */
+  seek: (seconds: number) => void
+  /** 10 seconds back, or to the track's start */
+  skipBack: () => void
+  /** 10 seconds on, or in the last 10, the track's end */
+  skipForward: () => void
   jump: (entry: Entry) => void
   /** Moves an entry `by` places in the order they play */
   move: (entry: Entry, by: number) => void
@@ -95,7 +104,6 @@ const NOTHING: PlayerState = {
   volume: 100,
   muted: false,
   fade: "10",
-  remembered: null,
 }
 
 const PlayerContext = createContext<Player | null>(null)
@@ -178,9 +186,8 @@ function remembered(library: string): RestoreArgs {
   }
 }
 
-/** Remembers the player as it says it is. */
-function rememberState(library: string, state: PlayerState) {
-  remember(`${QUEUE}:${library}`, state.remembered)
+/** Remembers the player's settings as it says they are. */
+function rememberSettings(state: PlayerState) {
   remember(SHUFFLE, String(state.shuffle))
   remember(REPEAT, state.repeat)
   remember(FADE, state.fade)
@@ -271,9 +278,14 @@ export function PlayerProvider({
       events.playerState.listen(({ payload }) => {
         said = true
         setState(payload)
-        rememberState(library, payload)
+        rememberSettings(payload)
       }),
       events.playerTime.listen(({ payload }) => time.set(payload.ms / 1000)),
+      // The queue, with its time, as the player writes it: not the page's
+      // state, so it renders nothing
+      events.playerRemembered.listen(({ payload }) =>
+        remember(`${QUEUE}:${library}`, payload.queue)
+      ),
       events.playerFailed.listen(({ payload }) => onFailed(payload)),
     ]
     void Promise.all(listening).then(async () => {
@@ -307,6 +319,13 @@ export function PlayerProvider({
   )
   const next = useCallback(() => void commands.playerNext(), [])
   const previous = useCallback(() => void commands.playerPrevious(), [])
+  const seek = useCallback(
+    (seconds: number) =>
+      void commands.playerSeek({ ms: Math.round(Math.max(0, seconds) * 1000) }),
+    []
+  )
+  const skipBack = useCallback(() => void commands.playerSkipBack(), [])
+  const skipForward = useCallback(() => void commands.playerSkipForward(), [])
   const jump = useCallback(
     (entry: Entry) => void commands.playerJump({ key: entry.key }),
     []
@@ -348,29 +367,32 @@ export function PlayerProvider({
   )
   const volume = state.volume / 100
 
-  // Space, ⌘→, ⌘←, ⌘↑ and ⌘↓, as in Music. The Controls menu shows the ⌘
-  // ones, but only gets a key the page leaves: these take it first, before
-  // WebKit scrolls to the end of a page for ⌘↓.
+  // Space, ⌘→, ⌘←, ⌘↑, ⌘↓, ⇧⌘→ and ⇧⌘←, as in Music. The Controls menu
+  // shows the ⌘ ones, but only gets a key the page leaves: these take it
+  // first, before WebKit scrolls to the end of a page for ⌘↓.
   const queued = current !== null
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (!queued || event.altKey || event.ctrlKey || event.shiftKey) return
+      if (!queued || event.altKey || event.ctrlKey) return
       if (!event.metaKey) {
         // Space presses a focused control instead
-        if (event.key !== " " || event.repeat) return
+        if (event.key !== " " || event.repeat || event.shiftKey) return
         if (within(event.target, CONTROLS)) return
         event.preventDefault()
         toggle()
         return
       }
-      // In a field, they move the caret
+      // In a field, they move the caret, and select with ⇧. The seek bar's
+      // thumb is one: ⇧ with an arrow moves it 10 seconds there.
       if (within(event.target, FIELDS)) return
-      const actions: Record<string, () => void> = {
-        ArrowRight: next,
-        ArrowLeft: previous,
-        ArrowUp: () => setVolume(volume + VOLUME_STEP),
-        ArrowDown: () => setVolume(volume - VOLUME_STEP),
-      }
+      const actions: Record<string, () => void> = event.shiftKey
+        ? { ArrowRight: skipForward, ArrowLeft: skipBack }
+        : {
+            ArrowRight: next,
+            ArrowLeft: previous,
+            ArrowUp: () => setVolume(volume + VOLUME_STEP),
+            ArrowDown: () => setVolume(volume - VOLUME_STEP),
+          }
       const action = actions[event.key]
       if (!action) return
       event.preventDefault()
@@ -378,7 +400,7 @@ export function PlayerProvider({
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [queued, toggle, next, previous, setVolume, volume])
+  }, [queued, toggle, next, previous, skipBack, skipForward, setVolume, volume])
 
   // One sound at a time: the file page's preview starting pauses the
   // player, and the player starting pauses it. Media events don't bubble,
@@ -420,6 +442,9 @@ export function PlayerProvider({
       setPlaying,
       next,
       previous,
+      seek,
+      skipBack,
+      skipForward,
       jump,
       move,
       remove,
@@ -447,6 +472,9 @@ export function PlayerProvider({
       setPlaying,
       next,
       previous,
+      seek,
+      skipBack,
+      skipForward,
       jump,
       move,
       remove,
@@ -472,7 +500,7 @@ export function usePlayer(): Player {
   return player
 }
 
-/** The current track's time, for the progress bar and its times. */
+/** The current track's time, for the seek bar and its times. */
 export function usePlayerTime(): PlayerTime {
   const store = useContext(TimeContext)
   if (!store)
