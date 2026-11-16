@@ -1,0 +1,23 @@
+[package]
+name = "slunk-player"
+description = "liquidslunk's audio engine: decoding, joining tracks to the sample, and playing them, with no Tauri dependency"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Pinned with rubato, whose buffers they are
+audioadapter = "5.0"
+audioadapter-buffers = "5.1"
+cpal = "0.18.2"
+lofty = "0.25.4"
+rtrb = "0.4.1"
+# Pinned exactly: its API changes from one major version to the next
+rubato = "=5.1.0"
+symphonia = { version = "0.6.1", features = ["aac", "aiff", "alac", "isomp4", "mp3"] }
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

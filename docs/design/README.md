@@ -16,7 +16,7 @@ Each design doc plans one topic, numbered in the order it's written: `N_topic.md
 | [4_external_libraries.md](4_external_libraries.md) | External libraries: a selection of the library, converted, tagged and given covers from the catalog, and synced to a folder or to an iPod with video (5th and 5.5th generations) | Complete |
 | [5_artist_aliases.md](5_artist_aliases.md) | Artist aliases: artists that are the same person or band under another name, like deadmau5 and testpilot, kept as groups in one table and shown on the artist page | Complete |
 | [6_seeking.md](6_seeking.md) | Seeking: exact seeks in FLAC, which WebKit seeks by estimate, by serving it as MP4, wrapped as it's served; seeking only in files that seek exactly; the seek bar, skipping back and forward, Now Playing's scrubber, and a remembered queue's time | Canceled |
-| [7_native_playback.md](7_native_playback.md) | Native playback: the app decodes and plays audio in Rust, joining tracks to the sample; the queue moves to Rust; Now Playing and the media keys natively; and seeking, exact in every format | In design |
+| [7_native_playback.md](7_native_playback.md) | Native playback: the app decodes and plays audio in Rust, joining tracks to the sample; the queue moves to Rust; Now Playing and the media keys natively; and seeking, exact in every format | Being built |
 
 This README isn't a design doc. It's updated whenever a design doc is added or changes status.
 

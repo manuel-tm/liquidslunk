@@ -1,6 +1,6 @@
 # Native playback
 
-> **Status: in design.**
+> **Status: being built.**
 
 The player plays in the webview, through two `<audio>` elements (2_player.md, 3_gapless.md). At best that's nearly gapless: tracks that run into each other, like The Wall's, still click where they meet. And WebKit seeks FLAC by estimate, so the player doesn't seek at all (6_seeking.md, canceled). This design moves playback into the app. Rust reads each file, decodes it and plays it, joining a track's last sample to the next one's first, and seeking to the exact sample. The player in the sidebar stays as it is, and gets its seek bar.
 
@@ -65,6 +65,8 @@ Out of scope:
 
 ### 4.1 Its crate
 
+> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found).
+
 `crates/slunk-player/` holds the engine and the queue, with no Tauri dependency, as `crates/slunk` has none. The app holds a player for the open library, and wires it to its commands, events, menu and Now Playing (§9).
 
 It runs on three threads:
@@ -96,6 +98,8 @@ Where a track starts in the stream is a marker beside the samples. The callback 
 - **Sample rates.** The output runs at the device's rate (§4.4). A file at another rate is resampled to it with rubato. One resampler runs across consecutive tracks at the same rate, so nothing is flushed at a join between them, and a join across rates is exact in time.
 
 ### 4.4 The output
+
+> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found).
 
 - **cpal 0.18, on the default output device.** Its stream follows the system's default device as it changes: headphones unplugged, AirPods connected. cpal says so, and the stream plays on. With no output device left, it pauses, and so does the player.
 - **At the device's own sample rate.** Asked for another rate, cpal would switch the device's rate, for every app, and a switch drops audio, so a join across it couldn't be gapless. So the stream takes the device's current rate, and the engine resamples what differs (§4.3). A 44.1 kHz file on a 44.1 kHz device reaches the output as it is, but for the volume.
@@ -265,6 +269,8 @@ As 6_seeking.md §5 planned it, with what changes:
 
 ## 10. Testing
 
+> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found).
+
 - **Rust,** in `crates/slunk-player/tests/`, with a fake output that keeps every sample it's given:
   - **the queue:** `lib/queue.test.ts`'s cases, ported;
   - **joins:** two tracks played in order come out as one stream, equal to their decoded samples end to end, sample for sample, in WAV, FLAC, AIFF and Apple Lossless. A FLAC file whose last frame is short is among them, the case WebKit padded;
@@ -280,6 +286,8 @@ As 6_seeking.md §5 planned it, with what changes:
 - **In the app:** the checks (§12). The join of the two songs in `dev-library/two-songs/` is recorded with a process tap on the app's own process, and lined up with the decoded files as in §2.
 
 ## 11. Phases
+
+> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found).
 
 Each phase ends with something usable and documented, and every check in AGENTS.md's "Before you finish" passes.
 
@@ -322,6 +330,8 @@ Each phase ends with something usable and documented, and every check in AGENTS.
 
 ## 12. Risks and checks
 
+> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found).
+
 Each is checked early in the phase that needs it. Anything that changes this design is recorded as an appendix.
 
 Phase 0:
@@ -362,3 +372,28 @@ The first draft left these open. They were settled on 2026-11-16:
 2. **Fades** where the app cuts the audio: yes, and their length is a setting, in the Controls menu, 10 ms until it's changed (§4.5, §6.4).
 3. **Where the player is remembered:** in the page's `localStorage`, as now, handed to Rust as the library opens (§5.5). A file beside the settings isn't wanted. Changes made while the page is suspended can be lost if the app quits before it runs again.
 4. **Carrying the remembered queue over** to a new place isn't needed: it stays where it is.
+
+## Appendix A: The engine as built, and what phase 0's checks found
+
+- **Date:** 2026-11-16
+- **Affects:** §4.1 Its crate, §4.4 The output, §10 Testing, §11 Phases, §12 Risks and checks
+- **Was:**
+  - A player's thread takes the commands, keeps the queue, and turns what the callback has played into events (§4.1).
+  - `generate.ts` makes a few seconds of a tone and of noise, in each format, cut into consecutive tracks (§10).
+  - One example plays files in order, for the checks (§11).
+- **Now:**
+  - **The engine's commands go to the decoder thread:** `play` for a new queue, `set_upcoming` for what follows the entry playing, play and pause, the volume and the fade. That thread also turns what the callback reports into events: an entry started, an entry failed, or everything ended. Phase 1's queue sits above it, and gives it what follows the entry playing.
+  - **The fixtures are tracks of about a tenth of a second,** cut from one triangle wave in integer arithmetic, which the tests work out too:
+    - FLAC and Apple Lossless, made by afconvert, whose last FLAC frame is short;
+    - AAC, for its delay;
+    - an MP3 written by hand, with a LAME tag that says its delay and padding, since this Mac has no MP3 encoder.
+
+    The tests write WAV and AIFF themselves.
+  - **Two examples.** `play` has `--start`, which begins the first file that many seconds in by decoding its start and leaving it out, so a join can be reached without playing a whole track. It prints its events with the wall clock's time, to line a recording up with. `decode` counts files' frames, for the library's check.
+  - **What the checks found:**
+    - **The join.** The two songs in `dev-library/two-songs/` were played through `play`, and recorded with a process tap on its own process. The first song's last sample was followed by the second's first, with nothing between them. Around the join, the recording differed from the two songs by 1 to 2%, as it did everywhere: that's the recording's own resampling. The webview's recording of the same join was 17% off there, which was the click.
+    - **The library.** Every file in `dev-library/music/` decodes. All 431 FLAC files decode to the samples their STREAMINFO states, at 0.5 ms per second of audio. The AAC decodes to the frames Core Audio counts after its delay. The MP3 has no LAME tag, and plays as decoded.
+    - **CPU:** 0.7 to 0.8% of a core while playing, and 7 MB.
+    - **Latency.** This Mac's wired headphones report 233 ms of device latency, so what's rendered is heard 245 ms later. The engine reports it, from cpal's timestamps. Phase 1's time shown, and Now Playing's, take it off (§4.4).
+    - **Not checked yet:** the join by ear, and device changes (headphones unplugged, AirPods connected), which only the user can make. Switching the system's output from a script would move any other audio playing too.
+- **Why:** building phase 0 settled these. The queue isn't in phase 0, so the engine took its own commands. A tenth of a second covers a short last frame and a join, and keeps the fixtures small. This Mac encodes no MP3.

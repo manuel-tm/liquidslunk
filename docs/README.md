@@ -31,6 +31,8 @@ src-tauri/       the app: Tauri, its commands, the library, the file protocol
 crates/slunk/    the domain and its database: contexts, repositories,
                  migrations, with no Tauri dependency
 crates/slunk-cli/  the database commands (npm run db:*)
+crates/slunk-player/  the audio engine: decoding, joining tracks, the output,
+                 with no Tauri dependency
 scripts/         scripts for working on the app: screenshots
 dev-library/     scratch libraries for development, never committed
 temp/            local assets for prompting, never committed

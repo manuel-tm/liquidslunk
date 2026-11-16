@@ -4,7 +4,7 @@
 
 The backend is Rust, built into the app. It was ported from slunk's Node backend one context at a time: first the database, its migrations and the database commands, and the app around them, then the media context, the catalog, the tagging context and the library check. While the port ran, slunk's backend served the routes not ported yet, beside the app in debug builds, and a script checked that the commands wrote what slunk's backend wrote, step by step. Once every page ran on Rust commands, slunk's backend was removed, with what ran it.
 
-Since the port, the backend has added the music player's commands, `player_tracks` and `release_track_ids` ([Commands](#commands)), and the menu bar's Controls menu ([The menu bar](#the-menu-bar)); the external libraries context, with liquidslunk's first migration of its own ([The external libraries context](#the-external-libraries-context)); and artist aliases, with a migration of their own ([The catalog context](#the-catalog-context)).
+Since the port, the backend has added the music player's commands, `player_tracks` and `release_track_ids` ([Commands](#commands)), and the menu bar's Controls menu ([The menu bar](#the-menu-bar)); the external libraries context, with liquidslunk's first migration of its own ([The external libraries context](#the-external-libraries-context)); and artist aliases, with a migration of their own ([The catalog context](#the-catalog-context)). It also has an audio engine, which joins tracks to the sample, and which the app doesn't use yet ([The player engine](#the-player-engine)).
 
 Each rule on this page has a test.
 
@@ -21,6 +21,7 @@ Each rule on this page has a test.
 | Plugins | tauri-plugin-dialog (choosing a library), tauri-plugin-opener (Finder, opening files), tauri-plugin-single-instance |
 | Content types | mime_guess |
 | Audio | lofty; converting with macOS's `afconvert` |
+| Playing audio | symphonia (decoding), cpal (the output), rubato (resampling), rtrb (the ring buffer), in `crates/slunk-player` |
 | Images | `image` (covers: JPEG, PNG, GIF, BMP, TIFF, WebP) |
 | JSON in the domain | serde_json (an external library's manifest) |
 | Volumes | libc's `statvfs` and `statfs` (free space, mount points), and `diskutil eject` |
@@ -148,6 +149,17 @@ crates/slunk/                the domain and its database, with no Tauri dependen
   tests/fixtures/languages/  what Node's Intl gave for language tags, and the
                              script that asked it
 crates/slunk-cli/            the database commands (npm run db:*)
+crates/slunk-player/         the audio engine, with no Tauri dependency
+  src/decode.rs              a file, decoded to stereo and trimmed
+  src/convert.rs             resampling, across joins
+  src/stream.rs              what the decoder and the callback share
+  src/render.rs              the callback: markers, the volume, fades
+  src/engine.rs              the decoder thread, and the engine's commands
+  src/output.rs              the default output, through cpal
+  examples/play.rs           plays files in order
+  examples/decode.rs         decodes files, and counts their frames
+  tests/engine.rs            the engine's rules
+  tests/fixtures/            tracks cut from one signal, and their script
 src-tauri/
   tauri.conf.json            the app's name, identifier, window, CSP and bundle
   capabilities/default.json  what the window may call
@@ -579,6 +591,90 @@ gives `Ryo Fukui/1976 - Scenery/01 It Could Happen to You.flac`, and `â€¦/2-01 â
 
 **The track page** shows a track's tags with its path by a template, in a folder library that keeps the original files, so the file keeps its extension, in lowercase (`exported()`).
 
+## The player engine
+
+`crates/slunk-player/` plays audio. It decodes each track and writes its samples right after the last one's, so tracks join to the sample, then plays them to the system's output. It has no Tauri dependency, and only reads files. The app doesn't use it yet: the player still plays in the webview ([frontend.md](frontend.md#the-player)).
+
+- **Three threads:**
+  - a decoder thread opens files, decodes them, trims them and resamples them. It writes interleaved 32-bit float stereo into a lock-free ring buffer (rtrb), up to 2 seconds ahead of what plays;
+  - the output's real-time callback plays the ring through a `Renderer`, which never allocates, locks or waits;
+  - the engine's owner sends it commands through `Engine`, and hears its events: an entry started, an entry failed, or everything ended.
+- **A `Track`** is an entry, which the events name, and its file. A track queued twice is two entries.
+
+### Decoding
+
+`TrackDecoder` (`decode.rs`) opens a file with symphonia 0.6, and decodes its audio track.
+- **Formats:** symphonia's defaults (FLAC, WAV and Ogg Vorbis), with `aac`, `aiff`, `alac`, `isomp4` and `mp3`. That's FLAC, WAV, AIFF, Ogg Vorbis, Apple Lossless and AAC-LC in M4A, AAC in ADTS, and MP3. Anything else is `Unsupported`, HE-AAC included, which symphonia refuses.
+- **A track gives every sample of its music, and nothing else:**
+  - FLAC, WAV, AIFF and Apple Lossless count their samples exactly. Each of the 431 FLAC files in `dev-library/music/` decodes to the count its STREAMINFO states.
+  - An MP3's encoder delay and padding are trimmed by symphonia, from its LAME header. An MP3 without one plays as decoded.
+  - symphonia doesn't trim AAC in M4A, so the decoder trims it by its `iTunSMPB` atom, read with lofty, as an iPod sync reads it ([reference/ipod.md](../reference/ipod.md#gapless-and-sound-check)).
+  - AAC in ADTS records no delay, and plays as decoded.
+- **Stereo:**
+  - mono plays on both channels;
+  - more channels are mixed down by their positions, as ITU-R BS.775 does, scaled so they can't clip;
+  - channels without positions give their first two.
+- **Errors:** a packet that can't be decoded is left out. A file that breaks off ends there, and fails.
+
+### Joining tracks
+
+- **One stream.** When a track ends, the decoder opens the next one and writes its first sample right after the last one's. A `Start` marker beside the samples says where each entry begins. The renderer reports it as it plays that frame, so the owner hears that a track started when it's heard.
+- **What's up next** is `set_upcoming()`: what follows the entry playing.
+  - What's decoded ahead stays as far as it agrees with it.
+  - From the first entry that differs, a `Skip` marker drops what's written, unheard, and the new entry is written after it. Markers queued before a skip that it covers go with it.
+  - A skip that reaches the renderer after the skipped track began to play fades that track out, as a cut does.
+- **`play()` starts a new queue.** A `Cut` marker fades out what plays and drops what's buffered. The new track starts from its first sample, unfaded.
+- **Sample rates.** The stream is at the output's rate. A file at another rate goes through a resampler, rubato's synchronous FFT one (`convert.rs`).
+  - One resampler runs across consecutive tracks at the same rate, so nothing is flushed at a join between them.
+  - Its startup delay is trimmed, so output frame `k` is input time `k / ratio`, and a join's place in the stream is arithmetic.
+  - When the rate changes, the resampler is flushed to exactly where its last input frame comes to, so a join across rates is exact in time.
+  - When what's up next changes after the resampler has taken some of it, the output just before the join was worked out with those samples in its filter's reach. The new entry starts a resampler of its own.
+- **The volume** is a gain in the renderer, moved toward the one set over 10 ms, so a change doesn't click.
+- **Fades** (`Fade`: off, 10, 50 or 200 ms) apply where the engine cuts the audio:
+  - pausing fades out, then holds the stream, and playing fades back in;
+  - a cut fades out what plays;
+  - a track's own start isn't faded;
+  - with fades off, the audio is cut where it is.
+- **Underruns,** frames played as silence for want of samples, count only in the middle of a stream: not while a new track's first samples are on their way, and not after the end.
+
+### The output
+
+`Output` (`output.rs`) plays a renderer on the system's default output device, through cpal 0.18.
+- **At the device's own rate,** from `default_config()`, which the engine is made for. cpal would switch the device's rate to any other one asked for, for every app, and a switch drops audio. So the engine never changes it, and resamples instead.
+- **The stream follows the system's default device** as it changes, through Core Audio's default output unit, which converts to the new device's rate. cpal reports the change, and the stream plays on.
+- **Latency:** from cpal's timestamps, the time from a callback to when what it wrote is heard. That's the device's latency, its safety offset, and the buffer. A wired headphones output measured 233 ms of device latency, so what plays there is heard 245 ms after it's rendered.
+- **Samples** are written as the device takes them: 32-bit float, or 16- or 32-bit integers.
+
+### Checking it
+
+- **`tests/engine.rs`** drives the engine with a fake output that keeps every frame:
+  - tracks join to the sample, in FLAC, Apple Lossless, WAV and AIFF, the last two written by the test;
+  - AAC and MP3 are trimmed to their samples;
+  - what's up next joins, or is dropped unheard;
+  - a track repeated joins its own start;
+  - a track that fails is skipped;
+  - a track at another rate is resampled to exactly where the next one starts;
+  - the fades and the volume.
+- **`tests/fixtures/`** holds tracks cut from one continuous signal, a triangle wave in integer arithmetic, so a test works out the same samples:
+  - FLAC and Apple Lossless, made by afconvert;
+  - AAC, for its delay;
+  - an MP3 written by hand with a LAME tag, since this Mac has no MP3 encoder.
+
+  `generate.ts` makes them, on macOS:
+
+  ```sh
+  node crates/slunk-player/tests/fixtures/generate.ts
+  ```
+- **Two examples,** for checks by ear and over a library:
+
+  ```sh
+  cargo run -p slunk-player --release --example play -- [--volume 0.5] [--fade 10] [--start SECONDS] a.flac b.flac
+  cargo run -p slunk-player --release --example decode -- a.flac b.m4a
+  ```
+
+  - `play` plays files in order to the default output. It prints its events with the wall clock's time, to line a recording of the output up with. `--start` begins the first file that many seconds in, decoding its start and leaving it out.
+  - `decode` prints each file's rate and frames.
+
 ## The database
 
 ### Connection
@@ -780,5 +876,5 @@ The app's CSP allows `slunk:` and `http://slunk.localhost` in `img-src` and `med
 ## Conventions
 
 - **Formatting and linting:** `cargo fmt`, and `cargo clippy --workspace --all-targets` with no warnings.
-- **Tests:** `cargo test --workspace`. Tests make their own temporary databases and files, and never read `dev-library/`. Audio and language tag tests use the committed fixtures in `crates/slunk/tests/fixtures/`.
+- **Tests:** `cargo test --workspace`. Tests make their own temporary databases and files, and never read `dev-library/`. Audio and language tag tests use the committed fixtures in `crates/slunk/tests/fixtures/`, and the player engine's tests those in `crates/slunk-player/tests/fixtures/`.
 - **Comments** never cite a design doc. One that needs more than it says points to the section of `docs/` that describes it, by the doc's file name and the section's heading: `(backend.md, "Running migrations")`. A module's comment points once, and what's in the module points again only to another section ([Design docs and these docs](../README.md#design-docs-and-these-docs)). slunk's docs aren't in the repository, so they aren't cited either.
