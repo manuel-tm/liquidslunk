@@ -650,18 +650,47 @@ export const commands = {
 	 *  before anything is saved.
 	 */
 	rehashFiles: (args: RehashFilesArgs) => typedError<File[], CommandError>(__TAURI_INVOKE("rehash_files", { args })),
+	/**  The player, as it is, for the page as it mounts. */
+	playerState: () => typedError<PlayerState, CommandError>(__TAURI_INVOKE("player_state")),
 	/**
-	 *  Shows the player in the Controls menu: Play or Pause, Shuffle's and
-	 *  Repeat's checks, and every item off while nothing is queued. It isn't
-	 *  `async`, so it runs on the main thread, where the menu is, and the
-	 *  player's calls change it in the order they're made.
+	 *  Brings back what the page remembers: the queue, paused at its current
+	 *  track, and the settings. Only the first call for a library does: after
+	 *  it, the player has its own, and a page that mounts again keeps them.
 	 */
-	setControlsMenu: (args: Controls) => typedError<null, CommandError>(__TAURI_INVOKE("set_controls_menu", { args })),
+	playerRestore: (args: RestoreArgs) => typedError<null, CommandError>(__TAURI_INVOKE("player_restore", { args })),
+	/**  A new queue of these tracks, playing. */
+	playerPlay: (args: PlayArgs) => typedError<null, CommandError>(__TAURI_INVOKE("player_play", { args })),
+	/**
+	 *  Tracks right after the current one; with nothing queued, a queue,
+	 *  paused.
+	 */
+	playerPlayNext: (args: TrackIdsArgs) => typedError<null, CommandError>(__TAURI_INVOKE("player_play_next", { args })),
+	/**  Tracks at the end of the queue; with nothing queued, a queue, paused. */
+	playerAddToQueue: (args: TrackIdsArgs) => typedError<null, CommandError>(__TAURI_INVOKE("player_add_to_queue", { args })),
+	/**  Play or pause. */
+	playerToggle: () => typedError<null, CommandError>(__TAURI_INVOKE("player_toggle")),
+	playerSetPlaying: (args: SetPlayingArgs) => typedError<null, CommandError>(__TAURI_INVOKE("player_set_playing", { args })),
+	playerNext: () => typedError<null, CommandError>(__TAURI_INVOKE("player_next")),
+	/**  The previous track, or in a track's first 3 seconds, its start. */
+	playerPrevious: () => typedError<null, CommandError>(__TAURI_INVOKE("player_previous")),
+	/**  Plays an entry: the current one from its start. */
+	playerJump: (args: EntryArgs) => typedError<null, CommandError>(__TAURI_INVOKE("player_jump", { args })),
+	playerMove: (args: MoveArgs) => typedError<null, CommandError>(__TAURI_INVOKE("player_move", { args })),
+	playerRemove: (args: EntryArgs) => typedError<null, CommandError>(__TAURI_INVOKE("player_remove", { args })),
+	/**  Empties the queue. */
+	playerClear: () => typedError<null, CommandError>(__TAURI_INVOKE("player_clear")),
+	playerSetShuffle: (args: SetShuffleArgs) => typedError<null, CommandError>(__TAURI_INVOKE("player_set_shuffle", { args })),
+	playerSetRepeat: (args: SetRepeatArgs) => typedError<null, CommandError>(__TAURI_INVOKE("player_set_repeat", { args })),
+	playerSetVolume: (args: SetVolumeArgs) => typedError<null, CommandError>(__TAURI_INVOKE("player_set_volume", { args })),
+	/**  How long a fade is where the player cuts the audio. */
+	playerSetFade: (args: SetFadeArgs) => typedError<null, CommandError>(__TAURI_INVOKE("player_set_fade", { args })),
 };
 
 /** Events */
 export const events = {
-	playerControl: makeEvent<PlayerControl>("player-control"),
+	playerFailed: makeEvent<PlayerFailed>("player-failed"),
+	playerState: makeEvent<PlayerState>("player-state"),
+	playerTime: makeEvent<PlayerTime>("player-time"),
 };
 
 /* Types */
@@ -957,16 +986,6 @@ export type Contents = {
 	leftOut: number,
 };
 
-/**  What the Controls menu shows: the player, as it is. */
-export type Controls = {
-	/**  Pause instead of Play */
-	playing: boolean,
-	/**  Every item is off without it */
-	queued: boolean,
-	shuffle: boolean,
-	repeat: Repeat,
-};
-
 export type CreateListItemArgs = {
 	kind: ListKind,
 	/**  Unique in its list, ignoring case */
@@ -1093,6 +1112,11 @@ export type EditedTrack = {
 	file: TrackFile,
 	artists: CreditedArtist[],
 	features: CreditedArtist[],
+};
+
+/**  An entry, by its key. */
+export type EntryArgs = {
+	key: number,
 };
 
 /**  What went wrong, for the frontend to act on. */
@@ -1271,6 +1295,9 @@ export type ExternalRule = {
 	exclude: boolean,
 	target: RuleTarget,
 };
+
+/**  How long a fade is where the player cuts the audio, in milliseconds. */
+export type Fade = "off" | "10" | "50" | "200";
 
 /**  A file the user registered. liquidslunk only reads it. */
 export type File = {
@@ -1716,6 +1743,12 @@ export type MountedIpod = {
 	externalLibrary: string | null,
 } & IpodInfo;
 
+export type MoveArgs = {
+	key: number,
+	/**  Places in the order they play: up when negative */
+	by: number,
+};
+
 /**  A name, and its language. */
 export type NameRef = {
 	name: string,
@@ -1825,14 +1858,63 @@ export type PlanStep = {
 	bytes: number,
 };
 
-/**  A Controls menu item that was clicked, for the player to do. */
-export type PlayerControl = 
-/**  Play or pause */
-{ type: "toggle" } | { type: "next" } | { type: "previous" } | 
-/**  Shuffle on or off */
-{ type: "shuffle" } | { type: "repeat"; mode: Repeat } | 
-/**  By 10%, as ⌘↑ does */
-{ type: "volumeUp" } | { type: "volumeDown" };
+export type PlayArgs = {
+	trackIds: number[],
+	/**
+	 *  The index of the track to play first, or with shuffle on and none, a
+	 *  random one
+	 */
+	start?: number | null,
+};
+
+/**  A queued track. Its key is its own, so a track queued twice is two. */
+export type PlayerEntry = {
+	key: number,
+	trackId: number,
+};
+
+/**  A track that can't play, which the player skipped. */
+export type PlayerFailed = {
+	trackId: number,
+	/**  Its audio file, as an absolute path */
+	path: string | null,
+	/**  Why, as a sentence's end: "its file can't be read: …" */
+	reason: string,
+};
+
+/**
+ *  The player, as it is: whenever anything in it changes, and from
+ *  `player_state`.
+ */
+export type PlayerState = {
+	/**  In the order they play */
+	entries: PlayerEntry[],
+	/**  The current entry's index, with something queued */
+	current: number | null,
+	playing: boolean,
+	/**  Whether it plays, but waits for its file */
+	waiting: boolean,
+	shuffle: boolean,
+	repeat: Repeat,
+	/**  In hundredths, from 0 to 100 */
+	volume: number,
+	muted: boolean,
+	fade: Fade,
+	/**
+	 *  The queue to remember for the library, as JSON, for
+	 *  `player_restore`; null with nothing queued
+	 */
+	remembered: string | null,
+};
+
+/**
+ *  How far into the current track it is: four times a second while it
+ *  plays, and at once after a change of track or a pause.
+ */
+export type PlayerTime = {
+	/**  Milliseconds heard: played, less the output's latency */
+	ms: number,
+};
 
 /**  What the player shows of a track (backend.md, "Commands"). */
 export type PlayerTrack = {
@@ -2174,8 +2256,23 @@ export type RenameListItemArgs = {
 	name: string,
 };
 
-/**  How the queue repeats, as `lib/queue.ts` has it. */
+/**  How the queue repeats. */
 export type Repeat = "off" | "all" | "one";
+
+/**  What the page remembers, as the library opens. */
+export type RestoreArgs = {
+	/**
+	 *  The library's queue, as `PlayerState.remembered` was, or anything
+	 *  else, which gives an empty queue
+	 */
+	queue: string | null,
+	/**  In hundredths, from 0 to 100 */
+	volume: number,
+	muted: boolean,
+	shuffle: boolean,
+	repeat: Repeat,
+	fade: Fade,
+};
 
 /**  A rule to save. */
 export type RuleInput = {
@@ -2245,11 +2342,19 @@ export type SavedLibrary = {
 	found: boolean,
 };
 
+export type SetFadeArgs = {
+	fade: Fade,
+};
+
 /**  Sets only a picture or logo. */
 export type SetPictureArgs = {
 	id: number,
 	/**  A file given by path is registered first, in the same transaction. */
 	picture: FileRefInput,
+};
+
+export type SetPlayingArgs = {
+	playing: boolean,
 };
 
 /**  Sets only the cover. */
@@ -2303,10 +2408,18 @@ export type SetReleaseTracksArgs = {
 	discTitles?: DiscTitleInput[] | null,
 };
 
+export type SetRepeatArgs = {
+	repeat: Repeat,
+};
+
 export type SetRulesArgs = {
 	id: number,
 	/**  In order. A rule given twice is kept once. */
 	rules: RuleInput[],
+};
+
+export type SetShuffleArgs = {
+	shuffle: boolean,
 };
 
 /**  A tag and a value, to set on many releases. */
@@ -2316,6 +2429,12 @@ export type SetTagOnReleasesArgs = {
 	type: TagType,
 	tagId: number,
 	value: string,
+};
+
+export type SetVolumeArgs = {
+	/**  In hundredths, from 0 to 100 */
+	volume: number,
+	muted: boolean,
 };
 
 export type Subfolder = {
@@ -2677,6 +2796,10 @@ export type TrackFormArgs = {
 	release?: number | null,
 	/**  A new track's audio file */
 	file?: number | null,
+};
+
+export type TrackIdsArgs = {
+	trackIds: number[],
 };
 
 /**  A track, with everything saved with it. */

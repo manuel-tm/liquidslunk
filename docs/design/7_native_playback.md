@@ -65,7 +65,7 @@ Out of scope:
 
 ### 4.1 Its crate
 
-> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found).
+> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found) and [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found).
 
 `crates/slunk-player/` holds the engine and the queue, with no Tauri dependency, as `crates/slunk` has none. The app holds a player for the open library, and wires it to its commands, events, menu and Now Playing (§9).
 
@@ -91,6 +91,8 @@ Where a track starts in the stream is a marker beside the samples. The callback 
 
 ### 4.3 Joining tracks
 
+> Changed during implementation, see [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found).
+
 - **The decoder writes the next track's first sample right after the current one's last.** It opens the next track while the current one still has a few seconds to decode, so its first samples are ready in time.
 - **When what's up next changes** before its marker has played (Play next, a move, a removal, shuffle, repeat), the decoder decodes the new one. The callback drops the old one's samples, unheard, and the new one follows at the join. A change in a track's last moments, closer to its end than the new track takes to start decoding, leaves a short gap.
 - **Repeat one** joins a track to its own start.
@@ -99,7 +101,7 @@ Where a track starts in the stream is a marker beside the samples. The callback 
 
 ### 4.4 The output
 
-> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found).
+> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found) and [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found).
 
 - **cpal 0.18, on the default output device.** Its stream follows the system's default device as it changes: headphones unplugged, AirPods connected. cpal says so, and the stream plays on. With no output device left, it pauses, and so does the player.
 - **At the device's own sample rate.** Asked for another rate, cpal would switch the device's rate, for every app, and a switch drops audio, so a join across it couldn't be gapless. So the stream takes the device's current rate, and the engine resamples what differs (§4.3). A 44.1 kHz file on a 44.1 kHz device reaches the output as it is, but for the volume.
@@ -139,6 +141,8 @@ The callback runs on Core Audio's real-time thread, and the decoder works second
 
 ### 5.3 Commands and events
 
+> Changed during implementation, see [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found).
+
 The commands, in `commands/player.rs`:
 
 | Command | Does |
@@ -169,6 +173,8 @@ A command returns once the player has taken it. What it changed comes back throu
 
 ### 5.5 What it remembers
 
+> Changed during implementation, see [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found).
+
 - **The page remembers the player in `localStorage`, as now** (2_player.md §5.7), under the same keys:
   - **for each library:** the queue, its tracks in the order they play, the current one, and while shuffled, their order before; and from phase 2, the time played;
   - **for every library:** the volume, mute, shuffle, repeat, and the fade's length, which is new.
@@ -184,6 +190,8 @@ The player belongs to the open library. Switching or closing it stops the player
 ## 6. Now Playing, the media keys and the Controls menu
 
 ### 6.1 Now Playing
+
+> Changed during implementation, see [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found).
 
 - **Set from Rust,** through objc2-media-player, on the main thread.
 - **What it shows:**
@@ -208,6 +216,8 @@ The page sets no Media Session, and plays no element of the player, so WebKit sh
 
 ### 6.4 The Controls menu
 
+> Changed during implementation, see [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found).
+
 - **The menu reads the player's state directly,** and its items call the player. `set_controls_menu` and the `PlayerControl` event go.
 - **Its items and key equivalents stay as they are.** Phase 1 adds Fade, a submenu after Repeat, like it: Off, 10 ms, 50 ms and 200 ms, the current one checked (§4.5). Phase 2 adds Skip Back and Skip Forward (§7).
 - **The page's shortcuts** call the commands. WebKit still gives the page a key first (2_player.md Appendix E).
@@ -229,6 +239,8 @@ As 6_seeking.md §5 planned it, with what changes:
 - **Previous** goes by the time played, as now.
 
 ## 8. The frontend
+
+> Changed during implementation, see [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found).
 
 - **`PlayerProvider` keeps `usePlayer()` and `usePlayerTime()`,** so the components don't change, but the seek bar (phase 2). It restores the player as it mounts (§5.5), listens for `PlayerState` and `PlayerTime`, and calls the commands. It still fetches `player_tracks` for what the player shows.
 - **Remembering** stays in the page: `localStorage`, written from the events (§5.5).
@@ -269,7 +281,7 @@ As 6_seeking.md §5 planned it, with what changes:
 
 ## 10. Testing
 
-> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found).
+> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found) and [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found).
 
 - **Rust,** in `crates/slunk-player/tests/`, with a fake output that keeps every sample it's given:
   - **the queue:** `lib/queue.test.ts`'s cases, ported;
@@ -330,7 +342,7 @@ Each phase ends with something usable and documented, and every check in AGENTS.
 
 ## 12. Risks and checks
 
-> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found).
+> Changed during implementation, see [Appendix A](#appendix-a-the-engine-as-built-and-what-phase-0s-checks-found) and [Appendix B](#appendix-b-the-player-as-built-and-what-phase-1s-checks-found).
 
 Each is checked early in the phase that needs it. Anything that changes this design is recorded as an appendix.
 
@@ -395,5 +407,41 @@ The first draft left these open. They were settled on 2026-11-16:
     - **The library.** Every file in `dev-library/music/` decodes. All 431 FLAC files decode to the samples their STREAMINFO states, at 0.5 ms per second of audio. The AAC decodes to the frames Core Audio counts after its delay. The MP3 has no LAME tag, and plays as decoded.
     - **CPU:** 0.7 to 0.8% of a core while playing, and 7 MB.
     - **Latency.** This Mac's wired headphones report 233 ms of device latency, so what's rendered is heard 245 ms later. The engine reports it, from cpal's timestamps. Phase 1's time shown, and Now Playing's, take it off (§4.4).
-    - **Not checked yet:** the join by ear, and device changes (headphones unplugged, AirPods connected), which only the user can make. Switching the system's output from a script would move any other audio playing too.
+    - **Checked by the user, the same day:** through `play`, the two songs joined with no click heard, and playback went on as Bluetooth headphones were connected and disconnected. Switching the system's output from a script would have moved any other audio playing too, so it wasn't done that way.
 - **Why:** building phase 0 settled these. The queue isn't in phase 0, so the engine took its own commands. A tenth of a second covers a short last frame and a join, and keeps the fixtures small. This Mac encodes no MP3.
+
+## Appendix B: The player as built, and what phase 1's checks found
+
+- **Date:** 2026-11-16
+- **Affects:** §4.1 Its crate, §4.3 Joining tracks, §4.4 The output, §5.3 Commands and events, §5.5 What it remembers, §6.1 Now Playing, §6.4 The Controls menu, §8 The frontend, §10 Testing, §12 Risks and checks
+- **Was:**
+  - The callback passes a track's marker as it plays its first sample, and the player then says the track plays (§4.1).
+  - When what's up next changes, the decoder decodes the new one (§4.3); a track that can't play is skipped (§5.4).
+  - The engine plays to the default device (§4.4), with no word on when the output opens.
+  - `PlayerTime` carries the time played and the track's length; `player_set_volume` the volume in hundredths, as the page had it, from 0 to 1 (§5.3).
+  - The page writes the queue at each `PlayerState`, and hands it to the player with `player_restore` (§5.5).
+  - Now Playing is set at each change of track, when its data changes, at play and pause (§6.1).
+  - The Controls menu's Fade is like Repeat (§6.4), which is off with nothing queued.
+  - `waiting` is true while the decoder hasn't the data to play (§8).
+- **Now:**
+  - **What's heard.** The renderer keeps where the output and the stream were at each of its last 512 renders, and works out what's heard, an output's latency behind what's rendered. The engine says a track started once its first sample is heard, and its position, and so the time shown, is what's heard. While paused, what's heard catches up with where it paused.
+  - **Epochs.** Each `play()` and `stop()` starts an epoch, and events are stamped with theirs, so the player drops one about what no longer plays, like a track heard just before Next.
+  - **What follows is anchored.** `set_upcoming(after, tracks)` names the entry it follows, and the engine ignores it once another entry plays. So a change that crosses a join is sent again, after the player hears the join, rather than taken as following the wrong entry.
+  - **A failure stops the engine.** The engine says `Failed` and drops what was to follow, and the player says what follows, by the queue's rules. A track that fails as it's decoded ahead is set aside: the engine is given what follows it, so the next one joins where it would have started, and the failure is said, with its toast, when the queue reaches it. It's never shown as current.
+  - **The player gives the engine up to 3 entries** to follow the current one, so short tracks join too, and nothing is loaded for a paused queue until it plays.
+  - **The output** opens as something first plays, and pauses once nothing has played for 2 seconds, so the device rests. A lost device pauses the player, which makes the engine and the output again at the next play.
+  - **`PlayerTime` carries only the milliseconds heard.** The length shown is the catalog's, which the page and Now Playing already have.
+  - **Whole numbers in the events.** The volume is in hundredths, from 0 to 100, in `PlayerState` and in `player_set_volume` and `player_restore`, and the time is in milliseconds: specta types a float that's sent as `number | null`.
+  - **Rust writes what's remembered.** `PlayerState.remembered` is the queue as JSON, in the format the page wrote before, so a queue remembered before comes back. The page stores it as it is, and hands it back to `player_restore`, which only the first call for a library takes: a page that mounts again keeps the player as it is.
+  - **Now Playing** is left alone until the player has played since the library opened, so opening a library doesn't take the media keys from the app that played last. Its time is set again when it moves more than a second from where macOS would have it. A save is caught by SQLite's count of changes: any library command that wrote has Now Playing read the current track again.
+  - **Fade is on whenever a library is open,** even with nothing queued, since it's a setting, not the queue's.
+  - **`waiting`** is true once the engine has had nothing to play for a quarter of a second while it plays.
+  - **Tests** (§10): the queue's cases are ported in `tests/queue.rs`, with `following()`'s. `tests/player.rs` plays the queue through the engine with a device rendering about six times as fast as it would play, and checks the output is the fixtures' signal, every sample, past a track that can't play. The app's commands are thin, and aren't tested on their own.
+  - **What the checks found,** in the app, driven through WebDriver, muted:
+    - **Formats.** The formats library's eight one-second tracks played in turn, FLAC, WAV, AIFF, Apple Lossless, AAC, AAC in ADTS, and CBR and VBR MP3, with no failure, and the player stopped, paused, after the last.
+    - **Missing files.** A release whose eight files were missing failed track by track, a toast each with its path and why, and the player stopped once all had failed.
+    - **Remembered.** A queue the webview's player had remembered came back, paused. Closing the window while it played quit the app in under a second, and the queue came back where it was, paused.
+    - **A library switched while it plays.** The old player stopped, its threads gone, and the new library's queue came back paused, with the settings.
+    - **Resting.** Two seconds after a pause, Core Audio's IO thread is gone.
+    - **Not checked yet:** Now Playing and the media keys, in a debug and a release build, after another app and the file page's preview have played, and with the window hidden for minutes; WebKit leaving Now Playing alone; the two songs by ear in the app; an Ogg Vorbis track, since this Mac has neither an Ogg file nor an encoder.
+- **Why:** building phase 1 settled these. The design's player took the engine's events as they came, and a race between a command and a join could have the queue and the engine disagree; epochs and anchored changes make them agree. The time a track is heard is what the player shows. The rest keeps the device and the media keys free while nothing plays, and the events' types plain.

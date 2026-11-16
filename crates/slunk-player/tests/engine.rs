@@ -5,54 +5,13 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
-use slunk_player::{Engine, Event, Fade, Renderer, Track, TrackDecoder};
+use slunk_player::{Engine, Event, Fade, Renderer, Stamped, Track, TrackDecoder};
 
-/// The fixtures' tracks, in frames, cut from one signal (generate.ts)
-const TRACKS: [usize; 3] = [5003, 6421, 4900];
-const RATE: u32 = 44100;
-
-fn fixture(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures")
-        .join(name)
-}
-
-/// The fixtures' signal from frame `first`, as the decoder gives it:
-/// interleaved stereo, each 16-bit sample over 32,768. generate.ts writes
-/// the same.
-fn signal(first: usize, frames: usize) -> Vec<f32> {
-    pcm(first, frames)
-        .into_iter()
-        .map(|sample| f32::from(sample) / 32768.0)
-        .collect()
-}
-
-/// The same, as the 16-bit samples a file holds.
-fn pcm(first: usize, frames: usize) -> Vec<i16> {
-    (first..first + frames)
-        .flat_map(|frame| [triangle(frame, 211), triangle(frame, 173)])
-        .map(|sample| sample as i16)
-        .collect()
-}
-
-fn triangle(frame: usize, period: usize) -> i32 {
-    let amplitude = 12000i64;
-    let phase = (frame % period) as i64;
-    let period = period as i64;
-    let value = if phase < period / 2 {
-        4 * amplitude * phase / period - amplitude
-    } else {
-        3 * amplitude - 4 * amplitude * phase / period
-    };
-    value as i32
-}
-
-/// Where track `index` starts in the signal.
-fn offset(index: usize) -> usize {
-    TRACKS[..index].iter().sum()
-}
+mod common;
+use common::{RATE, TRACKS, fixture, offset, pcm, signal};
 
 /// A whole file, decoded as the engine decodes it.
 fn decode(path: &Path) -> Vec<f32> {
@@ -114,27 +73,48 @@ fn level(dir: &Path) -> PathBuf {
 }
 
 /// An engine with a fake output, which renders only frames already written,
-/// so nothing it keeps is silence for want of samples.
+/// so nothing it keeps is silence for want of samples. It has no latency, so
+/// what it renders is heard.
 struct Fake {
     engine: Engine,
     renderer: Renderer,
+    received: Receiver<Stamped>,
     out: Vec<f32>,
+    /// Every epoch's
     events: Vec<Event>,
 }
 
 impl Fake {
     fn new(rate: u32) -> Self {
-        let (engine, renderer) = Engine::new(rate);
+        let (sender, received) = mpsc::channel();
+        let (engine, renderer) = Engine::new(rate, move |stamped| {
+            let _ = sender.send(stamped);
+        });
         Self {
             engine,
             renderer,
+            received,
             out: Vec::new(),
             events: Vec::new(),
         }
     }
 
     fn hear(&mut self) {
-        self.events.extend(self.engine.events().try_iter());
+        self.events
+            .extend(self.received.try_iter().map(|stamped| stamped.event));
+    }
+
+    /// Waits for an event, rendering nothing.
+    fn wait_for(&mut self, wanted: impl Fn(&Event) -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            self.hear();
+            if self.events.iter().any(&wanted) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        panic!("no such event: {:?}", self.events);
     }
 
     /// Renders `frames`, once they're written.
@@ -252,7 +232,7 @@ fn what_is_up_next_joins_the_end_of_what_plays() {
         .play(vec![Track::new(0, fixture("join-1.flac"))]);
     fake.settle();
     fake.engine
-        .set_upcoming(vec![Track::new(1, fixture("join-2.flac"))]);
+        .set_upcoming(0, vec![Track::new(1, fixture("join-2.flac"))]);
     fake.render_all();
     assert!(fake.out == signal(0, TRACKS[0] + TRACKS[1]));
 }
@@ -267,12 +247,42 @@ fn what_was_up_next_is_dropped_unheard() {
     // The decoder has written the second track by now
     fake.settle();
     fake.engine
-        .set_upcoming(vec![Track::new(2, fixture("join-3.flac"))]);
+        .set_upcoming(0, vec![Track::new(2, fixture("join-3.flac"))]);
     fake.settle();
     fake.render_all();
     let mut expected = signal(0, TRACKS[0]);
     expected.extend(signal(offset(2), TRACKS[2]));
     assert!(fake.out == expected);
+    assert_eq!(started(&fake.events), [0, 2]);
+}
+
+#[test]
+fn what_is_up_next_after_another_entry_is_ignored() {
+    let mut fake = Fake::new(RATE);
+    fake.engine.play(vec![
+        Track::new(0, fixture("join-1.flac")),
+        Track::new(1, fixture("join-2.flac")),
+    ]);
+    fake.settle();
+    // Out of date: it follows an entry that isn't the one playing
+    fake.engine
+        .set_upcoming(7, vec![Track::new(2, fixture("join-3.flac"))]);
+    fake.render_all();
+    assert!(fake.out == signal(0, TRACKS[0] + TRACKS[1]));
+    assert_eq!(started(&fake.events), [0, 1]);
+}
+
+#[test]
+fn what_is_up_next_follows_the_first_entry_before_it_opens() {
+    let mut fake = Fake::new(RATE);
+    fake.engine.play(vec![
+        Track::new(0, fixture("join-1.flac")),
+        Track::new(1, fixture("join-3.flac")),
+    ]);
+    fake.engine
+        .set_upcoming(0, vec![Track::new(2, fixture("join-2.flac"))]);
+    fake.render_all();
+    assert!(fake.out == signal(0, TRACKS[0] + TRACKS[1]));
     assert_eq!(started(&fake.events), [0, 2]);
 }
 
@@ -289,27 +299,91 @@ fn a_track_repeated_joins_its_own_start() {
     assert!(fake.out == expected);
 }
 
-#[test]
-fn a_track_that_fails_is_skipped() {
-    let mut fake = Fake::new(RATE);
-    fake.engine.play(vec![
-        Track::new(0, fixture("join-1.flac")),
-        Track::new(1, fixture("missing.flac")),
-        Track::new(2, fixture("generate.ts")),
-        Track::new(3, fixture("join-2.flac")),
-    ]);
-    fake.render_all();
-    assert!(fake.out == signal(0, TRACKS[0] + TRACKS[1]));
-    assert_eq!(started(&fake.events), [0, 3]);
-    let failed: Vec<u64> = fake
-        .events
+fn failed(events: &[Event]) -> Vec<u64> {
+    events
         .iter()
         .filter_map(|event| match event {
             Event::Failed { entry, .. } => Some(*entry),
             _ => None,
         })
-        .collect();
-    assert_eq!(failed, [1, 2]);
+        .collect()
+}
+
+#[test]
+fn a_track_that_fails_stops_what_was_to_follow_it() {
+    let mut fake = Fake::new(RATE);
+    fake.engine.play(vec![
+        Track::new(0, fixture("join-1.flac")),
+        Track::new(1, fixture("missing.flac")),
+        Track::new(2, fixture("join-2.flac")),
+    ]);
+    fake.render_all();
+    assert!(fake.out == signal(0, TRACKS[0]));
+    assert_eq!(started(&fake.events), [0]);
+    assert_eq!(failed(&fake.events), [1]);
+}
+
+#[test]
+fn what_follows_a_failure_joins_where_it_would_have_played() {
+    let mut fake = Fake::new(RATE);
+    fake.engine.play(vec![
+        Track::new(0, fixture("join-1.flac")),
+        Track::new(1, fixture("missing.flac")),
+    ]);
+    fake.wait_for(|event| matches!(event, Event::Failed { entry: 1, .. }));
+    fake.engine
+        .set_upcoming(0, vec![Track::new(2, fixture("generate.ts"))]);
+    fake.wait_for(|event| matches!(event, Event::Failed { entry: 2, .. }));
+    fake.engine
+        .set_upcoming(0, vec![Track::new(3, fixture("join-2.flac"))]);
+    fake.render_all();
+    assert!(fake.out == signal(0, TRACKS[0] + TRACKS[1]));
+    assert_eq!(started(&fake.events), [0, 3]);
+    assert_eq!(failed(&fake.events), [1, 2]);
+}
+
+#[test]
+fn a_first_track_that_fails_takes_no_upcoming() {
+    let mut fake = Fake::new(RATE);
+    fake.engine
+        .play(vec![Track::new(0, fixture("missing.flac"))]);
+    fake.wait_for(|event| matches!(event, Event::Failed { entry: 0, .. }));
+    // Nothing plays to follow
+    fake.engine
+        .set_upcoming(0, vec![Track::new(1, fixture("join-1.flac"))]);
+    fake.settle();
+    fake.hear();
+    assert_eq!(fake.renderer.available(), 0);
+    assert!(started(&fake.events).is_empty());
+}
+
+#[test]
+fn events_are_stamped_with_their_play() {
+    let (sender, received) = mpsc::channel();
+    let (engine, mut renderer) = Engine::new(RATE, move |stamped| {
+        let _ = sender.send(stamped);
+    });
+    engine.play(vec![Track::new(0, fixture("join-1.flac"))]);
+    assert_eq!(engine.epoch(), 1);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut block = vec![0.0; 1024];
+    let first = loop {
+        renderer.render(&mut block, 2);
+        if let Ok(stamped) = received.try_recv() {
+            break stamped;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(1));
+    };
+    assert_eq!(
+        first,
+        Stamped {
+            epoch: 1,
+            event: Event::Started { entry: 0 }
+        }
+    );
+    engine.stop();
+    assert_eq!(engine.epoch(), 2);
 }
 
 #[test]

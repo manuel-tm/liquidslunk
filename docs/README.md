@@ -27,12 +27,13 @@ docs/            documentation (this folder)
   development/   setup and conventions for the code
   reference/     the database schema, and the iPod's formats
 src/             the frontend: React, in the app's webview
-src-tauri/       the app: Tauri, its commands, the library, the file protocol
+src-tauri/       the app: Tauri, its commands, the library, the file protocol,
+                 the player, Now Playing
 crates/slunk/    the domain and its database: contexts, repositories,
                  migrations, with no Tauri dependency
 crates/slunk-cli/  the database commands (npm run db:*)
-crates/slunk-player/  the audio engine: decoding, joining tracks, the output,
-                 with no Tauri dependency
+crates/slunk-player/  the audio engine and the player: decoding, joining
+                 tracks, the output, the queue, with no Tauri dependency
 scripts/         scripts for working on the app: screenshots
 dev-library/     scratch libraries for development, never committed
 temp/            local assets for prompting, never committed

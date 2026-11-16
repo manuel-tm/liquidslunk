@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Receiver};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{FromSample, OutputCallbackInfo, SampleFormat, SizedSample, StreamConfig};
+use cpal::{ErrorKind, FromSample, OutputCallbackInfo, SampleFormat, SizedSample, StreamConfig};
 
 use crate::Error;
 use crate::render::Renderer;
@@ -28,7 +28,16 @@ pub fn default_config() -> Result<(u32, u16), Error> {
 /// A stream on the default output device, playing a renderer.
 pub struct Output {
     stream: cpal::Stream,
-    errors: Receiver<String>,
+    errors: Receiver<OutputError>,
+}
+
+/// What the output reported going wrong, or changing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutputError {
+    /// The stream can't play any more: its device is gone, with none to
+    /// follow
+    pub lost: bool,
+    pub message: String,
 }
 
 impl Output {
@@ -66,11 +75,18 @@ impl Output {
 
     /// What the output has reported going wrong, or changing, since asked:
     /// the default device changing, a buffer it couldn't fill in time.
-    pub fn errors(&self) -> Vec<String> {
+    pub fn errors(&self) -> Vec<OutputError> {
         self.errors.try_iter().collect()
     }
 
-    /// Plays again, after the output paused for want of a device.
+    /// Stops calling the renderer, so the device rests while nothing plays.
+    pub fn pause(&self) -> Result<(), Error> {
+        self.stream
+            .pause()
+            .map_err(|error| Error::Output(error.to_string()))
+    }
+
+    /// Calls the renderer again, after `pause()`.
     pub fn resume(&self) -> Result<(), Error> {
         self.stream
             .play()
@@ -82,7 +98,7 @@ fn build<T>(
     device: &cpal::Device,
     config: StreamConfig,
     mut renderer: Renderer,
-    errors: mpsc::Sender<String>,
+    errors: mpsc::Sender<OutputError>,
 ) -> Result<cpal::Stream, Error>
 where
     T: SizedSample + FromSample<f32>,
@@ -112,7 +128,14 @@ where
                 }
             },
             move |error| {
-                let _ = errors.send(error.to_string());
+                let lost = matches!(
+                    error.kind(),
+                    ErrorKind::DeviceNotAvailable | ErrorKind::StreamInvalidated
+                );
+                let _ = errors.send(OutputError {
+                    lost,
+                    message: error.to_string(),
+                });
             },
             None,
         )

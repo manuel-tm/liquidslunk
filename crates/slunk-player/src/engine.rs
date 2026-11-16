@@ -5,7 +5,7 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -24,8 +24,10 @@ const AHEAD: f64 = 2.0;
 /// The ring's size, in seconds: room for what's ahead, and for what a change
 /// to what's up next writes after it.
 const RING: f64 = 5.0;
-/// How long the decoder waits when there's nothing to do.
+/// How long the decoder waits when there's nothing to do, and while
+/// paused.
 const IDLE: Duration = Duration::from_millis(5);
+const IDLE_PAUSED: Duration = Duration::from_millis(50);
 
 /// A track to play: an entry, which the events name, and its file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,12 +52,23 @@ impl Track {
 /// What the engine says happened.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
-    /// An entry's first sample played.
+    /// An entry's first sample was heard: rendered, and past the output's
+    /// latency.
     Started { entry: u64 },
-    /// An entry couldn't play, and was skipped.
+    /// An entry couldn't play. What was to follow it is dropped: the owner
+    /// says what follows instead, with `set_upcoming()`.
     Failed { entry: u64, error: Error },
-    /// Everything given played to its end.
+    /// Everything given was heard to its end.
     Ended,
+}
+
+/// An event, with the play it belongs to: each `play()` and `stop()` starts
+/// a new epoch, and an event of an older one is about what's no longer
+/// playing.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Stamped {
+    pub epoch: u64,
+    pub event: Event,
 }
 
 /// The fade's length, where the player cuts the audio.
@@ -92,22 +105,24 @@ pub struct Position {
 
 enum Command {
     Play(Vec<Track>),
-    Upcoming(Vec<Track>),
+    Upcoming { after: u64, tracks: Vec<Track> },
     Stop,
 }
 
 /// The engine, which the player commands. Its renderer goes to the output.
 pub struct Engine {
     commands: Sender<Command>,
-    events: Receiver<Event>,
     shared: Arc<Shared>,
     rate: u32,
+    /// Plays and stops sent, which the decoder counts as it takes them
+    epoch: AtomicU64,
     thread: Option<JoinHandle<()>>,
 }
 
 impl Engine {
-    /// An engine for an output at `rate`, and its renderer.
-    pub fn new(rate: u32) -> (Self, Renderer) {
+    /// An engine for an output at `rate`, and its renderer. `events` hears
+    /// what happens, on the decoder thread.
+    pub fn new(rate: u32, events: impl FnMut(Stamped) + Send + 'static) -> (Self, Renderer) {
         let (samples_in, samples_out) =
             RingBuffer::new((f64::from(rate) * RING) as usize * CHANNELS);
         let (markers_in, markers_out) = RingBuffer::new(MARKERS);
@@ -115,14 +130,14 @@ impl Engine {
         let shared = Arc::new(Shared::new(Fade::default().frames(rate)));
         let renderer = Renderer::new(samples_out, markers_out, played_in, shared.clone(), rate);
         let (commands, commands_out) = mpsc::channel();
-        let (events_in, events) = mpsc::channel();
         let worker = Worker {
             rate,
             samples: samples_in,
             markers: markers_in,
             played: played_out,
             shared: shared.clone(),
-            events: events_in,
+            events: Box::new(events),
+            epoch: 0,
             commands: commands_out,
             written: 0,
             pending: Vec::new(),
@@ -130,6 +145,8 @@ impl Engine {
             outbox: VecDeque::new(),
             placed: Vec::new(),
             playing: 0,
+            head: None,
+            starts: VecDeque::new(),
             upcoming: VecDeque::new(),
             current: None,
             converter: None,
@@ -144,28 +161,40 @@ impl Engine {
             .ok();
         let engine = Self {
             commands,
-            events,
             shared,
             rate,
+            epoch: AtomicU64::new(0),
             thread,
         };
         (engine, renderer)
     }
 
-    /// Plays `tracks` in order from now, after what plays fades out.
+    /// Plays `tracks` in order from now, after what plays fades out. Its
+    /// events are of a new epoch.
     pub fn play(&self, tracks: Vec<Track>) {
+        self.epoch.fetch_add(1, Ordering::Relaxed);
         let _ = self.commands.send(Command::Play(tracks));
     }
 
-    /// What follows the entry playing, in order. What's decoded of entries
-    /// no longer in it is dropped unheard.
-    pub fn set_upcoming(&self, tracks: Vec<Track>) {
-        let _ = self.commands.send(Command::Upcoming(tracks));
+    /// What follows entry `after`, in order, once `after` is the entry
+    /// playing: the one heard last, or since a play, the first one given.
+    /// What's decoded of entries no longer in it is dropped unheard. Once
+    /// another entry plays, it's out of date, and ignored.
+    pub fn set_upcoming(&self, after: u64, tracks: Vec<Track>) {
+        let _ = self.commands.send(Command::Upcoming { after, tracks });
     }
 
-    /// Stops, after what plays fades out.
+    /// Stops, after what plays fades out. What it says next is of a new
+    /// epoch.
     pub fn stop(&self) {
+        self.epoch.fetch_add(1, Ordering::Relaxed);
         let _ = self.commands.send(Command::Stop);
+    }
+
+    /// The epoch of the last play or stop: events of others are out of
+    /// date.
+    pub fn epoch(&self) -> u64 {
+        self.epoch.load(Ordering::Relaxed)
     }
 
     pub fn set_playing(&self, playing: bool) {
@@ -195,26 +224,31 @@ impl Engine {
         self.rate
     }
 
+    /// What's heard: the entry, and how far into it.
     pub fn position(&self) -> Position {
         let entry = self.shared.entry.load(Ordering::Acquire);
-        let start = self.shared.entry_start.load(Ordering::Relaxed);
-        let played = self.shared.played.load(Ordering::Acquire);
+        let start = self.shared.entry_start.load(Ordering::Acquire);
+        let heard = self.shared.heard.load(Ordering::Acquire);
         Position {
             entry: (entry != NONE).then_some(entry),
-            frames: played.saturating_sub(start),
+            frames: heard.saturating_sub(start),
             rate: self.rate,
         }
+    }
+
+    /// Whether it plays, has more to play, and has nothing written to play
+    /// yet: a file opening, or a disk that can't keep up.
+    pub fn starved(&self) -> bool {
+        self.playing()
+            && !self.shared.draining.load(Ordering::Acquire)
+            && self.shared.written.load(Ordering::Acquire)
+                <= self.shared.played.load(Ordering::Acquire)
     }
 
     /// Frames played as silence for want of samples, since the engine
     /// started.
     pub fn underruns(&self) -> u64 {
         self.shared.underruns.load(Ordering::Relaxed)
-    }
-
-    /// The events, in order.
-    pub fn events(&self) -> &Receiver<Event> {
-        &self.events
     }
 
     /// From the callback to when what it wrote is heard, as the output
@@ -241,6 +275,14 @@ struct Placed {
     at: u64,
 }
 
+/// The entry playing, which `set_upcoming()` names.
+#[derive(Clone, Copy)]
+struct Head {
+    entry: u64,
+    /// It has been heard: since a play, the first entry isn't until then
+    heard: bool,
+}
+
 /// The track being decoded.
 struct Decoding {
     track: Track,
@@ -255,7 +297,9 @@ struct Worker {
     markers: Producer<Marker>,
     played: Consumer<Played>,
     shared: Arc<Shared>,
-    events: Sender<Event>,
+    events: Box<dyn FnMut(Stamped) + Send>,
+    /// Plays and stops taken
+    epoch: u64,
     commands: Receiver<Command>,
     /// Frames written to the ring
     written: u64,
@@ -267,8 +311,12 @@ struct Worker {
     outbox: VecDeque<(Marker, u64)>,
     /// The entries started since the last play, in order
     placed: Vec<Placed>,
-    /// Which of them plays
+    /// Which of them is heard
     playing: usize,
+    /// The entry playing, if any
+    head: Option<Head>,
+    /// Entries rendered and not heard yet: an entry and where it starts
+    starts: VecDeque<(u64, u64)>,
     /// What's to decode after them
     upcoming: VecDeque<Track>,
     current: Option<Decoding>,
@@ -294,7 +342,17 @@ impl Worker {
             }
             self.hear();
             if !self.work() {
-                match self.commands.recv_timeout(IDLE) {
+                // With everything heard, only a command can change anything
+                let waited = if self.ended {
+                    self.commands
+                        .recv()
+                        .map_err(|_| RecvTimeoutError::Disconnected)
+                } else if self.shared.playing.load(Ordering::Relaxed) {
+                    self.commands.recv_timeout(IDLE)
+                } else {
+                    self.commands.recv_timeout(IDLE_PAUSED)
+                };
+                match waited {
                     Ok(command) => self.command(command),
                     Err(RecvTimeoutError::Timeout) => {}
                     Err(RecvTimeoutError::Disconnected) => return,
@@ -306,22 +364,39 @@ impl Worker {
     fn command(&mut self, command: Command) {
         match command {
             Command::Play(tracks) => {
-                self.cut(true);
+                self.cut();
+                self.head = tracks.first().map(|track| Head {
+                    entry: track.entry,
+                    heard: false,
+                });
                 self.upcoming = tracks.into();
                 self.set_done(false);
                 self.ended = false;
             }
-            Command::Upcoming(tracks) => self.set_upcoming(tracks),
+            Command::Upcoming { after, tracks } => {
+                if self.head.is_some_and(|head| head.entry == after) {
+                    self.set_upcoming(tracks);
+                }
+            }
             Command::Stop => {
-                self.cut(false);
+                self.cut();
                 self.set_done(true);
                 self.ended = true;
             }
         }
     }
 
-    /// Drops what's buffered after what plays fades out.
-    fn cut(&mut self, playing_next: bool) {
+    fn emit(&mut self, event: Event) {
+        (self.events)(Stamped {
+            epoch: self.epoch,
+            event,
+        });
+    }
+
+    /// Drops what's buffered after what plays fades out, and starts a new
+    /// epoch.
+    fn cut(&mut self) {
+        self.epoch += 1;
         self.pending.clear();
         self.pending_from = 0;
         self.outbox.clear();
@@ -330,18 +405,41 @@ impl Worker {
         self.upcoming.clear();
         self.placed.clear();
         self.playing = 0;
+        self.head = None;
+        self.starts.clear();
         let _ = self.markers.push(Marker::Cut {
             to: self.written,
             fade_in: false,
         });
-        if !playing_next {
-            self.shared.entry.store(NONE, Ordering::Release);
+        self.shared.entry.store(NONE, Ordering::Release);
+    }
+
+    /// An entry can't play: what was to follow it goes, until the owner
+    /// says what follows instead.
+    fn fail(&mut self, entry: u64, error: Error) {
+        self.upcoming.clear();
+        if self
+            .head
+            .is_some_and(|head| head.entry == entry && !head.heard)
+        {
+            self.head = None;
         }
+        self.emit(Event::Failed { entry, error });
     }
 
     /// What follows the entry playing changed: what's decoded ahead stays as
     /// far as it agrees, and the rest is skipped.
     fn set_upcoming(&mut self, tracks: Vec<Track>) {
+        if self.placed.is_empty() {
+            // The entry playing isn't open yet: it stays first
+            let head = self.upcoming.pop_front();
+            self.upcoming = head.into_iter().chain(tracks).collect();
+            if !self.upcoming.is_empty() {
+                self.set_done(false);
+                self.ended = false;
+            }
+            return;
+        }
         let ahead = &self.placed[(self.playing + 1).min(self.placed.len())..];
         let agree = ahead
             .iter()
@@ -375,24 +473,41 @@ impl Worker {
         self.ended = false;
     }
 
-    /// Takes what the callback reports.
+    /// Takes what the callback reports, and says what's heard.
     fn hear(&mut self) {
         while let Ok(Played::Started { entry, at }) = self.played.pop() {
-            if let Some(index) = self
+            self.starts.push_back((entry, at));
+        }
+        let heard = self.shared.heard.load(Ordering::Acquire);
+        while let Some(&(entry, at)) = self.starts.front() {
+            if at > heard {
+                break;
+            }
+            self.starts.pop_front();
+            // One rendered before a cut, or skipped late, isn't placed any
+            // more: it's not what plays
+            let Some(index) = self
                 .placed
                 .iter()
                 .position(|placed| placed.entry == entry && placed.at == at)
-            {
-                self.playing = index;
-            }
-            let _ = self.events.send(Event::Started { entry });
+            else {
+                continue;
+            };
+            self.playing = index;
+            self.head = Some(Head { entry, heard: true });
+            self.shared.entry_start.store(at, Ordering::Release);
+            self.shared.entry.store(entry, Ordering::Release);
+            self.emit(Event::Started { entry });
         }
-        if self.done && !self.ended && self.pending_frames() == 0 && self.outbox.is_empty() {
-            let played = self.shared.played.load(Ordering::Acquire);
-            if played >= self.written {
-                self.ended = true;
-                let _ = self.events.send(Event::Ended);
-            }
+        if self.done
+            && !self.ended
+            && self.pending_frames() == 0
+            && self.outbox.is_empty()
+            && self.starts.is_empty()
+            && heard >= self.written
+        {
+            self.ended = true;
+            self.emit(Event::Ended);
         }
     }
 
@@ -430,7 +545,7 @@ impl Worker {
             Err(error) => {
                 let entry = decoding.track.entry;
                 self.current = None;
-                let _ = self.events.send(Event::Failed { entry, error });
+                self.fail(entry, error);
             }
         }
         true
@@ -443,10 +558,7 @@ impl Worker {
             let mut decoder = match TrackDecoder::open(&track.path) {
                 Ok(decoder) => decoder,
                 Err(error) => {
-                    let _ = self.events.send(Event::Failed {
-                        entry: track.entry,
-                        error,
-                    });
+                    self.fail(track.entry, error);
                     continue;
                 }
             };
@@ -455,10 +567,7 @@ impl Worker {
             let first = match decoder.next(&mut self.scratch) {
                 Ok(first) => first,
                 Err(error) => {
-                    let _ = self.events.send(Event::Failed {
-                        entry: track.entry,
-                        error,
-                    });
+                    self.fail(track.entry, error);
                     continue;
                 }
             };
@@ -479,10 +588,7 @@ impl Worker {
                             self.converter = Some(converter);
                         }
                         Err(error) => {
-                            let _ = self.events.send(Event::Failed {
-                                entry: track.entry,
-                                error,
-                            });
+                            self.fail(track.entry, error);
                             continue;
                         }
                     }
@@ -547,6 +653,7 @@ impl Worker {
                 }
                 self.pending_from += count;
                 self.written += (count / CHANNELS) as u64;
+                self.shared.written.store(self.written, Ordering::Release);
             }
             if self.pending_from == self.pending.len() {
                 self.pending.clear();

@@ -27,7 +27,8 @@ pub enum Marker {
 /// What the callback tells the engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Played {
-    /// An entry's first frame played.
+    /// An entry's first frame was rendered: it's heard once `heard` reaches
+    /// `at`.
     Started { entry: u64, at: u64 },
 }
 
@@ -40,11 +41,15 @@ pub struct Shared {
     pub volume: AtomicU32,
     /// A fade's length, in frames; 0 cuts
     pub fade: AtomicU32,
-    /// Frames of the stream played
+    /// Frames of the stream rendered
     pub played: AtomicU64,
-    /// The entry playing, or `NONE`
+    /// Frames of the stream heard: rendered, and past the output's latency
+    pub heard: AtomicU64,
+    /// Frames of the stream written
+    pub written: AtomicU64,
+    /// The entry heard, or `NONE`
     pub entry: AtomicU64,
-    /// Where it started in the stream
+    /// Where it starts in the stream
     pub entry_start: AtomicU64,
     /// Frames played as silence for want of samples, while more was coming
     pub underruns: AtomicU64,
@@ -61,6 +66,8 @@ impl Shared {
             volume: AtomicU32::new(1.0f32.to_bits()),
             fade: AtomicU32::new(fade),
             played: AtomicU64::new(0),
+            heard: AtomicU64::new(0),
+            written: AtomicU64::new(0),
             entry: AtomicU64::new(NONE),
             entry_start: AtomicU64::new(0),
             underruns: AtomicU64::new(0),

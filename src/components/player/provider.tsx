@@ -1,14 +1,11 @@
 import {
   createContext,
   type ReactNode,
-  type SyntheticEvent,
   useCallback,
   useContext,
   useEffect,
   useEffectEvent,
   useMemo,
-  useReducer,
-  useRef,
   useState,
   useSyncExternalStore,
 } from "react"
@@ -17,35 +14,28 @@ import { toast } from "sonner"
 import {
   commands,
   events,
-  type PlayerControl,
+  type PlayerEntry,
+  type PlayerFailed,
+  type PlayerState,
   type PlayerTrack,
-} from "@/bindings"
-import { shownName } from "@/lib/credited"
-import { fileUrl, useCommand } from "@/lib/query"
-import {
-  currentEntry,
-  type Entry,
-  nextRepeat,
-  queueReducer,
   type Repeat,
-  restoredQueue,
-  savedQueue,
-  upNext,
-} from "@/lib/queue"
+  type RestoreArgs,
+} from "@/bindings"
+import { useCommand } from "@/lib/query"
 
-import { playerElements } from "./elements"
-
-// The browser remembers the volume, shuffle and repeat, for every library, as
-// it does the theme, and the queue per library, since ids belong to one
+// The browser remembers the volume, shuffle, repeat and the fade's length,
+// for every library, as it does the theme, and the queue per library, since
+// ids belong to one
 const VOLUME = "slunk.player.volume"
 const SHUFFLE = "slunk.player.shuffle"
 const REPEAT = "slunk.player.repeat"
+const FADE = "slunk.player.fade"
 const QUEUE = "slunk.player.queue"
-// ⌘↑ and ⌘↓, and the Controls menu's Volume Up and Down, change the volume
-// by this much
+// ⌘↑ and ⌘↓ change the volume by this much
 const VOLUME_STEP = 0.1
 
-type Volume = { volume: number; muted: boolean }
+/** A queued track. Its key is its own, so a track queued twice is two. */
+export type Entry = PlayerEntry
 
 /** The player: what's queued, and what to do with it. */
 export type Player = {
@@ -54,7 +44,7 @@ export type Player = {
   /** What the player shows of the current track, once it has loaded */
   track: PlayerTrack | null
   playing: boolean
-  /** Whether the element waits for data before it can play */
+  /** Whether it plays, but waits for its file */
   waiting: boolean
   /** From 0 to 1 */
   volume: number
@@ -88,31 +78,42 @@ export type Player = {
   toggleMuted: () => void
 }
 
-/** How far into the current track the element is, in seconds. */
+/** How far into the current track it is. */
 export type PlayerTime = {
+  /** Seconds heard */
   time: number
-  /** The element's, once it has read the file, else NaN */
-  duration: number
+}
+
+/** The player before it has said anything: nothing queued. */
+const NOTHING: PlayerState = {
+  entries: [],
+  current: null,
+  playing: false,
+  waiting: false,
+  shuffle: false,
+  repeat: "off",
+  volume: 100,
+  muted: false,
+  fade: "10",
+  remembered: null,
 }
 
 const PlayerContext = createContext<Player | null>(null)
 const TimeContext = createContext<ReturnType<typeof timeStore> | null>(null)
 
 /**
- * The element's time, as a store for `useSyncExternalStore`. Only what shows
- * the time subscribes, so the rest of the app doesn't render again on every
- * `timeupdate`, about four times a second.
+ * The time, as a store for `useSyncExternalStore`. Only what shows the time
+ * subscribes, so the rest of the app doesn't render again on every
+ * `PlayerTime`, four times a second.
  */
 function timeStore() {
-  let snapshot: PlayerTime = { time: 0, duration: NaN }
+  let snapshot: PlayerTime = { time: 0 }
   const listeners = new Set<() => void>()
   return {
     get: () => snapshot,
-    set(time: number, duration: number) {
-      if (time === snapshot.time && Object.is(duration, snapshot.duration)) {
-        return
-      }
-      snapshot = { time, duration }
+    set(time: number) {
+      if (time === snapshot.time) return
+      snapshot = { time }
       for (const listener of listeners) listener()
     },
     subscribe(listener: () => void) {
@@ -141,39 +142,62 @@ function remember(key: string, value: string | null) {
   }
 }
 
-/** The library's remembered queue, with shuffle and repeat, paused. */
-function rememberedQueue(library: string) {
-  const repeat = recall(REPEAT)
-  let saved: unknown = null
+/**
+ * What the browser remembers, for the player: the library's queue as the
+ * player wrote it, which the player reads, and the settings, which are
+ * checked here. Anything else gives the defaults.
+ */
+function remembered(library: string): RestoreArgs {
+  let volume = 1
+  let muted = false
   try {
-    saved = JSON.parse(recall(`${QUEUE}:${library}`) ?? "null")
-  } catch {
-    // Something else under the key: no queue
-  }
-  return restoredQueue(saved, {
-    shuffle: recall(SHUFFLE) === "true",
-    repeat: repeat === "all" || repeat === "one" ? repeat : "off",
-  })
-}
-
-/** A seed for shuffling. */
-function seed() {
-  return Math.floor(Math.random() * 2 ** 32)
-}
-
-function rememberedVolume(): Volume {
-  try {
-    const saved = JSON.parse(
-      localStorage.getItem(VOLUME) ?? "null"
-    ) as Partial<Volume> | null
-    const volume = saved?.volume
-    if (typeof volume === "number" && volume >= 0 && volume <= 1) {
-      return { volume, muted: saved?.muted === true }
+    const saved = JSON.parse(recall(VOLUME) ?? "null") as {
+      volume?: unknown
+      muted?: unknown
+    } | null
+    if (
+      typeof saved?.volume === "number" &&
+      saved.volume >= 0 &&
+      saved.volume <= 1
+    ) {
+      volume = saved.volume
+      muted = saved.muted === true
     }
   } catch {
     // Remembering is a convenience
   }
-  return { volume: 1, muted: false }
+  const repeat = recall(REPEAT)
+  const fade = recall(FADE)
+  return {
+    queue: recall(`${QUEUE}:${library}`),
+    volume: Math.round(volume * 100),
+    muted,
+    shuffle: recall(SHUFFLE) === "true",
+    repeat: repeat === "all" || repeat === "one" ? repeat : "off",
+    fade: fade === "off" || fade === "50" || fade === "200" ? fade : "10",
+  }
+}
+
+/** Remembers the player as it says it is. */
+function rememberState(library: string, state: PlayerState) {
+  remember(`${QUEUE}:${library}`, state.remembered)
+  remember(SHUFFLE, String(state.shuffle))
+  remember(REPEAT, state.repeat)
+  remember(FADE, state.fade)
+  remember(
+    VOLUME,
+    JSON.stringify({ volume: state.volume / 100, muted: state.muted })
+  )
+}
+
+/** Repeat's next setting: off, all, one, then off again. */
+function nextRepeat(repeat: Repeat): Repeat {
+  return repeat === "off" ? "all" : repeat === "all" ? "one" : "off"
+}
+
+/** The first letter of a sentence, capitalized. */
+function sentence(text: string) {
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 // Controls that Space presses, and fields that arrows move the caret in.
@@ -187,13 +211,12 @@ function within(target: EventTarget | null, selector: string) {
 }
 
 /**
- * The app's one player (frontend.md, "The player"): the queue, and the two
- * `<audio>` elements that play it, one ahead of the other so tracks follow
- * each other with nearly no gap. It's inside `AppLayout`'s keyed
- * `SidebarProvider`, so it keeps playing from page to page, and stops when
- * the library closes or switches. The sidebar only shows its controls, so a
- * hidden sidebar doesn't stop the music. It starts with the library's
- * remembered queue, paused.
+ * The app's one player (frontend.md, "The player"), as the page sees it. It
+ * plays in Rust: the provider shows the player's state, from its events, and
+ * calls its commands. It's inside `AppLayout`'s keyed `SidebarProvider`, so
+ * it mounts as the library opens, and hands the player what the browser
+ * remembers of it, then remembers what the player says. The sidebar only
+ * shows its controls, so a hidden sidebar doesn't stop the music.
  */
 export function PlayerProvider({
   library,
@@ -203,31 +226,17 @@ export function PlayerProvider({
   library: string
   children: ReactNode
 }) {
-  const [queue, dispatch] = useReducer(queueReducer, library, rememberedQueue)
-  const [waiting, setWaiting] = useState(false)
-  const [{ volume, muted }, setVolumeState] = useState(rememberedVolume)
+  const [state, setState] = useState<PlayerState>(NOTHING)
   const [time] = useState(timeStore)
-  // The two elements: the current one, and the one loaded ahead. Each swap
-  // asks for what's up next again.
-  const [swaps, setSwaps] = useState(0)
-  const [elements] = useState(() =>
-    playerElements(
-      () => dispatch({ type: "handoff" }),
-      (element) => {
-        setWaiting(false)
-        setSwaps((swaps) => swaps + 1)
-        time.set(element.currentTime, element.duration)
-      }
-    )
-  )
 
   // What the player shows of each queued track. Saves fetch it again, and
   // the last data stays while the queue's ids change.
+  const { entries } = state
   const ids = useMemo(
-    () => [...new Set(queue.entries.map((entry) => entry.trackId))],
-    [queue.entries]
+    () => [...new Set(entries.map((entry) => entry.trackId))],
+    [entries]
   )
-  const { data, isPlaceholderData } = useCommand(
+  const { data } = useCommand(
     "playerTracks",
     { ids },
     { enabled: ids.length > 0, keepPrevious: true }
@@ -236,127 +245,108 @@ export function PlayerProvider({
     () => new Map((data ?? []).map((track) => [track.id, track])),
     [data]
   )
-  const current = currentEntry(queue)
+  const current =
+    state.current === null ? null : (entries[state.current] ?? null)
   const track = (current && tracks.get(current.trackId)) ?? null
 
-  // Deleted tracks aren't in the answer, so they leave the queue
+  // A track that can't play: the player has skipped it
+  const onFailed = useEffectEvent(({ trackId, path, reason }: PlayerFailed) => {
+    toast.error(`Can't play ${tracks.get(trackId)?.title ?? "the track"}`, {
+      description: (
+        <>
+          {path && <span className="break-all">{path}</span>} {sentence(reason)}
+          .
+        </>
+      ),
+    })
+  })
+
+  // The player's events first, so nothing it says is missed, then what the
+  // browser remembers, then the player as it is: unless it has said so
+  // already, since what it says is newer
   useEffect(() => {
-    if (!data || isPlaceholderData) return
-    const found = data.map((track) => track.id)
-    if (ids.some((id) => !found.includes(id))) {
-      dispatch({ type: "keep", trackIds: found })
+    let live = true
+    let said = false
+    const listening = [
+      events.playerState.listen(({ payload }) => {
+        said = true
+        setState(payload)
+        rememberState(library, payload)
+      }),
+      events.playerTime.listen(({ payload }) => time.set(payload.ms / 1000)),
+      events.playerFailed.listen(({ payload }) => onFailed(payload)),
+    ]
+    void Promise.all(listening).then(async () => {
+      await commands.playerRestore(remembered(library))
+      const result = await commands.playerState()
+      if (live && !said && result.status === "ok") setState(result.data)
+    })
+    return () => {
+      live = false
+      for (const unlisten of listening) void unlisten.then((stop) => stop())
     }
-  }, [data, isPlaceholderData, ids])
-
-  // The current element follows the queue. Its source changes only when the
-  // current entry does, never on a fetch, so a save never interrupts what
-  // plays.
-  const currentKey = current?.key ?? null
-  const currentSrc = track && fileUrl(track.file.id)
-  useEffect(() => {
-    elements.follow(
-      currentKey === null ? null : { key: currentKey, src: currentSrc },
-      queue.playing
-    )
-  }, [elements, currentKey, currentSrc, queue.playing])
-
-  // The other one loads what's up next (frontend.md, "Nearly gapless"), and
-  // loads again whenever the queue changes what that is, or the elements swap
-  const ahead = upNext(queue)
-  const nextKey = ahead?.key ?? null
-  const nextTrack = ahead && tracks.get(ahead.trackId)
-  const nextSrc = nextTrack ? fileUrl(nextTrack.file.id) : null
-  useEffect(() => {
-    elements.setAhead(nextKey === null ? null : { key: nextKey, src: nextSrc })
-  }, [elements, nextKey, nextSrc, swaps])
-  useEffect(() => () => elements.dispose(), [elements])
-
-  // Remembered as it changes
-  const saved = JSON.stringify(savedQueue(queue))
-  useEffect(() => {
-    remember(`${QUEUE}:${library}`, saved === "null" ? null : saved)
-  }, [library, saved])
-  useEffect(() => {
-    remember(SHUFFLE, String(queue.shuffle))
-    remember(REPEAT, queue.repeat)
-  }, [queue.shuffle, queue.repeat])
-
-  // Back to the start of the current track: Previous, or the end of the queue
-  const restarts = useRef(queue.restarts)
-  useEffect(() => {
-    if (queue.restarts === restarts.current) return
-    restarts.current = queue.restarts
-    elements.restart()
-  }, [elements, queue.restarts])
-
-  useEffect(() => {
-    elements.setVolume(volume, muted)
-    remember(VOLUME, JSON.stringify({ volume, muted }))
-  }, [elements, volume, muted])
+  }, [library, time])
 
   const play = useCallback(
     (trackIds: number[], start?: number) =>
-      dispatch({ type: "play", trackIds, start, seed: seed() }),
+      void commands.playerPlay({ trackIds, start }),
     []
   )
   const playNext = useCallback(
-    (trackIds: number[]) => dispatch({ type: "playNext", trackIds }),
+    (trackIds: number[]) => void commands.playerPlayNext({ trackIds }),
     []
   )
   const addToQueue = useCallback(
-    (trackIds: number[]) => dispatch({ type: "add", trackIds }),
+    (trackIds: number[]) => void commands.playerAddToQueue({ trackIds }),
     []
   )
-  const toggle = useCallback(() => dispatch({ type: "toggle" }), [])
+  const toggle = useCallback(() => void commands.playerToggle(), [])
   const setPlaying = useCallback(
-    (playing: boolean) => dispatch({ type: "setPlaying", playing }),
+    (playing: boolean) => void commands.playerSetPlaying({ playing }),
     []
   )
-  const next = useCallback(() => dispatch({ type: "next" }), [])
-  const previous = useCallback(
-    () =>
-      dispatch({
-        type: "previous",
-        time: elements.current()?.currentTime ?? 0,
-      }),
-    [elements]
-  )
+  const next = useCallback(() => void commands.playerNext(), [])
+  const previous = useCallback(() => void commands.playerPrevious(), [])
   const jump = useCallback(
-    (entry: Entry) => dispatch({ type: "jump", key: entry.key }),
+    (entry: Entry) => void commands.playerJump({ key: entry.key }),
     []
   )
   const move = useCallback(
     (entry: Entry, by: number) =>
-      dispatch({ type: "move", key: entry.key, by }),
+      void commands.playerMove({ key: entry.key, by }),
     []
   )
   const remove = useCallback(
-    (entry: Entry) => dispatch({ type: "remove", key: entry.key }),
+    (entry: Entry) => void commands.playerRemove({ key: entry.key }),
     []
   )
-  const clear = useCallback(() => dispatch({ type: "clear" }), [])
+  const clear = useCallback(() => void commands.playerClear(), [])
   const toggleShuffle = useCallback(
-    () =>
-      dispatch({ type: "setShuffle", shuffle: !queue.shuffle, seed: seed() }),
-    [queue.shuffle]
+    () => void commands.playerSetShuffle({ shuffle: !state.shuffle }),
+    [state.shuffle]
   )
   const cycleRepeat = useCallback(
-    () => dispatch({ type: "setRepeat", repeat: nextRepeat(queue.repeat) }),
-    [queue.repeat]
+    () => void commands.playerSetRepeat({ repeat: nextRepeat(state.repeat) }),
+    [state.repeat]
   )
-  // In hundredths, so steps of 10% don't drift: 0.8 - 0.1 is 0.7000000000000001
+  // In hundredths, as the player keeps it
   const setVolume = useCallback(
     (volume: number) =>
-      setVolumeState({
-        volume: Math.round(Math.min(1, Math.max(0, volume)) * 100) / 100,
+      void commands.playerSetVolume({
+        volume: Math.round(Math.min(1, Math.max(0, volume)) * 100),
         muted: false,
       }),
     []
   )
   const toggleMuted = useCallback(
-    () => setVolumeState((state) => ({ ...state, muted: !state.muted })),
-    []
+    () =>
+      void commands.playerSetVolume({
+        volume: state.volume,
+        muted: !state.muted,
+      }),
+    [state.volume, state.muted]
   )
+  const volume = state.volume / 100
 
   // Space, ⌘→, ⌘←, ⌘↑ and ⌘↓, as in Music. The Controls menu shows the ⌘
   // ones, but only gets a key the page leaves: these take it first, before
@@ -390,174 +380,38 @@ export function PlayerProvider({
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [queued, toggle, next, previous, setVolume, volume])
 
-  // One sound at a time: the file page's preview pauses
-  // the player, and the player pauses it. Both of the player's elements are
-  // the player's. Media events don't bubble, so this listens in the capture
-  // phase.
+  // One sound at a time: the file page's preview starting pauses the
+  // player, and the player starting pauses it. Media events don't bubble,
+  // so this listens in the capture phase.
   useEffect(() => {
     function onPlay(event: Event) {
-      const started = event.target
-      if (!(started instanceof HTMLMediaElement)) return
-      if (!elements.ours(started)) {
-        elements.pause()
-        return
-      }
-      for (const other of document.querySelectorAll("audio, video")) {
-        if (!elements.ours(other)) (other as HTMLMediaElement).pause()
+      if (event.target instanceof HTMLMediaElement) {
+        void commands.playerSetPlaying({ playing: false })
       }
     }
     document.addEventListener("play", onPlay, true)
     return () => document.removeEventListener("play", onPlay, true)
-  }, [elements])
-
-  // Now Playing and the media keys
-  const title = track?.title
-  const artist = track?.performers
-    .map((performer) => shownName(performer).name)
-    .join(", ")
-  const album = track?.release.title
-  const cover = track?.cover?.id
-  useEffect(() => {
-    if (!("mediaSession" in navigator)) return
-    navigator.mediaSession.metadata =
-      title === undefined
-        ? null
-        : new MediaMetadata({
-            title,
-            artist,
-            album,
-            artwork: cover === undefined ? [] : [{ src: fileUrl(cover) }],
-          })
-  }, [title, artist, album, cover])
-  useEffect(() => {
-    if (!("mediaSession" in navigator)) return
-    navigator.mediaSession.playbackState = !queued
-      ? "none"
-      : queue.playing
-        ? "playing"
-        : "paused"
-  }, [queued, queue.playing])
-  // Now Playing offers exactly the actions with handlers: previous and next,
-  // and no seeking. WebKit drops a handler set before a media element has
-  // registered with its Now Playing, and offers its own actions instead: a
-  // scrubber and 15-second skips. So the handlers are set again whenever an
-  // element starts playing: either one, since they take turns.
-  const setActions = useCallback(() => {
-    if (!("mediaSession" in navigator)) return
-    const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
-      ["play", () => setPlaying(true)],
-      ["pause", () => setPlaying(false)],
-      ["previoustrack", previous],
-      ["nexttrack", next],
-    ]
-    for (const [action, handler] of handlers) {
-      navigator.mediaSession.setActionHandler(action, handler)
-    }
-  }, [setPlaying, previous, next])
-  useEffect(() => {
-    if (!("mediaSession" in navigator)) return
-    const session = navigator.mediaSession
-    setActions()
-    return () => {
-      for (const action of [
-        "play",
-        "pause",
-        "previoustrack",
-        "nexttrack",
-      ] satisfies MediaSessionAction[]) {
-        session.setActionHandler(action, null)
-      }
-      session.metadata = null
-      session.playbackState = "none"
-    }
-  }, [setActions])
-
-  // The Controls menu (backend.md, "The menu bar") shows the player as it is.
-  // It's off with nothing queued, and so at Welcome, when the provider
-  // unmounts.
-  useEffect(() => {
-    void commands.setControlsMenu({
-      playing: queue.playing,
-      queued,
-      shuffle: queue.shuffle,
-      repeat: queue.repeat,
-    })
-  }, [queue.playing, queued, queue.shuffle, queue.repeat])
-  useEffect(
-    () => () =>
-      void commands.setControlsMenu({
-        playing: false,
-        queued: false,
-        shuffle: false,
-        repeat: "off",
-      }),
-    []
-  )
-  // Its items do what the player's buttons do, with the sidebar hidden too
-  const onControl = useEffectEvent((control: PlayerControl) => {
-    switch (control.type) {
-      case "toggle":
-        return toggle()
-      case "next":
-        return next()
-      case "previous":
-        return previous()
-      case "shuffle":
-        return toggleShuffle()
-      case "repeat":
-        return dispatch({ type: "setRepeat", repeat: control.mode })
-      case "volumeUp":
-        return setVolume(volume + VOLUME_STEP)
-      case "volumeDown":
-        return setVolume(volume - VOLUME_STEP)
-    }
-  })
-  useEffect(() => {
-    const listening = events.playerControl.listen((event) =>
-      onControl(event.payload)
-    )
-    return () => void listening.then((unlisten) => unlisten())
   }, [])
-
-  // Only the current element's events count. The other one loads ahead, and
-  // starts the next track just before the current one ends.
-  const isCurrent = (event: SyntheticEvent<HTMLAudioElement>) =>
-    elements.isCurrent(event.currentTarget)
-
-  // A track that can't play is skipped. One that fails to
-  // load ahead is, once it would play.
-  function onError(event: SyntheticEvent<HTMLAudioElement>) {
-    if (!isCurrent(event)) return elements.failed(event.currentTarget)
-    if (!current || !event.currentTarget.getAttribute("src")) return
-    toast.error(`Can't play ${track?.title ?? "the track"}`, {
-      description: (
-        <>
-          {track && <span className="break-all">{track.file.path}</span>} The
-          file is missing, or its format can't be played here.
-        </>
-      ),
-    })
-    setWaiting(false)
-    dispatch({ type: "failed" })
-  }
-
-  function onTime(event: SyntheticEvent<HTMLAudioElement>) {
-    if (!isCurrent(event)) return
-    const element = event.currentTarget
-    time.set(element.currentTime, element.duration)
-  }
+  useEffect(() => {
+    if (!state.playing) return
+    for (const element of document.querySelectorAll<HTMLMediaElement>(
+      "audio, video"
+    )) {
+      element.pause()
+    }
+  }, [state.playing])
 
   const player = useMemo<Player>(
     () => ({
-      entries: queue.entries,
+      entries,
       current,
       track,
-      playing: queue.playing,
-      waiting,
+      playing: state.playing,
+      waiting: state.waiting,
       volume,
-      muted,
-      shuffle: queue.shuffle,
-      repeat: queue.repeat,
+      muted: state.muted,
+      shuffle: state.shuffle,
+      repeat: state.repeat,
       tracks,
       play,
       playNext,
@@ -576,15 +430,15 @@ export function PlayerProvider({
       toggleMuted,
     }),
     [
-      queue.entries,
+      entries,
       current,
       track,
-      queue.playing,
-      waiting,
+      state.playing,
+      state.waiting,
       volume,
-      muted,
-      queue.shuffle,
-      queue.repeat,
+      state.muted,
+      state.shuffle,
+      state.repeat,
       tracks,
       play,
       playNext,
@@ -606,60 +460,7 @@ export function PlayerProvider({
 
   return (
     <PlayerContext.Provider value={player}>
-      <TimeContext.Provider value={time}>
-        {children}
-        {[0, 1].map((index) => (
-          <audio
-            key={index}
-            ref={(element) => elements.attach(index, element)}
-            preload="auto"
-            className="hidden"
-            onPlay={(event) => {
-              if (!isCurrent(event)) {
-                return elements.otherPlayed(event.currentTarget)
-              }
-              dispatch({ type: "setPlaying", playing: true })
-            }}
-            onPause={(event) => {
-              // A track that ends says it paused first. Once the next one has
-              // started, that's not the player pausing.
-              const element = event.currentTarget
-              if (!isCurrent(event) || elements.isEnding(element)) return
-              setWaiting(false)
-              dispatch({ type: "setPlaying", playing: false })
-            }}
-            onPlaying={(event) => {
-              setActions()
-              if (!isCurrent(event)) return
-              setWaiting(false)
-              dispatch({ type: "started" })
-              elements.playing(event.currentTarget)
-            }}
-            onWaiting={(event) => isCurrent(event) && setWaiting(true)}
-            onCanPlay={(event) => isCurrent(event) && setWaiting(false)}
-            // The next track plays: it already has, when it started just
-            // before this one ended
-            onEnded={(event) => {
-              if (!isCurrent(event)) return
-              if (!elements.ended(event.currentTarget)) {
-                dispatch({ type: "ended" })
-              }
-            }}
-            onError={onError}
-            onTimeUpdate={(event) => {
-              onTime(event)
-              elements.timeUpdated(event.currentTarget)
-            }}
-            onDurationChange={onTime}
-            onSeeked={onTime}
-            onEmptied={(event) => {
-              if (!isCurrent(event)) return
-              setWaiting(false)
-              onTime(event)
-            }}
-          />
-        ))}
-      </TimeContext.Provider>
+      <TimeContext.Provider value={time}>{children}</TimeContext.Provider>
     </PlayerContext.Provider>
   )
 }

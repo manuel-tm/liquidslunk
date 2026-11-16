@@ -21,6 +21,7 @@ use slunk::tagging::Tagging;
 use specta::Type;
 
 use crate::error::CommandError;
+use crate::player::{self, LibraryPlayer};
 use crate::settings::{self, Settings};
 
 /// The open library.
@@ -37,6 +38,8 @@ pub struct Library {
     pub tagging: Tagging,
     pub library_check: LibraryCheck,
     pub external: External,
+    /// Its player, in the app: none in tests, and once it has closed
+    player: Mutex<Option<LibraryPlayer>>,
 }
 
 impl Library {
@@ -55,7 +58,13 @@ impl Library {
             tagging: Tagging::new(store.clone()),
             media,
             store,
+            player: Mutex::new(None),
         }
+    }
+
+    /// Works with the library's player, if it has one.
+    pub fn with_player<T>(&self, work: impl FnOnce(&LibraryPlayer) -> T) -> Option<T> {
+        lock(&self.player).as_ref().map(work)
     }
 
     fn info(&self) -> Result<LibraryInfo, CommandError> {
@@ -160,17 +169,20 @@ pub struct Libraries {
     open: Mutex<Option<Arc<Library>>>,
     /// Held while a library opens or closes, so two can't interleave.
     switching: Mutex<()>,
+    /// The app, which gives each library opened a player
+    app: tauri::AppHandle,
 }
 
 impl Libraries {
     /// The libraries, with the settings in the app's config folder.
-    pub fn new(config_folder: &Path) -> Self {
+    pub fn new(config_folder: &Path, app: tauri::AppHandle) -> Self {
         let settings_path = config_folder.join(settings::FILE);
         Self {
             settings: Mutex::new(Settings::load(&settings_path)),
             settings_path,
             open: Mutex::new(None),
             switching: Mutex::new(()),
+            app,
         }
     }
 
@@ -250,8 +262,12 @@ impl Libraries {
         self.close_open();
     }
 
+    /// Closes the open library, stopping its player now, whatever command
+    /// still holds the library.
     fn close_open(&self) {
-        lock(&self.open).take();
+        if let Some(library) = lock(&self.open).take() {
+            lock(&library.player).take();
+        }
     }
 
     fn open_checked(
@@ -272,6 +288,7 @@ impl Libraries {
         self.close_open();
         let conn = connection::open(db).map_err(opening_error)?;
         let library = Arc::new(Library::new(db, conn));
+        *lock(&library.player) = Some(player::start(&self.app, &library));
         *lock(&self.open) = Some(library.clone());
 
         // Save the choice, now that it opened

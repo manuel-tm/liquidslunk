@@ -6,9 +6,12 @@
 //!       [--start SECONDS] a.flac b.flac …
 //!
 //! `--start` begins the first file that many seconds in, decoding its start
-//! and leaving it out. `--fade` is off, 10, 50 or 200 (ms).
+//! and leaving it out. `--fade` is off, 10, 50 or 200 (ms). A file that
+//! can't play stops the files after it, as the engine leaves what follows a
+//! failure to its owner.
 
 use std::path::PathBuf;
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use slunk_player::{Engine, Event, Fade, Output, Track, TrackDecoder, default_config};
@@ -40,7 +43,10 @@ fn main() {
     }
 
     let (rate, channels) = default_config().unwrap_or_else(|error| fail(error));
-    let (engine, renderer) = Engine::new(rate);
+    let (events_in, events) = mpsc::channel();
+    let (engine, renderer) = Engine::new(rate, move |stamped| {
+        let _ = events_in.send(stamped);
+    });
     engine.set_volume(volume);
     engine.set_fade(fade);
     let output = Output::start(renderer).unwrap_or_else(|error| fail(error));
@@ -66,9 +72,9 @@ fn main() {
     engine.play(tracks);
     let mut last_report = Instant::now();
     loop {
-        while let Ok(event) = engine.events().try_recv() {
+        while let Ok(stamped) = events.try_recv() {
             let at = began.elapsed().as_secs_f64();
-            match event {
+            match stamped.event {
                 Event::Started { entry } => {
                     // The wall clock too, to line a recording up with
                     let epoch = std::time::SystemTime::now()
@@ -92,7 +98,12 @@ fn main() {
             }
         }
         for error in output.errors() {
-            println!("{:9.3} s  output: {error}", began.elapsed().as_secs_f64());
+            println!(
+                "{:9.3} s  output: {}{}",
+                began.elapsed().as_secs_f64(),
+                error.message,
+                if error.lost { " (lost)" } else { "" }
+            );
         }
         if last_report.elapsed() >= Duration::from_secs(5) {
             last_report = Instant::now();

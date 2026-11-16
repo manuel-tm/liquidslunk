@@ -15,7 +15,7 @@
 // tag that says the encoder's delay and padding. The M4As hold afconvert's
 // time of creation, so they change each time this runs; the rest don't.
 import { execFileSync } from "node:child_process"
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -81,7 +81,11 @@ function wav(pcm: Buffer): Buffer {
   format.writeUInt16LE(16, 14)
   return chunk(
     "RIFF",
-    Buffer.concat([Buffer.from("WAVE"), chunk("fmt ", format), chunk("data", pcm)])
+    Buffer.concat([
+      Buffer.from("WAVE"),
+      chunk("fmt ", format),
+      chunk("data", pcm),
+    ])
   )
 }
 
@@ -92,7 +96,12 @@ function chunk(id: string, body: Buffer): Buffer {
   return Buffer.concat([header, body])
 }
 
-function afconvert(source: string, format: string, data: string, target: string) {
+function afconvert(
+  source: string,
+  format: string,
+  data: string,
+  target: string
+) {
   execFileSync("afconvert", ["-f", format, "-d", data, source, target])
 }
 

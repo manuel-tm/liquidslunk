@@ -3,8 +3,7 @@
 //! whenever a debug build starts.
 //!
 //! - Every command is `async`, and does its database and disk work on Tokio's
-//!   blocking pool: a command that isn't `async` runs on the main thread. The
-//!   exception is `set_controls_menu`, which belongs there, with the menu.
+//!   blocking pool: a command that isn't `async` runs on the main thread.
 //! - Every command returns `Result<_, CommandError>`, which the bindings wrap
 //!   as `{ status: "ok", data } | { status: "error", error }`.
 //! - A query command takes its arguments as one struct, `args`, so the
@@ -21,7 +20,7 @@ pub mod external;
 pub mod library;
 pub mod library_check;
 pub mod media;
-pub mod menu;
+pub mod player;
 pub mod tagging;
 
 /// Every command and event, for the invoke handler and the bindings.
@@ -136,9 +135,29 @@ pub fn builder() -> Builder<Wry> {
             library_check::library_check,
             library_check::relink_files,
             library_check::rehash_files,
-            menu::set_controls_menu,
+            player::player_state,
+            player::player_restore,
+            player::player_play,
+            player::player_play_next,
+            player::player_add_to_queue,
+            player::player_toggle,
+            player::player_set_playing,
+            player::player_next,
+            player::player_previous,
+            player::player_jump,
+            player::player_move,
+            player::player_remove,
+            player::player_clear,
+            player::player_set_shuffle,
+            player::player_set_repeat,
+            player::player_set_volume,
+            player::player_set_fade,
         ])
-        .events(collect_events![crate::menu::PlayerControl])
+        .events(collect_events![
+            crate::player::PlayerState,
+            crate::player::PlayerTime,
+            crate::player::PlayerFailed,
+        ])
         // Ids are i64. SQLite's stay far below 2^53, so they're numbers.
         .dangerously_cast_bigints_to_number()
 }
@@ -153,14 +172,20 @@ pub(crate) async fn blocking<T: Send + 'static>(
 }
 
 /// Runs work on the open library, on Tokio's blocking pool. Without one, it's
-/// a `noLibrary` error.
+/// a `noLibrary` error. Work that wrote to the library has Now Playing read
+/// the current track again, since a save can change what it shows.
 pub(crate) async fn on_library<T: Send + 'static>(
     app: AppHandle,
     work: impl FnOnce(&Library) -> Result<T, CommandError> + Send + 'static,
 ) -> Result<T, CommandError> {
     blocking(move || {
         let library = app.state::<Libraries>().library()?;
-        work(&library)
+        let changes = library.store.conn().total_changes();
+        let result = work(&library);
+        if library.store.conn().total_changes() != changes {
+            library.with_player(|player| player.library_changed());
+        }
+        result
     })
     .await
 }

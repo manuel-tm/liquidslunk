@@ -14,7 +14,7 @@ import {
 import { useState } from "react"
 import { Link } from "react-router"
 
-import type { PlayerTrack } from "@/bindings"
+import type { PlayerTrack, Repeat } from "@/bindings"
 import { Cover } from "@/components/cover"
 import { artistUrl, Names } from "@/components/names"
 import { usePlayer, usePlayerTime } from "@/components/player/provider"
@@ -26,7 +26,6 @@ import { Slider } from "@/components/ui/slider"
 import { Spinner } from "@/components/ui/spinner"
 import { shownName } from "@/lib/credited"
 import { formatDuration } from "@/lib/format"
-import type { Repeat } from "@/lib/queue"
 
 /** A slider's value, which Base UI gives as a number or an array. */
 function first(value: number | readonly number[]) {
@@ -123,15 +122,12 @@ function NowPlaying({ track }: { track: PlayerTrack | null }) {
 }
 
 /**
- * The time played and the track's length, with a bar between them. It doesn't
- * seek: WebKit seeks FLAC files by estimate (frontend.md, "The player"). The
- * length is the element's once it has read the file, and the catalog's until
- * then.
+ * The time heard and the track's length, the catalog's, with a bar between
+ * them. It doesn't seek yet (frontend.md, "The player").
  */
 function Played({ track }: { track: PlayerTrack | null }) {
-  const { time, duration: read } = usePlayerTime()
-  const duration =
-    Number.isFinite(read) && read > 0 ? read : (track?.durationMs ?? 0) / 1000
+  const { time } = usePlayerTime()
+  const duration = (track?.durationMs ?? 0) / 1000
   const played = Math.min(time, duration)
   // Rounded, as the tracklist rounds it
   const length = formatDuration(duration ? duration * 1000 : null)

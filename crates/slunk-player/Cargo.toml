@@ -16,6 +16,8 @@ lofty = "0.25.4"
 rtrb = "0.4.1"
 # Pinned exactly: its API changes from one major version to the next
 rubato = "=5.1.0"
+serde.workspace = true
+serde_json.workspace = true
 symphonia = { version = "0.6.1", features = ["aac", "aiff", "alac", "isomp4", "mp3"] }
 thiserror.workspace = true
 

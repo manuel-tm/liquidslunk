@@ -4,7 +4,7 @@
 
 The backend is Rust, built into the app. It was ported from slunk's Node backend one context at a time: first the database, its migrations and the database commands, and the app around them, then the media context, the catalog, the tagging context and the library check. While the port ran, slunk's backend served the routes not ported yet, beside the app in debug builds, and a script checked that the commands wrote what slunk's backend wrote, step by step. Once every page ran on Rust commands, slunk's backend was removed, with what ran it.
 
-Since the port, the backend has added the music player's commands, `player_tracks` and `release_track_ids` ([Commands](#commands)), and the menu bar's Controls menu ([The menu bar](#the-menu-bar)); the external libraries context, with liquidslunk's first migration of its own ([The external libraries context](#the-external-libraries-context)); and artist aliases, with a migration of their own ([The catalog context](#the-catalog-context)). It also has an audio engine, which joins tracks to the sample, and which the app doesn't use yet ([The player engine](#the-player-engine)).
+Since the port, the backend has added the music player's commands, `player_tracks` and `release_track_ids` ([Commands](#commands)), and the menu bar's Controls menu ([The menu bar](#the-menu-bar)); the external libraries context, with liquidslunk's first migration of its own ([The external libraries context](#the-external-libraries-context)); and artist aliases, with a migration of their own ([The catalog context](#the-catalog-context)). And it plays the music itself: an audio engine, which joins tracks to the sample, the player's queue, with its commands and events, and Now Playing ([The player engine](#the-player-engine), [The player](#the-player), [Now Playing](#now-playing)).
 
 Each rule on this page has a test.
 
@@ -22,6 +22,7 @@ Each rule on this page has a test.
 | Content types | mime_guess |
 | Audio | lofty; converting with macOS's `afconvert` |
 | Playing audio | symphonia (decoding), cpal (the output), rubato (resampling), rtrb (the ring buffer), in `crates/slunk-player` |
+| Now Playing | objc2-media-player, objc2-app-kit (the cover's image), block2, on macOS |
 | Images | `image` (covers: JPEG, PNG, GIF, BMP, TIFF, WebP) |
 | JSON in the domain | serde_json (an external library's manifest) |
 | Volumes | libc's `statvfs` and `statfs` (free space, mount points), and `diskutil eject` |
@@ -149,28 +150,39 @@ crates/slunk/                the domain and its database, with no Tauri dependen
   tests/fixtures/languages/  what Node's Intl gave for language tags, and the
                              script that asked it
 crates/slunk-cli/            the database commands (npm run db:*)
-crates/slunk-player/         the audio engine, with no Tauri dependency
+crates/slunk-player/         the audio engine and the player, with no Tauri
+                             dependency
   src/decode.rs              a file, decoded to stereo and trimmed
   src/convert.rs             resampling, across joins
   src/stream.rs              what the decoder and the callback share
-  src/render.rs              the callback: markers, the volume, fades
+  src/render.rs              the callback: markers, the volume, fades, what's
+                             heard
   src/engine.rs              the decoder thread, and the engine's commands
   src/output.rs              the default output, through cpal
+  src/queue.rs               the player's queue and its rules
+  src/player.rs              the player: the queue on a thread of its own,
+                             and the engine following it
   examples/play.rs           plays files in order
   examples/decode.rs         decodes files, and counts their frames
   tests/engine.rs            the engine's rules
+  tests/queue.rs             the queue's rules
+  tests/player.rs            the queue played through the engine
+  tests/common/              the fixtures' signal, as the tests work it out
   tests/fixtures/            tracks cut from one signal, and their script
 src-tauri/
   tauri.conf.json            the app's name, identifier, window, CSP and bundle
   capabilities/default.json  what the window may call
   icons/                     the app's icons, and icon.svg, their source
   src/lib.rs                 the builder: plugins, state, protocol, commands,
-                             menu bar
+                             menu bar, Now Playing
   src/error.rs               the commands' error, and SQLite's errors in words
   src/settings.rs            the settings file
   src/library.rs             opening, creating, switching and closing libraries
   src/protocol.rs            slunk://localhost/files/:id
   src/menu.rs                the menu bar, with the Controls menu
+  src/player.rs              the open library's player, its events, and what
+                             it tells the menu and Now Playing
+  src/now_playing.rs         Now Playing and the media keys, on macOS
   src/commands/              the commands and their DTOs, one module per context;
                              catalog/ has one per entity
 ```
@@ -593,13 +605,14 @@ gives `Ryo Fukui/1976 - Scenery/01 It Could Happen to You.flac`, and `…/2-01 �
 
 ## The player engine
 
-`crates/slunk-player/` plays audio. It decodes each track and writes its samples right after the last one's, so tracks join to the sample, then plays them to the system's output. It has no Tauri dependency, and only reads files. The app doesn't use it yet: the player still plays in the webview ([frontend.md](frontend.md#the-player)).
+`crates/slunk-player/` plays audio. It decodes each track and writes its samples right after the last one's, so tracks join to the sample, then plays them to the system's output. It has no Tauri dependency, and only reads files. On top of the engine sit the queue and the player, which the app gives each library ([The player](#the-player)).
 
 - **Three threads:**
   - a decoder thread opens files, decodes them, trims them and resamples them. It writes interleaved 32-bit float stereo into a lock-free ring buffer (rtrb), up to 2 seconds ahead of what plays;
   - the output's real-time callback plays the ring through a `Renderer`, which never allocates, locks or waits;
-  - the engine's owner sends it commands through `Engine`, and hears its events: an entry started, an entry failed, or everything ended.
+  - the engine's owner, the player's thread, sends it commands through `Engine`, and hears its events, on the decoder thread: an entry was heard, an entry failed, or everything was heard.
 - **A `Track`** is an entry, which the events name, and its file. A track queued twice is two entries.
+- **Epochs.** Each `play()` and `stop()` starts an epoch, and every event is stamped with the epoch it belongs to (`Stamped`). One of an older epoch is about what no longer plays: a track heard just before Next, say. The owner compares it with `Engine::epoch()`, and drops it.
 
 ### Decoding
 
@@ -618,11 +631,13 @@ gives `Ryo Fukui/1976 - Scenery/01 It Could Happen to You.flac`, and `…/2-01 �
 
 ### Joining tracks
 
-- **One stream.** When a track ends, the decoder opens the next one and writes its first sample right after the last one's. A `Start` marker beside the samples says where each entry begins. The renderer reports it as it plays that frame, so the owner hears that a track started when it's heard.
-- **What's up next** is `set_upcoming()`: what follows the entry playing.
+- **One stream.** When a track ends, the decoder opens the next one and writes its first sample right after the last one's. A `Start` marker beside the samples says where each entry begins. The renderer reports it as it renders that frame, and the decoder thread says the entry started once it's heard.
+- **What's heard.** The output plays what's rendered an output's latency later, a quarter of a second on some headphones. So the renderer keeps, for its last 512 renders, where the output and the stream were, and works out the stream's position an output's latency ago: what's heard. With no latency, what's rendered is heard. `Started`, `Ended` and `position()` go by what's heard, so the player shows a track, and its time, as it's heard. While paused, the output plays silence, and what's heard catches up with where it paused.
+- **What's up next** is `set_upcoming(after, tracks)`: what follows entry `after`, once it's the entry playing, which is the one heard last, or since a play, the first one given. Otherwise it's out of date, and ignored: the owner hears what played, and says what follows that.
   - What's decoded ahead stays as far as it agrees with it.
   - From the first entry that differs, a `Skip` marker drops what's written, unheard, and the new entry is written after it. Markers queued before a skip that it covers go with it.
   - A skip that reaches the renderer after the skipped track began to play fades that track out, as a cut does.
+- **A track that can't play,** because it can't be opened, isn't a format the engine decodes, or breaks off, stops what was to follow it: the engine says `Failed`, and waits for `set_upcoming()` to say what follows instead. So the owner's rules decide, and a track after one that failed still joins where the failed one would have started.
 - **`play()` starts a new queue.** A `Cut` marker fades out what plays and drops what's buffered. The new track starts from its first sample, unfaded.
 - **Sample rates.** The stream is at the output's rate. A file at another rate goes through a resampler, rubato's synchronous FFT one (`convert.rs`).
   - One resampler runs across consecutive tracks at the same rate, so nothing is flushed at a join between them.
@@ -642,19 +657,52 @@ gives `Ryo Fukui/1976 - Scenery/01 It Could Happen to You.flac`, and `…/2-01 �
 `Output` (`output.rs`) plays a renderer on the system's default output device, through cpal 0.18.
 - **At the device's own rate,** from `default_config()`, which the engine is made for. cpal would switch the device's rate to any other one asked for, for every app, and a switch drops audio. So the engine never changes it, and resamples instead.
 - **The stream follows the system's default device** as it changes, through Core Audio's default output unit, which converts to the new device's rate. cpal reports the change, and the stream plays on.
-- **Latency:** from cpal's timestamps, the time from a callback to when what it wrote is heard. That's the device's latency, its safety offset, and the buffer. A wired headphones output measured 233 ms of device latency, so what plays there is heard 245 ms after it's rendered.
+- **Latency:** from cpal's timestamps, the time from a callback to when what it wrote is heard. That's the device's latency, its safety offset, and the buffer. A wired headphones output measured 233 ms of device latency, so what plays there is heard 245 ms after it's rendered. The renderer uses it for what's heard ([Joining tracks](#joining-tracks)).
 - **Samples** are written as the device takes them: 32-bit float, or 16- or 32-bit integers.
+- **`pause()` and `resume()`** stop and start the callbacks, so the device rests while nothing plays.
+- **Errors:** `errors()` says what the output reported. One whose device is gone with none to follow, or whose stream can't play any more, is `lost`. A change of the default device isn't: the stream follows it.
+
+### The queue
+
+`queue.rs` holds the player's queue and its rules: a plain value, `Queue`, and the steps that change it (`Step`), with no engine, so they're tested on their own.
+- **Entries** are a track id with a key of their own, so a track can be queued twice. Keys are never handed out again, even after Clear.
+- **The rules,** as the player's controls follow them ([frontend.md](frontend.md#the-player)): Previous's 3 seconds, Next and a track that ends, repeat off, all and one, shuffle with the order before it, Play next and Add to queue, moving and removing entries, deleted tracks (`Keep`), and stopping once every entry has failed in a row.
+- **Shuffling** takes its seed from the step, so a step always does the same. It's mulberry32, with a Fisher–Yates shuffle.
+- **What follows** the current entry: `up_next()`, the entry a track that ends goes on to, and `following()`, the entries after it one after another, by the same rules, without coming round to it again. With repeat one, or one entry on repeat all, that's the current one again.
+- **The engine's steps:** `Started` (the current entry was heard, which counts the failures again from 0), `Handoff` (what was up next was heard, joined to the current one's end: as `Ended`, but it doesn't restart, even the same entry), `Ended` (the current track ended with nothing joined to it) and `Failed`.
+- **Remembered** as JSON (`remembered()`), which the page keeps: `{ trackIds, current, unshuffled }`, the order before shuffling as indexes into `trackIds`, or null. `Queue::restored()` reads it back, paused, with the shuffle and repeat it's given, and gives an empty queue for anything that isn't one: no tracks, an id that isn't a positive integer, a current one out of range, an order that doesn't have each index once.
+
+### The player
+
+`player.rs` is the player: the queue, on a thread of its own, and the engine, which it makes follow the queue. The app makes one for each library as it opens ([The app's player](#the-apps-player)).
+- **Commands** (`Command`) come through `Player::send()`, and are taken in order: Play, Play next, Add to queue, toggle, play or pause, Next, Previous, a jump, a move, a removal, Clear, shuffle, repeat, the volume, the fade's length, Prune, and Restore. A command returns once it's sent.
+- **What changes** goes to the owner, through `Options::notify`, on the player's thread: `State` whenever anything in it changes, `Time` four times a second while a track plays and at once after a change of track or a pause, and `Failed` for a track that can't play.
+- **The engine follows the queue:**
+  - When the current entry changes, or restarts, and the queue plays, the engine plays it from its start, with what follows it. A paused entry isn't loaded until it plays, so nothing is read for a queue that only waits.
+  - When what follows changes, the engine is given it, as far as 3 entries, so even short tracks join.
+  - When the engine says an entry was heard, the queue takes the step: the current one heard again, or what followed it joined to its end (`Handoff`). After each, the engine is given what follows again.
+- **Failures.** A track that can't play as the queue reaches it is `Failed`, and the queue goes on. One that fails while it's decoded ahead is set aside, and the engine is given what follows without it, so the next one joins where it would have started. It's skipped, and its failure said, once the queue reaches it, so it's never current.
+- **Restore** brings back what the page remembers, once: the queue, paused, and the volume, mute, shuffle, repeat and fade. Later ones are ignored, so a page that mounts again keeps the player as it is.
+- **Prune** drops the entries of tracks that are gone, asking the library which are still there.
+- **The library** is a trait (`Library`): a track's file, by its id, and which tracks are still there. A track the library doesn't have plays as a missing file does.
+- **The volume** is kept in hundredths, from 0 to 1, and a change of it unmutes. Volume Up and Down change it by 10%.
+- **Waiting:** while it plays, the engine has had nothing to play for a quarter of a second: a file opening, or a disk that can't keep up.
+- **The output** is opened as something first plays, at the default device's rate, and paused once nothing has played for 2 seconds, so the device rests. When it's lost, the player pauses, and makes the engine and the output again at the next play.
+- **For tests,** `Device::Given` hands the renderer to its owner instead of an output.
 
 ### Checking it
 
 - **`tests/engine.rs`** drives the engine with a fake output that keeps every frame:
   - tracks join to the sample, in FLAC, Apple Lossless, WAV and AIFF, the last two written by the test;
   - AAC and MP3 are trimmed to their samples;
-  - what's up next joins, or is dropped unheard;
+  - what's up next joins, or is dropped unheard, and what's up next after another entry is ignored;
   - a track repeated joins its own start;
-  - a track that fails is skipped;
+  - a track that fails stops what was to follow it, and what's given instead joins where it would have played;
   - a track at another rate is resampled to exactly where the next one starts;
-  - the fades and the volume.
+  - the fades and the volume;
+  - events are stamped with their play.
+- **`tests/queue.rs`** has the queue's rules, step by step.
+- **`tests/player.rs`** plays the queue through the engine, with a device thread that renders it about six times as fast as it would play: the queue moving on as each track is heard, joined to the sample past a track that can't play, every track failing, repeat one, what's remembered coming back once, deleted tracks, and the volume.
 - **`tests/fixtures/`** holds tracks cut from one continuous signal, a triangle wave in integer arithmetic, so a test works out the same samples:
   - FLAC and Apple Lossless, made by afconvert;
   - AAC, for its delay;
@@ -795,11 +843,11 @@ The frontend calls the backend through Tauri commands, in `src-tauri/src/command
   - `mod.rs`: `languages`, and what they share: the DTOs of what a release refers to, and `Related`, which loads it;
 - `library_check.rs` ([The library check](#the-library-check)): `library_check`, and its fixes, `relink_files` and `rehash_files`;
 - `external.rs` ([The external libraries context](#the-external-libraries-context)): `external_libraries`, each with whether it's connected; `external_library`, its page, with what's in it, what that takes, and a sample track for its template; `create_external_library`, `update_external_library` and `delete_external_library`; its rules, `external_library_rules` and `set_external_library_rules`, each with what it names; the catalog pages', `add_to_external_library`, `remove_from_external_library` and `external_memberships`; `external_library_tracks`, what's in one, a page at a time, as the track list shows tracks; `exported_tags`, a track's tags as an external library writes them, with its cover, and its path by a template, the default one unless one is given, where a template that can't be used is `invalid`, with the reason, and a track that isn't there is null; and syncing ([Syncing a folder library](#syncing-a-folder-library), [Syncing an iPod](#syncing-an-ipod)): `sync_plan`, what a sync would do, with its labels, what's left out, whether it fits, and on an iPod, the iPod and its tracks from somewhere else; `sync`, which runs it by its id, with its progress through a `Channel`, and `erase` on an iPod with tracks from somewhere else, and returns how it went; `cancel_sync`; `eject_external_library`; `locate_external_library`; and `mounted_ipods`, the iPods mounted now, with their model, free space and the external library each belongs to. `external_library` says whether its destination is connected, missing, another external library's or one of several iPods, what's free there, whether it ejects, whether it's syncing, and an iPod library's iPod, and `delete_external_library` takes `removeFiles`;
-- `menu.rs` ([The menu bar](#the-menu-bar)): `set_controls_menu`;
+- `player.rs` ([The app's player](#the-apps-player)): `player_state`, `player_restore`, `player_play`, `player_play_next`, `player_add_to_queue`, `player_toggle`, `player_set_playing`, `player_next`, `player_previous`, `player_jump`, `player_move`, `player_remove`, `player_clear`, `player_set_shuffle`, `player_set_repeat`, `player_set_volume` and `player_set_fade`;
 - `tagging.rs` ([The tagging context](#the-tagging-context)): `tags`, `tag`, `tag_options`, `tags_by_ref`, `tag_values`, `tag_value_options`, `create_tag`, `update_tag` and `delete_tag`, which name a tag by its `type` and id; a release's tags, `release_tags` and `set_release_tags`; and the bulk edits, `set_tag_on_releases` and `remove_tag_from_releases`.
 
 Their conventions:
-- **Async.** Every command is `async`, and does its database and disk work on Tokio's blocking pool, with `blocking()`, or `on_library()` for one that needs the open library, which is `noLibrary` without one. A command that isn't `async` runs on the main thread, and freezes the window while it works. The one exception is `set_controls_menu`, whose work belongs on the main thread: the menu is there.
+- **Async.** Every command is `async`, and does its database and disk work on Tokio's blocking pool, with `blocking()`, or `on_library()` for one that needs the open library, which is `noLibrary` without one. A command that isn't `async` runs on the main thread, and freezes the window while it works.
 - **Thin.** A command that uses the library is a wrapper over a plain function that takes it, like `media::register(library, args)` or `catalog::artists::create(library, args)`, which maps the context's records to DTOs.
 - **Results.** Every command returns `Result<_, CommandError>`.
 - **Arguments.** A command takes its arguments as one struct, `args`, like `open_file`'s `FileArgs`, so the frontend passes them as an object, as `useCommand()` expects: `call("openFile", { id })`. A command can also take a `Channel` to report progress, as `open_library` does with a path.
@@ -859,15 +907,38 @@ Each failure is an `invalid` error, in words. An I/O or locking error adds that 
 - The content type comes from the extension, by mime_guess, except `audio/mp4` for `m4a`, as slunk's backend sent it.
 - Range requests get a 206 with `Content-Range`, so audio can seek. A response is a whole body in memory, so a range with no end (`bytes=0-`) gets 1 MB, and the media element asks for the rest as it plays. A request with no range gets the whole file.
 
-The app's CSP allows `slunk:` and `http://slunk.localhost` in `img-src` and `media-src`. A page's `fetch()` can't read them: they're for media elements. Scripts and workers come only from the app's own files, by `default-src 'self'`: the player's worker is one of them, bundled by Vite ([frontend.md](frontend.md#nearly-gapless)).
+The app's CSP allows `slunk:` and `http://slunk.localhost` in `img-src` and `media-src`. A page's `fetch()` can't read them: they're for images and the file page's preview. Scripts come only from the app's own files, by `default-src 'self'`. The player doesn't use the protocol: it reads files by their paths ([The app's player](#the-apps-player)).
+
+### The app's player
+
+`player.rs` gives each library its player ([The player](#the-player)), made as the library opens, in `Libraries::open_checked()`, and kept in the `Library`. Closing or switching the library stops it at once, even while a command still holds the library, and the Controls menu and Now Playing then show nothing.
+- **It reads the library's files** by their absolute paths, from the track's file record, read-only, on the engine's decoder thread. Nothing goes through the file protocol.
+- **Commands** (`commands/player.rs`) hand the open library's player a command, and return once it's taken: `noLibrary` without one. What changed comes back through `PlayerState`. `player_state` returns the player as it is, for the page as it mounts.
+- **Events,** typed by tauri-specta, so they're in the bindings as `events.playerState`, `events.playerTime` and `events.playerFailed`:
+  - `PlayerState`: the entries in the order they play, the current one's index, whether it plays and waits, shuffle, repeat, the volume in hundredths from 0 to 100, mute, the fade's length (`"off"`, `"10"`, `"50"` or `"200"`), and `remembered`, the queue for the page to remember, as JSON;
+  - `PlayerTime`: the milliseconds heard of the current track;
+  - `PlayerFailed`: the track's id, its file's path, and why, as the end of a sentence ("its file can't be read: …").
+
+  The volume and the time are whole numbers, since specta types a float that's sent as `number | null`, JSON having no NaN.
+- **`player_restore`** takes what the page remembers, as the library opens: the queue as `remembered` was, which the player reads and checks, the volume in hundredths, mute, shuffle, repeat and the fade. Only the first call for a library counts ([The player](#the-player)).
+- **Deleted tracks.** `delete_track` and `set_release_tracks`, which can remove tracks, have the player prune its queue.
+- **A save** can change what Now Playing shows. `on_library()` compares SQLite's count of changes on the connection before and after a command's work, and when it moved, Now Playing reads the current track again.
 
 ### The menu bar
 
-`menu.rs` builds the menu bar: Tauri's default menu, with a Controls menu between View and Window, as in Music. The player is in the webview, so the menu only passes clicks to it, and shows what it's told.
-- **Its items:** Play, or Pause while the player plays; Next and Previous; Shuffle, checked while it's on; Repeat, a submenu of Off, All and One, the current one checked; and Volume Up and Volume Down. They're all off while nothing is queued, and at launch, until the player says otherwise.
-- **Key equivalents:** ⌘→ for Next, ⌘← for Previous, ⌘↑ and ⌘↓ for the volume. Play has none, since Space would take it from every field. WebKit gives the page a key first, and the menu gets it only if the page leaves it: a field moves its caret, and the player handles the rest itself ([The player](frontend.md#the-player)).
-- **A click** emits `PlayerControl`, a typed event, to the webview: `{ type: "toggle" }`, `next`, `previous`, `shuffle`, `{ type: "repeat", mode }`, `volumeUp` or `volumeDown`. It's tauri-specta's, so it's in the bindings, as `events.playerControl`. A check item checks or unchecks itself when it's clicked, so the click handler puts it back as it was, and the player then says what's changed.
-- **`set_controls_menu({ playing, queued, shuffle, repeat })`** sets what the items show. The items are in the app's state, as `ControlsMenu`. The command isn't `async`: it runs on the main thread, where the menu is, so the player's calls change it in the order they're made.
+`menu.rs` builds the menu bar: Tauri's default menu, with a Controls menu between View and Window, as in Music. Its items call the open library's player, and show it as it is, whenever it says it changed.
+- **Its items:** Play, or Pause while the player plays; Next and Previous; Shuffle, checked while it's on; Repeat, a submenu of Off, All and One, the current one checked; Fade, a submenu of Off, 10 ms, 50 ms and 200 ms, the fade's length checked; and Volume Up and Volume Down. They're all off while nothing is queued, but Fade, which is on whenever a library is open. At Welcome, and at launch until a library opens, they're all off.
+- **Key equivalents:** ⌘→ for Next, ⌘← for Previous, ⌘↑ and ⌘↓ for the volume. Play has none, since Space would take it from every field. WebKit gives the page a key first, and the menu gets it only if the page leaves it: a field moves its caret, and the page handles the rest itself ([The player](frontend.md#the-player)).
+- **A click** hands the player its command: Shuffle turns shuffle to what the menu doesn't show, and Volume Up and Down change the volume by 10%. A check item checks or unchecks itself when it's clicked, so the click handler puts it back as it was, and the player then says what's changed.
+- **What the items show** comes from each `PlayerState`, through `menu::show()`, which changes the items on the main thread, where the menu is, in the order it's told. The items are in the app's state, as `ControlsMenu`. The player's thread only posts to the main thread, never waits for it, so stopping the player on the main thread, as the app quits, can't deadlock.
+
+### Now Playing
+
+`now_playing.rs` sets macOS's Now Playing from the player, through objc2-media-player, on the main thread. It works with the page suspended, since it's all in Rust.
+- **What it shows:** the title, who performs it, as the player names them, joined with commas, the release, its cover, read from its file once per track, the length, the time heard, and the rate, 1 or 0, from which macOS moves the time itself. Its state is Playing or Paused, and Stopped with nothing queued.
+- **When it's set:** once the player has played since the library opened, so opening a library doesn't take the media keys from the app that played last. Then at each change of track, at play and pause, when the time moves more than a second from where macOS would have it, as after Previous, and when a save changes the track's data.
+- **Its buttons and the media keys:** `setup()`, as the app starts, has `MPRemoteCommandCenter`'s play, pause, play/pause, next and previous hand the open library's player its command. The skips, seeks and scrubber are off, so Now Playing shows previous and next. The keyboard's media keys and headphones' buttons reach the same handlers while liquidslunk played last.
+- **Elsewhere** than macOS, there's none.
 
 ### Opening files
 

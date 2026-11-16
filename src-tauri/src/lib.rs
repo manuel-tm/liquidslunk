@@ -1,6 +1,8 @@
 //! The app (backend.md, "Structure"): the Tauri builder, with its plugins,
-//! the open library in its state, the file protocol, the commands and the
-//! menu bar. The domain is in `crates/slunk`, which doesn't depend on Tauri.
+//! the open library and its player in its state, the file protocol, the
+//! commands, the menu bar and Now Playing. The domain is in `crates/slunk`,
+//! and the audio engine in `crates/slunk-player`, which don't depend on
+//! Tauri.
 
 use tauri::{Manager, RunEvent};
 
@@ -8,6 +10,8 @@ mod commands;
 mod error;
 mod library;
 mod menu;
+mod now_playing;
+mod player;
 mod protocol;
 mod settings;
 
@@ -50,7 +54,11 @@ pub fn run() {
             commands.mount_events(app);
             // What an earlier run's syncs left in the temporary folder
             std::thread::spawn(slunk::external::scratch::remove_leftovers);
-            app.manage(Libraries::new(&app.path().app_config_dir()?));
+            app.manage(Libraries::new(
+                &app.path().app_config_dir()?,
+                app.handle().clone(),
+            ));
+            now_playing::setup(app.handle());
             #[cfg(debug_assertions)]
             open_library_argument(app.state::<Libraries>().inner());
             Ok(())

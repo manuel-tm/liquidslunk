@@ -1,7 +1,7 @@
 //! The audio callback's side of the stream: it plays the samples the decoder
-//! wrote, acts on the markers as it reaches them, and applies the volume and
-//! the fades (backend.md, "Joining tracks"). It runs on the output's
-//! real-time thread, so it never allocates, locks or waits.
+//! wrote, acts on the markers as it reaches them, applies the volume and the
+//! fades, and works out what's heard (backend.md, "Joining tracks"). It runs
+//! on the output's real-time thread, so it never allocates, locks or waits.
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -15,6 +15,9 @@ const CHANNELS: usize = 2;
 pub const MARKERS: usize = 64;
 /// How long a change of volume takes, in seconds, so it doesn't click.
 const VOLUME_RAMP: f32 = 0.010;
+/// Renders remembered, to find what's heard an output's latency later: at
+/// 512 frames a render, six seconds at 44.1 kHz.
+const HISTORY: usize = 512;
 
 /// Plays the stream into an output's buffers.
 pub struct Renderer {
@@ -38,6 +41,13 @@ pub struct Renderer {
     /// A frame has played since the last cut: silence for want of samples
     /// is an underrun, not a track still to start
     primed: bool,
+    /// Frames given to the output, silence included
+    output: u64,
+    /// Where the output and the stream were as each of the last renders
+    /// ended, oldest first from `history_next`
+    history: Box<[(u64, u64)]>,
+    history_next: usize,
+    history_len: usize,
 }
 
 impl Renderer {
@@ -62,6 +72,10 @@ impl Renderer {
             dropping: 0,
             next_at: 0,
             primed: false,
+            output: 0,
+            history: vec![(0, 0); HISTORY].into_boxed_slice(),
+            history_next: 0,
+            history_len: 0,
         }
     }
 
@@ -166,6 +180,27 @@ impl Renderer {
                 .underruns
                 .fetch_add(underruns, Ordering::Relaxed);
         }
+        self.output += (out.len() / channels) as u64;
+        self.hear();
+    }
+
+    /// Works out what's heard now: what was rendered when the output was an
+    /// output's latency behind where it is. With no latency, what's rendered
+    /// is heard.
+    fn hear(&mut self) {
+        self.history[self.history_next] = (self.output, self.position);
+        self.history_next = (self.history_next + 1) % HISTORY;
+        self.history_len = (self.history_len + 1).min(HISTORY);
+        let latency = self.shared.latency.load(Ordering::Relaxed);
+        let behind = (u128::from(latency) * u128::from(self.rate) / 1_000_000_000) as u64;
+        let target = self.output.saturating_sub(behind);
+        let heard = (1..=self.history_len)
+            .map(|back| self.history[(self.history_next + HISTORY - back) % HISTORY])
+            .find(|&(output, _)| output <= target)
+            .map(|(_, position)| position);
+        if let Some(heard) = heard {
+            self.shared.heard.store(heard, Ordering::Release);
+        }
     }
 
     /// A cut anywhere in the queue makes what's before it moot: the last one
@@ -233,8 +268,6 @@ impl Renderer {
 
     fn apply(&mut self, marker: Marker) {
         if let Marker::Start { at, entry } = marker {
-            self.shared.entry_start.store(at, Ordering::Relaxed);
-            self.shared.entry.store(entry, Ordering::Release);
             let _ = self.played.push(Played::Started { entry, at });
         }
     }

@@ -27,7 +27,7 @@ import { Link } from "react-router"
 import type { PlayerTrack } from "@/bindings"
 import { Cover } from "@/components/cover"
 import { artistUrl, Names } from "@/components/names"
-import { usePlayer } from "@/components/player/provider"
+import { type Entry, usePlayer } from "@/components/player/provider"
 import { Title } from "@/components/titles"
 import { Button } from "@/components/ui/button"
 import {
@@ -39,7 +39,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { formatDuration } from "@/lib/format"
-import type { Entry } from "@/lib/queue"
 import { cn } from "@/lib/utils"
 
 /**

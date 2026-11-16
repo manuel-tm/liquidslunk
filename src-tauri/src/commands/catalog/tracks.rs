@@ -807,6 +807,8 @@ pub async fn delete_track(app: AppHandle, args: IdArgs) -> Result<i64, CommandEr
 
 pub fn delete(library: &Library, args: IdArgs) -> Result<i64, CommandError> {
     library.catalog.delete_track(args.id)?;
+    // It leaves the player's queue (backend.md, "The app's player")
+    library.with_player(|player| player.send(slunk_player::Command::Prune));
     Ok(args.id)
 }
 
@@ -913,10 +915,13 @@ pub fn set_tracks(library: &Library, args: SetReleaseTracksArgs) -> Result<Relea
     let disc_titles: Option<Vec<domain::DiscTitleInput>> = args
         .disc_titles
         .map(|titles| titles.into_iter().map(Into::into).collect());
-    Ok(library
+    let release = library
         .catalog
-        .set_release_tracks(args.id, &rows, disc_titles.as_deref())?
-        .into())
+        .set_release_tracks(args.id, &rows, disc_titles.as_deref())?;
+    // Tracks it removed leave the player's queue (backend.md, "The app's
+    // player")
+    library.with_player(|player| player.send(slunk_player::Command::Prune));
+    Ok(release.into())
 }
 
 /// Tracks' releases, by id, and who performs each track, by track id.
