@@ -1,6 +1,6 @@
 # Native playback
 
-> **Status: being built.**
+> **Status: complete.** Its three phases (§11, phases 0 to 2) were built by 2026-11-16.
 
 The player plays in the webview, through two `<audio>` elements (2_player.md, 3_gapless.md). At best that's nearly gapless: tracks that run into each other, like The Wall's, still click where they meet. And WebKit seeks FLAC by estimate, so the player doesn't seek at all (6_seeking.md, canceled). This design moves playback into the app. Rust reads each file, decodes it and plays it, joining a track's last sample to the next one's first, and seeking to the exact sample. The player in the sidebar stays as it is, and gets its seek bar.
 
